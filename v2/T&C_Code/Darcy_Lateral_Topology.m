@@ -12,10 +12,9 @@ function [Q_edge, dtheta_lat, sub_steps] = Darcy_Lateral_Topology( ...
 %   The domain perimeter is a zero-flux Neumann boundary: no water
 %   crosses it laterally.  Water still leaves each column vertically
 %   through the existing bottom-leakage physics (Leakage_Bottom), which
-%   the caller handles.  A closed lateral perimeter is the correct
-%   control for a treatment comparison -- it guarantees that differences
-%   between scenarios come from the treatment and from redistribution
-%   between sub-domains, not from an uncalibrated export term.
+%   the caller handles.  The closed perimeter is a treatment-comparison
+%   assumption: there is no lateral exchange with soil outside the 60 m
+%   domain.
 %
 % CONVENTION NOTE (mechanistic correction over the source port)
 %   Conductivity_Suction returns a convention-dependent second output:
@@ -59,24 +58,33 @@ ms      = numel(Zlayer_m);
 
 assert(size(theta_cell,1) == N_cells, 'theta_cell row count must equal N_cells');
 assert(size(theta_cell,2) == ms,      'theta_cell col count must equal ms');
+if N_edges == 0
+    Q_edge = zeros(0,ms);
+    dtheta_lat = zeros(N_cells,ms);
+    sub_steps = 0;
+    return
+end
 
 %% --- 1. Per-cell K(theta), head(theta), Osat for every layer ----------
 [K_cell, h_cell, Osat_cell] = eval_soil_curves(topo, theta_cell, soilpar_cell, ms);
 
-%% --- 2. CFL-derived nominal sub-step ----------------------------------
-K_max = max(K_cell(:));                       % mm/h
-L_min = min(topo.edge_face_distance_m);       % m
-d_min = min(Zlayer_m);                        % m
-n_eff = 0.4;                                  % typical effective porosity
-cfl_chars = (K_max/1000) / (L_min * n_eff * d_min) * dt_h;
-dt_sub_h  = dt_h / max(1, ceil(cfl_chars));
+%% --- 2. Volume-based nominal sub-step ---------------------------------
+Q_initial = darcy_flux_rates(topo,Zlayer_m,K_cell,h_cell);
+incident_rate = zeros(N_cells,ms);
+for e = 1:N_edges
+    incident_rate(topo.edge_a(e),:) = incident_rate(topo.edge_a(e),:) + abs(Q_initial(e,:));
+    incident_rate(topo.edge_b(e),:) = incident_rate(topo.edge_b(e),:) + abs(Q_initial(e,:));
+end
+pore_volume = (topo.cell_area_m2(:)*Zlayer_m(:).') .* Osat_cell;
+exchange_ratio = max(incident_rate(:)*dt_h ./ max(pore_volume(:),eps));
+dt_sub_h = dt_h / max(1,ceil(2*exchange_ratio));
 
 %% --- 3. Adaptive sub-stepped explicit Darcy update --------------------
 theta_w   = theta_cell;
 Q_edge    = zeros(N_edges, ms);                % volume accumulator [m3]
 elapsed_h = 0;
 sub_steps = 0;
-dt_sub_h_min = max(dt_h / max(1, cfl_chars * 256), eps*dt_h);
+dt_sub_h_min = max(dt_sub_h/256,eps*dt_h);
 while elapsed_h < dt_h * (1 - 1e-12)
     dt_try_h = min(dt_sub_h, dt_h - elapsed_h);
     [Q_step, theta_new, scale] = darcy_step( ...
@@ -140,28 +148,7 @@ N_cells = topo.N_cells;
 N_edges = topo.N_edges;
 ms      = numel(Zlayer_m);
 
-Q_step = zeros(N_edges, ms);
-
-for e = 1:N_edges
-    a = topo.edge_a(e);
-    b = topo.edge_b(e);
-    w_face = topo.edge_face_width_m(e);     % m
-    L_face = topo.edge_face_distance_m(e);  % m
-    for k = 1:ms
-        Ka = K_cell(a,k);                    % mm/h
-        Kb = K_cell(b,k);                    % mm/h
-        if Ka <= 0 || Kb <= 0
-            continue;                        % no conductive path
-        end
-        K_edge = 2*Ka*Kb/(Ka+Kb);            % harmonic mean [mm/h]
-        %% Buckingham-Darcy on matric head (flat ground, gravity cancels):
-        %%   q_{a->b} = -K dh/dx = K (h_a - h_b) / L
-        %% Positive q therefore runs from high head (wet) to low (dry).
-        q = K_edge * (h_cell(a,k) - h_cell(b,k)) / L_face / 1000;  % mm/h
-        A_face = w_face * Zlayer_m(k);       % m2
-        Q_step(e,k) = (q/1000) * A_face;     % m3/h
-    end
-end
+Q_step = darcy_flux_rates(topo,Zlayer_m,K_cell,h_cell);
 
 % Per-cell volumetric in/out over dt_h
 dV_cell = zeros(N_cells, ms);                 % m3
@@ -199,7 +186,6 @@ for c = 1:N_cells
 end
 
 if scale < 1
-    Q_step  = Q_step  * scale;
     dV_cell = dV_cell * scale;
 end
 
@@ -211,6 +197,30 @@ for c = 1:N_cells
     end
 end
 
+end
+
+%% =======================================================================
+function Q = darcy_flux_rates(topo,Zlayer_m,K_cell,h_cell)
+N_edges = topo.N_edges;
+ms = numel(Zlayer_m);
+Q = zeros(N_edges,ms);
+for e = 1:N_edges
+    a = topo.edge_a(e);
+    b = topo.edge_b(e);
+    for k = 1:ms
+        Ka = K_cell(a,k);
+        Kb = K_cell(b,k);
+        if Ka <= 0 || Kb <= 0
+            continue
+        end
+        K_edge = 2*Ka*Kb/(Ka+Kb);            % mm/h
+        dh_dx = ((h_cell(a,k)-h_cell(b,k))/1000) / ...
+            topo.edge_face_distance_m(e);    % m/m
+        q = (K_edge/1000) * dh_dx;            % m/h
+        A_face = topo.edge_face_width_m(e) * Zlayer_m(k); % m2
+        Q(e,k) = q * A_face;                  % m3/h
+    end
+end
 end
 
 %% =======================================================================

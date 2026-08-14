@@ -13,6 +13,8 @@ function test_lateral_routing()
 %%   8  theta never leaves [0, Osat] under an extreme gradient
 %%   9  cells with individually different soil / moisture stay independent
 %%  10  buffer -> main diagnostic carries the right sign
+%%  11  adaptive Darcy fluxes match the applied water-volume change
+%%  12  solute export cannot exceed the donor mass
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 fprintf('\n=== test_lateral_routing ===\n');
@@ -53,6 +55,8 @@ check('no main cell touches the domain perimeter', ...
 topo16 = Build_Cell_Topology(L, w, 4, 4);
 check('4x4 main grid gives 24 cells over the same area', ...
     topo16.N_cells == 24 && abs(sum(topo16.cell_area_m2) - L^2) < 1e-9*L^2);
+assert_error(@() Build_Cell_Topology(L,w,2.5,2), ...
+    'Build_Cell_Topology:BadGridSize');
 
 %% ---------------------------------------------------------------------
 %% Soil parameters (Saxton-Rawls, SPAR = 2, silty clay loam)
@@ -122,8 +126,9 @@ check('uniform moisture generates zero lateral flux', ...
 N_sp = 12;
 C_aq = zeros(topo.N_cells, ms, N_sp);
 C_aq(i_main,:,7) = 50;     %% NO3 only in the wet (donor) field cells
+M_aq = aqueous_mass(theta, C_aq, A, Zlayer_m);
 
-[dM, dM_edge] = Solute_Lateral_Transport(topo, Q_edge, C_aq, dt_h);
+[dM, dM_edge] = Solute_Lateral_Transport(topo, Q_edge, C_aq, M_aq, dt_h);
 
 check('lateral advection conserves solute mass', ...
     abs(sum(sum(dM(:,:,7)))) < 1e-9*sum(abs(reshape(dM(:,:,7),[],1))) + 1e-15, ...
@@ -147,7 +152,7 @@ theta_rev = theta; theta_rev(i_main,:) = 0.20; theta_rev(i_buf,:) = 0.40;
 Q_rev = Darcy_Lateral_Topology(topo, theta_rev, Zlayer_m, soilpar_cell, dt_h);
 check('reversing the head gradient reverses the water flux', ...
     sum(bm_sign .* sum(Q_rev,2)) > 0, 'margin is now wet so it should feed the field');
-dM_rev = Solute_Lateral_Transport(topo, Q_rev, C_aq, dt_h);
+dM_rev = Solute_Lateral_Transport(topo, Q_rev, C_aq, M_aq, dt_h);
 check('a solute-free donor transports no solute', ...
     max(abs(reshape(dM_rev(:,:,7),[],1))) < 1e-15);
 
@@ -205,6 +210,29 @@ check('wrapper solute change matches the standalone transport call', ...
     max(abs(dM_out(:) - dM(:))) < 1e-12);
 
 %% ---------------------------------------------------------------------
+%% 11. A scaled Darcy sub-step must report the volume actually applied.
+%% ---------------------------------------------------------------------
+tiny = two_cell_topology;
+sp_tiny = repmat(sp,2,1);
+theta_tiny = [Osat-1e-6; Ohy_s+1e-6];
+[Q_tiny,dtheta_tiny] = Darcy_Lateral_Topology( ...
+    tiny,theta_tiny,0.01,sp_tiny,1);
+dV_state = dtheta_tiny .* tiny.cell_area_m2 * 0.01;
+dV_flux = [-Q_tiny; Q_tiny];
+check('adaptive Darcy flux equals applied water-volume change', ...
+    max(abs(dV_state-dV_flux)) < 1e-12*max(1,max(abs(dV_state))), ...
+    sprintf('state %s vs flux %s m3',mat2str(dV_state),mat2str(dV_flux)));
+
+%% ---------------------------------------------------------------------
+%% 12. Requested advective export is limited by donor mass.
+%% ---------------------------------------------------------------------
+C_limit = reshape([10;0],[2 1 1]);
+M_limit = reshape([5;0],[2 1 1]);
+dM_limit = Solute_Lateral_Transport(tiny,2,C_limit,M_limit,1);
+check('solute export cannot exceed donor mass', ...
+    abs(dM_limit(1)+5) < 1e-12 && abs(dM_limit(2)-5) < 1e-12);
+
+%% ---------------------------------------------------------------------
 fprintf('  ---------------------------------------\n');
 fprintf('  %d passed, %d failed\n\n', n_pass, n_fail);
 if n_fail > 0
@@ -220,4 +248,33 @@ is_main_b = strcmp(topo.cell_region(topo.edge_b), 'main');
 bm_sign = zeros(topo.N_edges, 1);
 bm_sign(~is_main_a &  is_main_b) = +1;
 bm_sign( is_main_a & ~is_main_b) = -1;
+end
+
+function M = aqueous_mass(theta,C,A,Z)
+V = theta .* (A(:)*Z(:).');
+M = C .* V;
+end
+
+function topo = two_cell_topology
+topo.N_cells = 2;
+topo.N_edges = 1;
+topo.edge_a = 1;
+topo.edge_b = 2;
+topo.edge_face_width_m = 0.01;
+topo.edge_face_distance_m = 0.01;
+topo.edge_active = 1;
+topo.cell_area_m2 = [1e-4;1e-4];
+topo.cell_region = {'main';'buffer'};
+end
+
+function assert_error(f,expected_id)
+try
+    f();
+catch ME
+    assert(strcmp(ME.identifier,expected_id), ...
+        'Expected %s, got %s: %s',expected_id,ME.identifier,ME.message);
+    fprintf('  PASS  rejects invalid input with %s\n',expected_id);
+    return
+end
+error('Expected error %s was not raised.',expected_id);
 end

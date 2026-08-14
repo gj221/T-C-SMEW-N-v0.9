@@ -40,8 +40,18 @@ if nargin >= 4 && ~isempty(varargin{2}); main_grid_ny = varargin{2}; end
 L = field_side_m;
 w = buffer_width_m;
 
-assert(L > 2*w, 'Build_Cell_Topology: field_side_m must exceed 2*buffer_width_m');
-assert(main_grid_nx >= 1 && main_grid_ny >= 1, 'main_grid_nx and ny must be >= 1');
+if ~(isnumeric(L) && isscalar(L) && isfinite(L) && L > 0 && ...
+        isnumeric(w) && isscalar(w) && isfinite(w) && w > 0 && L > 2*w)
+    error('Build_Cell_Topology:BadDomainSize', ...
+        'field_side_m and buffer_width_m must be positive, with field_side_m > 2*buffer_width_m.');
+end
+if ~(isnumeric(main_grid_nx) && isscalar(main_grid_nx) && isfinite(main_grid_nx) && ...
+        main_grid_nx == fix(main_grid_nx) && main_grid_nx >= 1 && ...
+        isnumeric(main_grid_ny) && isscalar(main_grid_ny) && isfinite(main_grid_ny) && ...
+        main_grid_ny == fix(main_grid_ny) && main_grid_ny >= 1)
+    error('Build_Cell_Topology:BadGridSize', ...
+        'main_grid_nx and main_grid_ny must be positive integers.');
+end
 
 %%%%%  cell coordinates
 %%% main area extent (inside buffer ring)
@@ -131,19 +141,19 @@ for a = 1:N_cells
             yo_lo = max(cell_y_lo(a), cell_y_lo(b));
             yo_hi = min(cell_y_hi(a), cell_y_hi(b));
             if yo_hi - yo_lo > tol
-                edge_a(end+1,1) = a;                                
-                edge_b(end+1,1) = b;                                
-                edge_face_width_m(end+1,1)    = yo_hi - yo_lo;       
-                edge_face_distance_m(end+1,1) = cell_dx(a)/2 + cell_dx(b)/2; 
+                edge_a(end+1,1) = a;
+                edge_b(end+1,1) = b;
+                edge_face_width_m(end+1,1)    = yo_hi - yo_lo;
+                edge_face_distance_m(end+1,1) = cell_dx(a)/2 + cell_dx(b)/2;
             end
         elseif abs(cell_x_hi(b) - cell_x_lo(a)) < tol
             yo_lo = max(cell_y_lo(a), cell_y_lo(b));
             yo_hi = min(cell_y_hi(a), cell_y_hi(b));
             if yo_hi - yo_lo > tol
-                edge_a(end+1,1) = a;                                
-                edge_b(end+1,1) = b;                                
-                edge_face_width_m(end+1,1)    = yo_hi - yo_lo;       
-                edge_face_distance_m(end+1,1) = cell_dx(a)/2 + cell_dx(b)/2; 
+                edge_a(end+1,1) = a;
+                edge_b(end+1,1) = b;
+                edge_face_width_m(end+1,1)    = yo_hi - yo_lo;
+                edge_face_distance_m(end+1,1) = cell_dx(a)/2 + cell_dx(b)/2;
             end
         end
         % Horizontal shared face: cell_a.y_hi == cell_b.y_lo (or vv)
@@ -151,19 +161,19 @@ for a = 1:N_cells
             xo_lo = max(cell_x_lo(a), cell_x_lo(b));
             xo_hi = min(cell_x_hi(a), cell_x_hi(b));
             if xo_hi - xo_lo > tol
-                edge_a(end+1,1) = a;                                
-                edge_b(end+1,1) = b;                                
-                edge_face_width_m(end+1,1)    = xo_hi - xo_lo;       
-                edge_face_distance_m(end+1,1) = cell_dy(a)/2 + cell_dy(b)/2; 
+                edge_a(end+1,1) = a;
+                edge_b(end+1,1) = b;
+                edge_face_width_m(end+1,1)    = xo_hi - xo_lo;
+                edge_face_distance_m(end+1,1) = cell_dy(a)/2 + cell_dy(b)/2;
             end
         elseif abs(cell_y_hi(b) - cell_y_lo(a)) < tol
             xo_lo = max(cell_x_lo(a), cell_x_lo(b));
             xo_hi = min(cell_x_hi(a), cell_x_hi(b));
             if xo_hi - xo_lo > tol
-                edge_a(end+1,1) = a;                                
-                edge_b(end+1,1) = b;                                
-                edge_face_width_m(end+1,1)    = xo_hi - xo_lo;       
-                edge_face_distance_m(end+1,1) = cell_dy(a)/2 + cell_dy(b)/2; 
+                edge_a(end+1,1) = a;
+                edge_b(end+1,1) = b;
+                edge_face_width_m(end+1,1)    = xo_hi - xo_lo;
+                edge_face_distance_m(end+1,1) = cell_dy(a)/2 + cell_dy(b)/2;
             end
         end
     end
@@ -172,10 +182,8 @@ end
 N_edges      = numel(edge_a);
 edge_active  = ones(N_edges,1);
 
-% For 4x4 (16 main + 8 buffer = 24 cells), expect ~40 edges
-% For 2x2 (4 main + 8 buffer = 12 cells), expect ~16 edges
-% Dynamic assertion: main grid contributes 2*nx*ny - nx - ny edges,
-% plus 4 buffer-to-main side contacts + 8 corner-to-buffer contacts.
+% For 4x4 (16 main + 8 buffer = 24 cells), there are 48 edges.
+% For 2x2 (4 main + 8 buffer = 12 cells), there are 20 edges.
 fprintf('Build_Cell_Topology: created %d cells with %d edges\n', N_cells, N_edges);
 
 % Sparse adjacency

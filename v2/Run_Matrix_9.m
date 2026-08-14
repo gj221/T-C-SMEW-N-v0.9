@@ -31,8 +31,8 @@ function RM = Run_Matrix_9()
 %%   Runs 1 and 4 (control x whole_field, control x margin_crop) are the
 %%   same physical configuration: no amendment anywhere and crop in the
 %%   margin. They are kept as separate entries so each layout subset has
-%%   its own baseline, but only one needs to be simulated. Run_All_9
-%%   detects this and reuses the result unless FORCE_ALL is set.
+%%   its own baseline. The launcher runs both because all nine matrix
+%%   entries are retained as separate outputs.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Workbook case numbers in ERW_MOD_PARAM_parameters.xlsx (Kantola rows)

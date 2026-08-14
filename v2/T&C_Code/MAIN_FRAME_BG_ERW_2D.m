@@ -26,11 +26,9 @@
 %%             soil thermal profile, so radiation, sensible/latent heat
 %%             and soil temperature differ between sub-domains through
 %%             their own canopy and moisture state.  Lateral heat
-%%             conduction between columns is NOT modelled: over tens of
-%%             metres at these gradients it is negligible against the
-%%             vertical fluxes, and T&C carries no lateral thermal
-%%             machinery to reuse.  Heat carried by the lateral water
-%%             flux is likewise neglected, consistent with that choice.
+%%             conduction and advected heat are not represented. This
+%%             assumes they are small relative to the vertical energy
+%%             terms at the retained cell scale.
 %%
 %% METEOROLOGY
 %%   The plot is flat and small, so all columns share one meteorological
@@ -61,11 +59,18 @@ NCP = 8;    %% number of carbon pools
 %%   Each column's parameter script runs in its own private workspace, so
 %%   columns may differ in PFT, management, rooting depth and soil.
 %% ========================================================================
-ctx = struct('MOD_PARAM_input',MOD_PARAM_input,'ERW_PARAM_input',ERW_PARAM_input, ...
-    'NN',NN,'NNd',NNd,'ms',ms,'Datam',Datam,'Lat',Lat,'Lon',Lon, ...
-    'DeltaGMT',DeltaGMT,'t_bef',t_bef,'t_aft',t_aft,'Ta',Ta,'Ca',Ca, ...
-    'OPT_SoilBiogeochemistry',OPT_SoilBiogeochemistry, ...
-    'NN_case_study_ERW_MOD',NN_case_study_ERW_MOD);
+%% Build field by field: struct('f',M) with a non-scalar M would create a
+%% struct ARRAY the size of M, not a scalar struct holding M.
+ctx = struct();
+ctx.MOD_PARAM_input = MOD_PARAM_input;
+ctx.ERW_PARAM_input = ERW_PARAM_input;
+ctx.NN = NN;   ctx.NNd = NNd;   ctx.ms = ms;
+ctx.Datam = Datam;
+ctx.Lat = Lat; ctx.Lon = Lon;   ctx.DeltaGMT = DeltaGMT;
+ctx.t_bef = t_bef; ctx.t_aft = t_aft;
+ctx.Ta = Ta;   ctx.Ca = Ca;
+ctx.OPT_SoilBiogeochemistry = OPT_SoilBiogeochemistry;
+ctx.NN_case_study_ERW_MOD = NN_case_study_ERW_MOD;
 if exist('B_out','var');      ctx.B_out = B_out;           end
 if exist('O_out','var');      ctx.O_out = O_out;           end
 if exist('NavlI_out','var');  ctx.NavlI_out = NavlI_out;   end
@@ -724,17 +729,11 @@ for i = 2:NN
             P(j,24,c) = P(j,24,c) + dM(10);
             P(j,43,c) = P(j,43,c) + dM(11);
         end
-        %% Upwind advection can undershoot at a sharp front; clamp without
-        %% creating mass (the clamp is reported, not silent).
-        Pj = P(j,:,:);
-        if any(Pj(:) < 0)
-            neg_mass = -sum(Pj(Pj<0));
-            if neg_mass > 1e-9
-                warning('MAIN_FRAME_BG_ERW_2D:NegativePool', ...
-                    'Lateral advection drove pools negative by %.3e g/m2 at i=%d', neg_mass, i);
-            end
-            Pj(Pj<0) = 0;
-            P(j,:,:) = Pj;
+        transported = [60 68 52 76 32 31 12 13 24 43];
+        Pj = P(j,transported,:);
+        if any(Pj(:) < -1e-10)
+            error('MAIN_FRAME_BG_ERW_2D:NegativePool', ...
+                'Conservative lateral transport produced a negative pool at i=%d.',i);
         end
 
         lateral_diag.water_buf_to_main(j) = lateral_diag.water_buf_to_main(j) + ldiag.buf_to_main.water;
@@ -747,13 +746,17 @@ for i = 2:NN
     %% ------------------------------------------------------------------
     if OPT_ERW == 1 && ((Datam(i,4) == 1) || i == NN)
         for c = 1:N_col
+            ERW_PARAM_cell = ERW_PARAM_input;
+            if isfield(ColCfg,'ERW_PARAM')
+                ERW_PARAM_cell = ColCfg(c).ERW_PARAM;
+            end
             ERW{c} = ERW_Daily_Step_2D(ERW{c}, ColCfg(c), PAR{c}, ...
                 i, j, NN, NNd, Datam, Date, Ca, ...
                 O(:,:,c), Lk(:,1,c), f(:,1,c), T_H(:,:,c), T_L(:,:,c), ...
                 Tdp_bio_c(c), VSUM_c(c), VTSUM_c(c), ...
                 R_microbe(:,1,c), R_litter(:,1,c), R_ew(:,1,c), R_litter_sur(:,1,c), ...
                 Rmr_H(:,:,c), Rmr_L(:,:,c), Ccrown_c(c,:), ...
-                P(:,:,c), MOD_PARAM_input, ERW_PARAM_input, ...
+                P(:,:,c), MOD_PARAM_input, ERW_PARAM_cell, ...
                 conv_mol, conv_Al);
             if ERW{c}.has_update
                 PH_c(c)   = ERW{c}.PH;

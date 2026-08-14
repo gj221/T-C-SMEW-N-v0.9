@@ -17,14 +17,18 @@
 %%         forming species, so it takes the HIGH (overstory) slot.
 %%
 %%   LOW   Purple coneflower   Echinacea purpurea
-%%         Cool-season C3 forb, 0.6-1.2 m, with a stout taproot to
-%%         roughly 1.2 m and a basal rosette.  It grows beneath the
-%%         grass canopy, so it takes the LOW (understory) slot.
+%%         C3 perennial forb, 0.6-1.2 m, with a deep fibrous root system.
+%%         It grows beneath the grass canopy, so it takes the LOW
+%%         (understory) slot.
 %%
 %%   Both species occupy crown 1 (Ccrown = [1 0]) as an overstory-grass /
 %%   understory-forb pair sharing the same ground area.  Slot 2 is the
 %%   base file's soybean slot: retained structurally so no caller needs
 %%   re-indexing, but carries zero cover and zero rooting depth.
+%%
+%%   The species identity, pathway and high/low assignment are
+%%   morphology based. The exact physiology and ZR95 values below are
+%%   model priors, not measurements from the Kantola field.
 %%
 %% WHY A GRASS + FORB PAIR RATHER THAN A GRASS MONOCULTURE
 %%   The margin treatments are being compared for their effect on N2O
@@ -45,13 +49,16 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% --- Canopy cover: one prairie community in crown 1, slot 2 disabled
+%% The margin is fully vegetated, so the bare fraction the base file
+%% carried for a row crop goes to zero.  Land-cover fractions must still
+%% sum to one or Check_Land_Cover_Fractions rejects the cell.
 Ccrown = [1.0 0.0];
+Cbare  = 1 - sum(Ccrown) - Cwat - Curb - Crock;
 
 %% --- Root depth  [mm]
-%%   Big bluestem 2500 mm (Weaver 1968); coneflower taproot 1200 mm.
-%%   Both far exceed the maize 920 mm / soybean 700 mm of the base file:
-%%   this is the property that lets the margin intercept nitrate below
-%%   the crop rooting zone.
+%%   Big bluestem roots can extend beyond 2 m. E. purpurea is fibrous and
+%%   shallower. These ZR95 values preserve that ordering; neither is a
+%%   site measurement.
 ZR95_H  = [2500 0];
 ZR50_H  = [NaN  NaN];
 ZRmax_H = [NaN  NaN];
@@ -102,7 +109,9 @@ mSl_L = [0.0 0.0];
 d_leaf_H = [1.5 1.5];   %% [cm] narrow grass blade
 d_leaf_L = [6.0 6.0];   %% [cm] broad forb leaf
 
-%% --- Plant type: 2 = perennial grass/herb, no annual sowing or harvest
+%% --- Plant type: 2 = perennial herbaceous PFT, no annual sowing or harvest
+%% The model has no separate perennial-forb state, so type 2 is also used
+%% for coneflower.
 aSE_H = [2 2];
 aSE_L = [2 2];
 
@@ -192,21 +201,22 @@ OM_L = [1 1];
 Sp_LAI_H_In = [0.2 0.2];
 Sp_LAI_L_In = [0.3 0.3];   %% broader forb leaf holds more water
 
-%% --- Exudation
-%%   Exudation_Parameter(2) = high-exudation perennial grass
-%%   (Swinnen et al. 1994).  Neither species fixes N -- the forb is an
-%%   Asteraceae, not a legume -- so the margin adds no new N.
-[ParEx_H(1)] = Exudation_Parameter(2);
-[ParEx_H(2)] = Exudation_Parameter(2);
-[ParEx_L(1)] = Exudation_Parameter(2);
-[ParEx_L(2)] = Exudation_Parameter(2);
+%% --- Exudation and biological fixation
+%% Exudation_Parameter's argument is the biological-fixation flag.
+[ParEx_H(1)] = Exudation_Parameter(0);
+[ParEx_H(2)] = Exudation_Parameter(0);
+[ParEx_L(1)] = Exudation_Parameter(0);
+[ParEx_L(2)] = Exudation_Parameter(0);
+assert(all([ParEx_H.bfix] == 0) && all([ParEx_L.bfix] == 0), ...
+    'PFT_Prairie_Margin:UnexpectedBNF', ...
+    'Big bluestem and purple coneflower must both be non-fixing PFTs.');
 
 %% --- Management: an established perennial margin is neither sown nor
 %%     harvested during the simulation, and receives no fertiliser.
-[Mpar_H(1)] = Vegetation_Management_Parameter;
-[Mpar_H(2)] = Vegetation_Management_Parameter;
-[Mpar_L(1)] = Vegetation_Management_Parameter;
-[Mpar_L(2)] = Vegetation_Management_Parameter;
+%% Overwrite fields on the management structs the base file already
+%% built.  Re-calling Vegetation_Management_Parameter here would fail:
+%% the base file adds crop-rotation fields (Date_sowing, Crop_B, ...) to
+%% its structs, so a fresh one no longer matches field for field.
 for islot = 1:2
     Mpar_H(islot).Date_sowing     = [];
     Mpar_H(islot).Date_harvesting = [];

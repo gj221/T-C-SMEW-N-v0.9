@@ -42,12 +42,16 @@ assert(size(C_aq_cell,2) == ms, 'C_aq_cell layer count must equal numel(Zlayer_m
 assert(numel(soilpar_cell) == N_cells, 'soilpar_cell must have topo.N_cells entries');
 
 %% --- 1. Lateral Buckingham-Darcy water flux ---------------------------
+theta_before = theta_cell;
 [Q_edge, dtheta_lat, sub_steps] = Darcy_Lateral_Topology( ...
     topo, theta_cell, Zlayer_m, soilpar_cell, dt_h);
 theta_cell = theta_cell + dtheta_lat;
 
 %% --- 2. Upwind advective solute redistribution ------------------------
-[dM_cell, dM_edge] = Solute_Lateral_Transport(topo, Q_edge, C_aq_cell, dt_h);
+Vw_layer = theta_before .* (topo.cell_area_m2(:)*Zlayer_m(:).');
+M_aq_cell = C_aq_cell .* reshape(Vw_layer,N_cells,ms,1);
+[dM_cell, dM_edge] = Solute_Lateral_Transport( ...
+    topo,Q_edge,C_aq_cell,M_aq_cell,dt_h);
 
 %% --- 3. Buffer <-> main diagnostic ------------------------------------
 %% Sign each buffer-main edge so that positive means buffer -> main.
