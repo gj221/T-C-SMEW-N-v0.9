@@ -12,7 +12,7 @@
 %%   VEGGIE_UNIT, Plant_Exports, CropHeightType, ERW_function) with the
 %%   same arguments.  What changes is that every state array carries a
 %%   trailing column dimension and the columns exchange water and
-%%   dissolved solute after each hourly step.  With N_col = 1 and a
+%%   dissolved solute and heat after each hourly step.  With N_col = 1 and a
 %%   single-cell topology it reproduces the single-column result, which
 %%   is how it is verified (test_2d_driver_equivalence).
 %%
@@ -21,14 +21,12 @@
 %%             per soil layer, every hour (Darcy_Lateral_Topology).
 %%   Mass      advective transport of the aqueous phase with that water,
 %%             upwind (Solute_Lateral_Transport).  Sorbed and solid
-%%             phases do not move laterally.
-%%   Energy    each column solves its own full surface energy balance and
-%%             soil thermal profile, so radiation, sensible/latent heat
-%%             and soil temperature differ between sub-domains through
-%%             their own canopy and moisture state.  Lateral heat
-%%             conduction and advected heat are not represented. This
-%%             assumes they are small relative to the vertical energy
-%%             terms at the retained cell scale.
+%%             phases do not move laterally. ERW-only Na, Al, residual
+%%             anions and DIC use the same water flux in the active layer.
+%%   Energy    lateral Fourier conduction and liquid-water sensible heat
+%%             advection couple the soil thermal profiles.
+%%   Gas       soil-air CO2 diffuses across cell faces with the existing
+%%             Millington-Quirk effective diffusivity.
 %%
 %% METEOROLOGY
 %%   The plot is flat and small, so all columns share one meteorological
@@ -98,7 +96,37 @@ for c = 2:N_col
              'across differing meshes.'], c);
     end
 end
+if any(abs(cellfun(@(p) p.Zbio,PAR)-PAR{1}.Zbio) > 1e-9)
+    error('MAIN_FRAME_BG_ERW_2D:ActiveDepthMismatch', ...
+        'All columns must use the same active biogeochemical depth.');
+end
 Zlayer_m = diff(PAR{1}.Zs)/1000;      %% [m] layer thickness, shared
+
+%% This retained sub-field topology has no elevation or roughness closure.
+%% A sloped case requires T&C's raster routing machinery and cannot be
+%% represented by the flat adjacency graph without inventing flow paths.
+if N_col > 1
+    for c = 1:N_col
+        if abs(PAR{c}.Slo_top) > 1e-12 || any(abs(PAR{c}.Slo_pot) > 1e-12)
+            error('MAIN_FRAME_BG_ERW_2D:SlopedDomainUnsupported', ...
+                ['The sub-field graph requires zero Slo_top and Slo_pot. ' ...
+                 'Use raster routing when a DTM and surface-flow parameters are available.']);
+        end
+    end
+end
+
+bio_active_fraction = zeros(N_col,ms);
+for c = 1:N_col
+    active_thickness_m = PAR{c}.Bio_Zs*(PAR{c}.Zbio/1000);
+    bio_active_fraction(c,:) = active_thickness_m./Zlayer_m;
+end
+if any(~isfinite(bio_active_fraction(:))) || ...
+        any(bio_active_fraction(:) < -1e-12) || ...
+        any(bio_active_fraction(:) > 1+1e-12)
+    error('MAIN_FRAME_BG_ERW_2D:BadActiveLayer', ...
+        'Biogeochemical active-layer fractions must lie within each soil layer.');
+end
+bio_active_fraction = min(1,max(0,bio_active_fraction));
 
 %% Per-column soil parameters for the lateral solver
 soilpar_cell = Soil_Param_To_Routing(PAR{1}.Soil_Param, PAR{1}.SPAR);
@@ -328,8 +356,15 @@ Tdp_bio_c = zeros(N_col,1); VSUM_c = zeros(N_col,1); VTSUM_c = zeros(N_col,1);
 lateral_diag = struct('water_buf_to_main', zeros(NNd,1), ...
                       'mass_buf_to_main',  zeros(NNd,N_lateral_species), ...
                       'NO3_buf_to_main',   zeros(NNd,1), ...
+                      'heat_buf_to_main_J',zeros(NNd,1), ...
+                      'heat_residual_J',   zeros(NNd,1), ...
+                      'heat_sub_steps_max',zeros(NNd,1), ...
+                      'erw_mass_buf_to_main_umol',zeros(NNd,4), ...
+                      'erw_CO2_buf_to_main_umol',zeros(NNd,1), ...
+                      'erw_mass_residual_umol',zeros(NNd,4), ...
                       'sub_steps_max',     zeros(NNd,1), ...
-                      'species_names',     {lateral_species});
+                      'species_names',     {lateral_species}, ...
+                      'erw_species_names', {{'Na','Al','An','DIC'}});
 
 %% Domain-boundary accounting: vertical leakage out of the base of each
 %% column.  The lateral perimeter is closed, so this is the only exit.
@@ -622,7 +657,15 @@ for i = 2:NN
     for c = 1:N_col
         p = PAR{c};
         Ccrown = Ccrown_c(c,:);
-        Qi_in(i,:,c) = Qi_out(i-1,:,c);
+        if N_col > 1
+            Qi_in(i,:,c) = 0;
+            Slo_top_cell = 0;
+            Slo_pot_cell = zeros(1,ms);
+        else
+            Qi_in(i,:,c) = Qi_out(i-1,:,c);
+            Slo_top_cell = p.Slo_top;
+            Slo_pot_cell = p.Slo_pot;
+        end
         q_runon(i,1,c) = 0;
 
         [V(i,:,c),Vice(i,:,c),O(i,:,c),Oice(i,:,c),ZWT(i,c),OF(i,c),OS(i,c), ...
@@ -674,7 +717,7 @@ for i = 2:NN
             FROCK(i-1,c),p.Krock,Ws_under(i-1,c), ...
             Tdew(i),t_sls(i-1,c),ros(i-1,c),SP_wc(i-1,c),p.fpr,Pr_sno(pdind,1,c), ...
             p.In_max_urb,p.In_max_rock,p.K_usle,tau_sno(i-1,c),Ta(pdind), ...
-            p.Slo_top,p.Slo_pot,p.Asur,p.Ared,p.aTop,EK(i-1,c),q_runon(i,1,c),Qi_in(i,:,c), ...
+            Slo_top_cell,Slo_pot_cell,p.Asur,p.Ared,p.aTop,EK(i-1,c),q_runon(i,1,c),Qi_in(i,:,c), ...
             p.pow_dis,p.a_dis, ...
             p.SPAR,p.SN,OPT_VegSnow,OPT_SoilTemp,OPT_PlantHydr,Opt_CR,Opt_ST, ...
             OPT_SM,OPT_STh,OPT_FR_SOIL,OPT_PH);
@@ -695,6 +738,8 @@ for i = 2:NN
     %% ------------------------------------------------------------------
     if N_col > 1
         theta_cell = reshape(O(i,:,:), ms, N_col).';        %% [N_col x ms]
+        Oice_cell = reshape(Oice(i,:,:), ms, N_col).';
+        T_cell = reshape(Tdp(i,:,:), ms, N_col).';
 
         %% Biogeo_Leakage defines which T&C pools are dissolved and mobile.
         %% The pools are vertically integrated [gX/m2]; the T&C leakage
@@ -702,21 +747,33 @@ for i = 2:NN
         P_cells = reshape(P(j,:,:),79,N_col).';
         [~,mobile] = Biogeo_Lateral_Pools(P_cells);
         mobile = mobile .* lateral_fraction;
-        C_aq = zeros(N_col,ms,N_lateral_species);
-        for c = 1:N_col
-            Vw = sum(max(theta_cell(c,:),1e-9) .* Zlayer_m) * A_cell(c);   %% m3
-            C_col = (mobile(c,:).' * A_cell(c)) / max(Vw,eps); %% [gX/m3]
-            C_aq(c,:,:) = repmat(reshape(C_col,1,1,N_lateral_species),[1 ms 1]);
-        end
+        C_aq = Biogeo_Lateral_Concentration( ...
+            mobile,A_cell,theta_cell,Zlayer_m,bio_active_fraction);
 
-        [theta_new, dM_cell, ldiag] = Lateral_Routing_Step( ...
-            topo, theta_cell, C_aq, soilpar_cell, Zlayer_m, dth);
+        lambda_cell = zeros(N_col,ms);
+        cv_cell = zeros(N_col,ms);
+        for c = 1:N_col
+            p = PAR{c}; sp = p.Soil_Param;
+            [lambda_cell(c,:),cv_cell(c,:)] = Soil_Thermal_properties_FT( ...
+                T_cell(c,:),Pre(i),sp.rsd,sp.lan_dry,sp.lan_s,sp.cv_s, ...
+                p.SPAR,sp.L,sp.Pe,sp.O33,sp.alpVG,sp.nVG,p.Phy, ...
+                sp.s_SVG,sp.bVG,sp.Osat,sp.Ohy, ...
+                theta_cell(c,:)+Oice_cell(c,:),OPT_FR_SOIL);
+        end
+        thermal = struct('T_cell',T_cell,'lambda_cell',lambda_cell, ...
+            'cv_cell',cv_cell,'Oice_cell',Oice_cell);
+        [theta_new, dM_cell, ldiag, T_new] = Lateral_Routing_Step( ...
+            topo,theta_cell,C_aq,soilpar_cell,Zlayer_m,dth,thermal, ...
+            bio_active_fraction);
 
         %% Write the redistributed moisture back, keeping V consistent
         %% with O through the column's own residual water content.
         for c = 1:N_col
             O(i,:,c) = theta_new(c,:);
             V(i,:,c) = (theta_new(c,:) - PAR{c}.Ohy) .* PAR{c}.dz;
+            Tdp(i,:,c) = T_new(c,:);
+            [Tdp_H(i,:,c),Tdp_L(i,:,c)] = RootZone_Temp( ...
+                T_new(c,:),RfH_Zs_c{c},RfL_Zs_c{c});
         end
 
         %% Return the advected mass to its T&C pools [gX/m2].
@@ -734,11 +791,26 @@ for i = 2:NN
         lateral_diag.mass_buf_to_main(j,:) = lateral_diag.mass_buf_to_main(j,:) + ldiag.buf_to_main.net.';
         lateral_diag.NO3_buf_to_main(j)   = lateral_diag.NO3_buf_to_main(j) + ldiag.buf_to_main.net(i_lateral_NO3);
         lateral_diag.sub_steps_max(j)     = max(lateral_diag.sub_steps_max(j), ldiag.sub_steps);
+        lateral_diag.heat_buf_to_main_J(j)= lateral_diag.heat_buf_to_main_J(j) + ldiag.buf_to_main.heat_J;
+        lateral_diag.heat_residual_J(j)   = lateral_diag.heat_residual_J(j) + ldiag.heat.energy_residual_J;
+        lateral_diag.heat_sub_steps_max(j)= max(lateral_diag.heat_sub_steps_max(j),ldiag.heat.sub_steps);
     end
 
     %% ------------------------------------------------------------------
     %% ERW  --  once per day, per column
     %% ------------------------------------------------------------------
+    if N_col > 1 && OPT_ERW == 1 && i == NN && ...
+            all(cellfun(@(x) isfield(x,'init') && x.init,ERW))
+        [ERW,erw_ldiag] = ERW_Lateral_Transport( ...
+            ERW,topo,ldiag.Q_edge,theta_cell,Zlayer_m,bio_active_fraction,dth);
+        lateral_diag.erw_mass_buf_to_main_umol(j,:) = ...
+            lateral_diag.erw_mass_buf_to_main_umol(j,:) + erw_ldiag.buf_to_main.aqueous_umol.';
+        lateral_diag.erw_CO2_buf_to_main_umol(j) = ...
+            lateral_diag.erw_CO2_buf_to_main_umol(j) + erw_ldiag.buf_to_main.CO2_umol;
+        lateral_diag.erw_mass_residual_umol(j,:) = ...
+            lateral_diag.erw_mass_residual_umol(j,:) + erw_ldiag.mass_residual_umol.';
+    end
+
     if OPT_ERW == 1 && ((Datam(i,4) == 1) || i == NN)
         for c = 1:N_col
             ERW_PARAM_cell = ERW_PARAM_input;
@@ -760,6 +832,18 @@ for i = 2:NN
                 P(j,43,c) = ERW{c}.P43;
             end
         end
+    end
+
+    if N_col > 1 && OPT_ERW == 1 && i < NN && ...
+            all(cellfun(@(x) isfield(x,'init') && x.init,ERW))
+        [ERW,erw_ldiag] = ERW_Lateral_Transport( ...
+            ERW,topo,ldiag.Q_edge,theta_cell,Zlayer_m,bio_active_fraction,dth);
+        lateral_diag.erw_mass_buf_to_main_umol(j,:) = ...
+            lateral_diag.erw_mass_buf_to_main_umol(j,:) + erw_ldiag.buf_to_main.aqueous_umol.';
+        lateral_diag.erw_CO2_buf_to_main_umol(j) = ...
+            lateral_diag.erw_CO2_buf_to_main_umol(j) + erw_ldiag.buf_to_main.CO2_umol;
+        lateral_diag.erw_mass_residual_umol(j,:) = ...
+            lateral_diag.erw_mass_residual_umol(j,:) + erw_ldiag.mass_residual_umol.';
     end
 end
 

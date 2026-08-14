@@ -1,4 +1,4 @@
-function E = ERW_Daily_Step_2D(E, cfg, p, i, j, NN, NNd, Datam, Date, Ca, ...
+function E = ERW_Daily_Step_2D(E, cfg, p, i, j, NN, NNd, Datam, ~, Ca, ...
     O_c, Lk_c, f_c, T_H_c, T_L_c, Tdp_bio, VSUM, VTSUM, ...
     R_microbe_c, R_litter_c, R_ew_c, R_litter_sur_c, Rmr_H_c, Rmr_L_c, Ccrown, ...
     P_c, MOD_PARAM_input, ERW_PARAM_input, conv_mol, conv_Al)
@@ -341,6 +341,7 @@ for dt_m = max(dm_start,2):dm_end
 end
 E.bg = bg; E.weath = weath; E.const = cst;
 E.dm_end = dm_end;
+E.current_s = W.s(row_of(dm_end));
 
 %% ---------------------------------------------------------------------
 %% Hand the updated chemistry back to the biogeochemistry

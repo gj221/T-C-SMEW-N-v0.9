@@ -20,10 +20,9 @@ function [dM_cell, dM_edge] = Solute_Lateral_Transport( ...
 %%
 %% Coupling note
 %%   This routine moves only the AQUEOUS mass.  The caller must derive
-%%   aqueous concentration from totals before the call and re-run the ERW
-%%   cation-exchange equilibrium after it, so the lateral step stays
-%%   consistent with the upstream Gaines-Thomas convention without
-%%   duplicating any equilibrium code.
+%%   aqueous concentration from totals before the call and return the
+%%   transported mass to the owning state. ERW equilibrium remains in its
+%%   regular chemistry step, so this routine does not duplicate it.
 %%
 %% Inputs
 %%   topo        topology struct (Build_Cell_Topology / lumped)
@@ -50,6 +49,14 @@ assert(size(Q_edge,2) == ms,      'Q_edge col count must equal ms');
 assert(size(C_aq_cell,1) == N_cells, 'C_aq_cell row count must equal N_cells');
 assert(isequal(size(M_aq_cell),size(C_aq_cell)), ...
     'M_aq_cell must have the same size as C_aq_cell');
+if ~(isnumeric(dt_h) && isscalar(dt_h) && isfinite(dt_h) && dt_h > 0)
+    error('Solute_Lateral_Transport:BadTimeStep', ...
+        'dt_h must be a positive finite scalar.');
+end
+if any(~isfinite(Q_edge(:)))
+    error('Solute_Lateral_Transport:BadFlux', ...
+        'Water fluxes must be finite.');
+end
 if any(~isfinite(C_aq_cell(:))) || any(C_aq_cell(:) < 0) || ...
         any(~isfinite(M_aq_cell(:))) || any(M_aq_cell(:) < 0)
     error('Solute_Lateral_Transport:BadMass', ...
