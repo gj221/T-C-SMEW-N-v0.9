@@ -651,6 +651,21 @@ N_imm_fix_f = 0.011*(B(32))/dtd; %% [gN/gsoil day] %% Continous immobilization d
 NMIN = (Nmin_b + Nmin_f + Nmin_am + Nmin_em)/dtd; %% [gN/gsoil day]
 NIMM = (Nimm_b + Nimm_f + Nimm_am + Nimm_em  + N_imm_fix_f*dtd + N_imm_fix_b*dtd)/dtd; %% [gN/gsoil day]
 NMIN_IN = NMIN - NIMM; %% [gN/gsoil day]
+%%%%%%% NH4/NO3 partition of net mineralization: 90:10 Porporato et al., 2003
+%%%%%%% Under net immobilization (NMIN_IN < 0) the demand is instead charged in
+%%%%%%% proportion to the pool sizes, so the fixed 10% share cannot overdraw the
+%%%%%%% NO3 pool when it is much smaller than NH4
+if NMIN_IN >= 0
+    f_NH4_min = 0.90;
+    f_NO3_min = 0.10;
+else
+    if B(31) + B(32) > 0
+        f_NO3_min = B(32)/(B(31) + B(32));
+    else
+        f_NO3_min = 0.10;
+    end
+    f_NH4_min = 1 - f_NO3_min;
+end
 %%%%%%%%%%%%%
 if  B(31) + NMIN_IN < 0
     Norg_imm = -NMIN_IN - B(31);
@@ -668,8 +683,8 @@ end
 %NIMM = (Nimm_b + Nimm_f + Nimm_am + Nimm_em  + N_imm_fix_f*dtd + N_imm_fix_b*dtd)/dtd; %% [gN/gsoil day]
 %NMIN_IN = NMIN - NIMM; %% [gN/gsoil day]
 %%%%%%% Porporato et al., 2003
-NH4_in = 0.90*NMIN_IN; %%% [gN/gsoil d] Mineralization - Immoblization NH4
-NO3_in = 0.10*NMIN_IN; %%% [gN/gsoil d]
+NH4_in = f_NH4_min*NMIN_IN; %%% [gN/gsoil d] Mineralization - Immoblization NH4
+NO3_in = f_NO3_min*NMIN_IN; %%% [gN/gsoil d]
 %%%% External source, Biological fixation, deposition, fertilization
 %%%  added as NH4 only to simplifiy -->  Dickinson et al., 2002
 Incoming_N = (FertN + DepN + BfixN)/(ZBIOG*rsd);  %% [gN/ gsoil d]
@@ -923,8 +938,8 @@ dB(27)=  (1-lambda_N)*(fd*(F2c_b) + (F3_b))/CN_som  - F8b/CN_bac + (N_imm_fix_b*
 dB(28)=  (1-lambda_N)*(fd*(F2l + F2c_f) + (F3_f))/CN_som  - F8f/CN_fun + (N_imm_fix_f*dtd+Nimm_f-Nmin_f)/dtd; %%% B28 Nitrogen Fungi S
 dB(29)=  (Nimm_am-Nmin_am)/dtd - F8am/CN_mycAM ; %% B29 Nitrogen AM Mycorrhizal
 dB(30)=  (Nimm_em-Nmin_em)/dtd - F8em/CN_mycEM ; %% B30 Nitrogen EM Mycorrhizal
-dB(31)=  Incoming_N + (1-f_org_lea)*Ip_lea_nit  +  NH4_in  - NO3flx  - NH4_Uptake - LEAK_NH4 - VOL + 0.9*Norg_imm;  %%% B31 Nitrogen Ione Ammonium NH4+
-dB(32)=  NO3_in + NO3flx - N2Oflx_nit - NO3_Uptake - LEAK_NO3 - DENITflx + 0.1*Norg_imm ;%%% B32 Nitrogen Nitrate NO3-
+dB(31)=  Incoming_N + (1-f_org_lea)*Ip_lea_nit  +  NH4_in  - NO3flx  - NH4_Uptake - LEAK_NH4 - VOL + f_NH4_min*Norg_imm;  %%% B31 Nitrogen Ione Ammonium NH4+
+dB(32)=  NO3_in + NO3flx - N2Oflx_nit - NO3_Uptake - LEAK_NO3 - DENITflx + f_NO3_min*Norg_imm ;%%% B32 Nitrogen Nitrate NO3-
 dB(33) = f_org_lea*Ip_lea_nit + (lambda_N)*(fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CN_som  - LEAK_DON - S_DON;  %%% B33 DON
 dB(34) = FewN; %%  B34 Earthworm -N
 %%%%%%
