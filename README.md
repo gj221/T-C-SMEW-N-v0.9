@@ -42,6 +42,12 @@ matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRu
 matlab -batch "cd('v2'); Plot_Subfield_12"
 ```
 
+The plotting command writes `Subfield_12_summary.png` and
+`Subfield_12_time_dynamics.png` to `v2/SIM/Subfield_12`. The time plot
+has one column for each scenario group and shows control, basalt and
+calcite through time for cumulative N2O, cumulative nitrate leaching,
+the soil nitrate pool and soil pH.
+
 From an open MATLAB session in `v2`:
 
 ```matlab

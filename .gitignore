@@ -1,4 +1,5 @@
 # simulation outputs and run logs
 v2/SIM/
 *.log
+*.status
 *.asv
