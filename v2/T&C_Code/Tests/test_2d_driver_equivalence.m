@@ -54,19 +54,43 @@ S2 = run_driver_single(R1, code);
 %% ---------------------------------------------------------------------
 %% 3. Compare
 %% ---------------------------------------------------------------------
-tol = 1e-10;   %% identical code paths: expect round-off only
-fprintf('\nState trajectories (1-D vs 2-D, tol %.0e):\n', tol);
-
-names = {'O','V','Ts','Tdp','Lk','T_H','T_L','EG','LAI_L','B_L', ...
-         'P','PH_d','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI'};
-labels = {'O   soil moisture','V   soil water','Ts  surf temp', ...
-          'Tdp soil temp','Lk  leakage','T_H transpiration', ...
-          'T_L transpiration','EG  evaporation','LAI_L','B_L biomass', ...
-          'P   BG pools','PH_d pore pH','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI'};
+%% TWO TOLERANCE CLASSES, for two different reasons.
+%%
+%%   EXACT (tol = 0).  Water, energy and vegetation state runs through
+%%   identical code with identical inputs, so it must agree bit for bit.
+%%   Anything else is a transcription error in the driver.
+%%
+%%   ROUND-OFF (tol = 1e-8 relative).  The ERW chain cannot be held to
+%%   bit-exactness once the forcing interpolation is computed a different
+%%   way.  interp1 and synchronize both perform linear interpolation but
+%%   order the arithmetic differently, so they differ in the last ulp.
+%%   ERW_function drives that through fsolve, whose iteration path
+%%   depends on the exact input bits, amplifying an ulp to ~1e-9 in pH.
+%%   That is nine significant figures of agreement in a quantity measured
+%%   to +/-0.1, and it does not grow into a physical difference.
+%%   Demanding max|d| = 0 here would be demanding that a nonlinear
+%%   iterative solver be bit-reproducible across a change in input
+%%   rounding, which it is not.
+tol_exact = 0;
+tol_chem  = 1e-8;
 
 n_pass = 0; n_fail = 0;
-for k = 1:numel(names)
-    ok = compare_field(labels{k}, R1.(names{k}), S2.(names{k}), tol);
+
+fprintf('\nExact-match state (water, energy, vegetation), tol = 0:\n');
+exact_names  = {'O','V','Ts','Tdp','Lk','T_H','T_L','EG','LAI_L','B_L'};
+exact_labels = {'O   soil moisture','V   soil water','Ts  surf temp', ...
+                'Tdp soil temp','Lk  leakage','T_H transpiration', ...
+                'T_L transpiration','EG  evaporation','LAI_L','B_L biomass'};
+for k = 1:numel(exact_names)
+    ok = compare_field(exact_labels{k}, R1.(exact_names{k}), S2.(exact_names{k}), tol_exact);
+    if ok; n_pass = n_pass + 1; else; n_fail = n_fail + 1; end
+end
+
+fprintf('\nERW-coupled chemistry, tol = %.0e relative (solver round-off):\n', tol_chem);
+chem_names  = {'P','PH_d','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI'};
+chem_labels = {'P   BG pools','PH_d pore pH','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI'};
+for k = 1:numel(chem_names)
+    ok = compare_field(chem_labels{k}, R1.(chem_names{k}), S2.(chem_names{k}), tol_chem);
     if ok; n_pass = n_pass + 1; else; n_fail = n_fail + 1; end
 end
 

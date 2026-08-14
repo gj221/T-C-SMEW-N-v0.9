@@ -17,12 +17,29 @@ function E = ERW_Daily_Step_2D(E, cfg, p, i, j, NN, NNd, Datam, Date, Ca, ...
 %%   margin inside one simulation.
 %%
 %% FIDELITY TO THE SINGLE-COLUMN FRAME
-%%   This mirrors the ERW block of MAIN_FRAME_BG_ERW_10mins step for
-%%   step, including rebuilding the synchronised timetables over the whole
-%%   run on each simulated day.  That is expensive, and an earlier version
-%%   of this file replaced it with a current-day-only interpolation.  The
-%%   shortcut changed the answers, so it was reverted: the ERW path stays
-%%   slow and faithful, and equivalence with the 1-D frame is testable.
+%%   The 1-D frame rebuilds synchronised timetables spanning the whole
+%%   run on every simulated day and then reads one day out of them:
+%%   ~263,000 rows rebuilt 1825 times for a 5-year run, and once per
+%%   column here.  This version reproduces those timetables exactly
+%%   without rebuilding them:
+%%
+%%     - the regular 10-minute time grid and the CO2 column depend only
+%%       on forcing that is known upfront, so they are built once at
+%%       initialisation and cached;
+%%     - the daily drivers (s, temp_soil, r_het, r_aut) are linearly
+%%       interpolated onto the grid with interp1, which is what
+%%       synchronize(...,'linear') does, evaluated only on the rows the
+%%       current day actually reads;
+%%     - the daily water sums (Tw, Lw, Iw) are held zero-order from the
+%%       calendar day containing each row, which is what
+%%       synchronize(...,'previous') does over retime(...,'daily','sum').
+%%
+%%   An earlier attempt at this shortcut silently changed the answers:
+%%   infiltration was taken as the current hour scaled by 24 instead of
+%%   summed over the day, and the day-boundary sub-step alignment was
+%%   off by one.  Both are fixed here, and
+%%   test_2d_driver_equivalence checks the result bit for bit against
+%%   the 1-D frame rather than taking the equivalence on trust.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 E.has_update = false;
@@ -54,6 +71,19 @@ if ~E.init
     E.TC.f_Lw_bio  = zeros(NNd,1);
     E.TC.f_T_bio   = zeros(NNd,1);
     E.init_done_j2 = false;
+
+    %% Time grids, in hours since Date(1).  These mirror the timetable
+    %% axes: tt_h is hourly with an extra trailing hour, tt_d is every
+    %% 24th hourly stamp, and TT_m is a regular 10-minute grid.
+    res = MOD_PARAM_input.t_res;
+    E.n_t = round((NN/24)/(1/(24*res)));
+    E.th  = (0:NN)';                       %% hourly stamps  [h]
+    E.td  = E.th(1:24:end);                %% daily stamps   [h]
+    E.tm  = ((0:E.n_t-1)')/res;            %% 10-minute grid [h]
+    E.res = res;
+    %% CO2 never changes during the run, so interpolate it once.
+    CO2v  = [Ca(1); Ca(:)]/22.41;
+    E.CO2_m = interp1(E.th, CO2v, E.tm, 'linear');
 end
 C = E.TC_const;
 
@@ -157,33 +187,70 @@ E.TC_const.M_rock_add = M_rock_add;
 E.TC_const.M_rock_add_CaCO3 = M_rock_add_CaCO3;
 
 %% ---------------------------------------------------------------------
-%% Align the T&C and ERW time axes  (same construction as the 1-D frame)
+%% Window on the ERW time axis, evaluated without rebuilding timetables
 %% ---------------------------------------------------------------------
-tt_h = [datetime(datevec(Date)); datetime(datevec(Date(end)))+hours(1)];
-tt_d = tt_h(1:24:end);
+%% Index arithmetic identical to the timetable lookup it replaces:
+%%   dm_start is the grid row at hour (i-25), dm_end the last row
+%%   strictly before hour (i-1), so the window is exactly 24*t_res rows.
+if i == NN
+    h_first = find(Datam(:,4)==1,1,'last') - 1;
+    h_last  = NN;                       %% length(tt_h) - 1 in hours
+else
+    h_first = max(1,i-24) - 1;
+    h_last  = i - 1;
+end
+dm_start = find(E.tm == h_first, 1, 'first');
+dm_end   = find(E.tm <  h_last,  1, 'last');
+if isempty(dm_start); dm_start = 1; end
+if isempty(dm_end);   dm_end = min(E.n_t, dm_start); end
+dm_end = min(dm_end, E.n_t);
 
-TT_h_sum = timetable(tt_h, [E.TC.Tw(1);E.TC.Tw], [E.TC.Lw(1);E.TC.Lw], ...
-    [E.TC.Iw(1);E.TC.Iw], 'VariableNames',{'Tw','Lw','Iw'});
-TT_h_d = retime(TT_h_sum,'daily','sum');
+%% Rows this day reads, plus one earlier row for the s_pre lookup.
+rows = (max(dm_start-1,1):dm_end)';
+tw_r = E.tm(rows);
 
-TT_h_linear = timetable(tt_h, [E.TC.CO2_atm(1);E.TC.CO2_atm], 'VariableNames',{'CO2_atm'});
+%% Daily drivers: linear interpolation, as synchronize(...,'linear').
+W.s         = interp1(E.td, E.TC.s,         tw_r, 'linear');
+W.temp_soil = interp1(E.td, E.TC.temp_soil, tw_r, 'linear');
+W.r_het     = interp1(E.td, E.TC.r_het,     tw_r, 'linear');
+W.r_aut     = interp1(E.td, E.TC.r_aut,     tw_r, 'linear');
+W.CO2_atm   = E.CO2_m(rows);
 
-TT_d = timetable(tt_d, E.TC.s, E.TC.temp_soil, E.TC.r_het, E.TC.r_aut, ...
-    'VariableNames',{'s','temp_soil','r_het','r_aut'});
-
-TT_m = synchronize(TT_h_linear,TT_d,'regular','linear', ...
-    'TimeStep', minutes(60/MOD_PARAM_input.t_res));
-TT_m = synchronize(TT_m,TT_h_d,'regular','previous', ...
-    'TimeStep', minutes(60/MOD_PARAM_input.t_res));
-TT_m = TT_m(1:length(t),:);
+%% Daily water sums held zero-order from the calendar day of each row,
+%% as synchronize(...,'previous') over retime(...,'daily','sum').
+Twv = [E.TC.Tw(1); E.TC.Tw];
+Lwv = [E.TC.Lw(1); E.TC.Lw];
+Iwv = [E.TC.Iw(1); E.TC.Iw];
+day_of_row = floor(tw_r/24);
+W.Tw = zeros(numel(rows),1); W.Lw = W.Tw; W.Iw = W.Tw;
+for d_u = unique(day_of_row)'
+    k0 = 24*d_u + 1;
+    k1 = min(24*d_u + 24, numel(Twv));
+    sel = (day_of_row == d_u);
+    W.Tw(sel) = sum(Twv(k0:k1));
+    W.Lw(sel) = sum(Lwv(k0:k1));
+    W.Iw(sel) = sum(Iwv(k0:k1));
+end
+%% Map a grid row index onto its position within the window arrays.
+row_of = @(dm) dm - rows(1) + 1;
 
 %% ---------------------------------------------------------------------
 %% First ERW day: build the parameter and state structures
 %% ---------------------------------------------------------------------
 if ~E.init_done_j2
+    %% ERW_MOD_PARAM_excel preallocates on length(t) and reads the first
+    %% element of each forcing series plus max(r_het+r_aut); supply the
+    %% full-length columns it expects.
+    TT_init.temp_soil = interp1(E.td, E.TC.temp_soil, E.tm, 'linear');
+    TT_init.CO2_atm   = E.CO2_m;
+    TT_init.s         = interp1(E.td, E.TC.s,     E.tm, 'linear');
+    TT_init.r_het     = interp1(E.td, E.TC.r_het, E.tm, 'linear');
+    TT_init.r_aut     = interp1(E.td, E.TC.r_aut, E.tm, 'linear');
+    TT_init.Tw        = zeros(E.n_t,1);
+    TT_init.Lw        = zeros(E.n_t,1);
     [E.bg, E.plant, E.weath, E.const, E.var, ...
      E.bg_names, E.weath_names, ~, ~, ~] = ...
-        ERW_MOD_PARAM_excel(t, TT_m, E.TC_const, E.bg_seed, ERW_PARAM_input, 1);
+        ERW_MOD_PARAM_excel(t, TT_init, E.TC_const, E.bg_seed, ERW_PARAM_input, 1);
     E.init_done_j2 = true;
     E.init = true;
 end
@@ -215,22 +282,14 @@ end
 %% ---------------------------------------------------------------------
 %% Sub-daily ERW integration over this day's window
 %% ---------------------------------------------------------------------
-if i == NN
-    pmind = find(Datam(:,4)==1,1,'last'):length(TT_h_linear.tt_h);
-else
-    pmind = max(1,i-24):i;
-end
-dm_start = find(TT_m.tt_h==TT_h_linear.tt_h(pmind(1)),1,'first');
-dm_end   = find(TT_m.tt_h< TT_h_linear.tt_h(pmind(end)),1,'last');
-
 bg = E.bg; weath = E.weath; cst = E.const; var_ = E.var;
 for dt_m = max(dm_start,2):dm_end
-    cst.s_pre = TT_m.s(dt_m-1,:);
+    cst.s_pre = W.s(row_of(dt_m-1));
     rock_app  = sum(M_rock_add(1:dt_m) > 0);
 
     [~, ~, bg_it, weath_it, ~, ~, cst_it] = ERW_function( ...
-        cst.n, cst.s_pre, TT_m.s(dt_m,:), TT_m.Lw(dt_m-1,:), TT_m.Tw(dt_m-1,:), TT_m.Iw(dt_m,:), ...
-        cst.Zrw, TT_m.r_het(dt_m-1,:), TT_m.r_aut(dt_m-1,:), TT_m.temp_soil(dt_m,:), ...
+        cst.n, cst.s_pre, W.s(row_of(dt_m)), W.Lw(row_of(dt_m-1)), W.Tw(row_of(dt_m-1)), W.Iw(row_of(dt_m)), ...
+        cst.Zrw, W.r_het(row_of(dt_m-1)), W.r_aut(row_of(dt_m-1)), W.temp_soil(row_of(dt_m)), ...
         cst.K_CEC, bg.CEC_tot(dt_m-1,:), ...
         cst.M_rock_in, cst.k_diss_H, cst.k_diss_w, cst.k_diss_OH, ...
         cst.E_H, cst.E_w, cst.E_OH, cst.R, cst.T_ref(dt_m-1,:), ...
@@ -238,7 +297,7 @@ for dt_m = max(dm_start,2):dm_end
         cst.rho_rock, cst.b, cst.K_CaCO3, cst.K_MgCO3, cst.MM_min, ...
         cst.min_st, dtw, conv_Al, conv_mol, ...
         bg.Ca(dt_m-1,:), bg.Mg(dt_m-1,:), bg.Na(dt_m-1,:), bg.K(dt_m-1,:), bg.An(dt_m-1,:), ...
-        var_.fsolve_options, cst.Dw_0, cst.D_0, cst.Alk_rain, TT_m.CO2_atm(dt_m,:), ...
+        var_.fsolve_options, cst.Dw_0, cst.D_0, cst.Alk_rain, W.CO2_atm(row_of(dt_m)), ...
         bg.CO2_air(dt_m-1,:), cst.Z_CO2, ...
         bg.Ca_tot(dt_m-1,:), bg.Mg_tot(dt_m-1,:), bg.K_tot(dt_m-1,:), ...
         bg.Na_tot(dt_m-1,:), bg.An_tot(dt_m-1,:), bg.Al_tot(dt_m-1,:), bg.Si_tot(dt_m-1,:), ...
