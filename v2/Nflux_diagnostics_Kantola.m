@@ -12,6 +12,7 @@ all_files = {'TC_ERW_results_Kantola_crop_control.mat';...
     'TC_ERW_results_Kantola_crop_calcite.mat'};
 all_names = {'control','basalt','calcite'};
 all_col = [0.90 0.75 0.10; 0 0.35 0.75; 0.85 0.35 0.1];
+col_appl = 'w'; % rock/calcite application date markers
 
 vars = {'N2Oflx','N2flx','VOL','LEAK_NO3','LEAK_NH4','P','PH_d','Datam','NNd'};
 scen_names = {}; scen_col = []; n_sc = 0;
@@ -42,7 +43,7 @@ nexttile; hold on; grid on;
 for sc = 1:n_sc
     plot(Date_d,S(sc).N2Oflx,'Color',scen_col(sc,:),'LineWidth',1.1)
 end
-xline(appl_dates,'k:');
+xline(appl_dates,':','Color',col_appl);
 ylabel('N_2O flux [gN m^{-2} d^{-1}]')
 title('Daily N_2O emission')
 legend(scen_names,'Location','best','AutoUpdate','off')
@@ -52,7 +53,7 @@ nexttile; hold on; grid on;
 for sc = 1:n_sc
     plot(Date_d,cumsum(S(sc).N2Oflx),'Color',scen_col(sc,:),'LineWidth',1.2)
 end
-xline(appl_dates,'k:');
+xline(appl_dates,':','Color',col_appl);
 ylabel('cumulative N_2O [gN m^{-2}]')
 title('Cumulative N_2O emission')
 
@@ -61,7 +62,7 @@ nexttile; hold on; grid on;
 for sc = 1:n_sc
     plot(Date_d,S(sc).LEAK_NO3,'Color',scen_col(sc,:),'LineWidth',1.1)
 end
-xline(appl_dates,'k:');
+xline(appl_dates,':','Color',col_appl);
 ylabel('NO_3^- leaching [gN m^{-2} d^{-1}]')
 title('Daily NO_3^- leaching')
 
@@ -70,7 +71,7 @@ nexttile; hold on; grid on;
 for sc = 1:n_sc
     plot(Date_d,cumsum(S(sc).LEAK_NO3),'Color',scen_col(sc,:),'LineWidth',1.2)
 end
-xline(appl_dates,'k:');
+xline(appl_dates,':','Color',col_appl);
 ylabel('cumulative NO_3^- leached [gN m^{-2}]')
 title('Cumulative NO_3^- leaching')
 
@@ -79,7 +80,7 @@ nexttile; hold on; grid on;
 for sc = 1:n_sc
     plot(Date_d,S(sc).PH_d,'Color',scen_col(sc,:),'LineWidth',1.1)
 end
-xline(appl_dates,'k:');
+xline(appl_dates,':','Color',col_appl);
 ylabel('pH [-]')
 title('Pore-water pH driving the N cycle')
 
@@ -88,7 +89,7 @@ nexttile; hold on; grid on;
 for sc = 1:n_sc
     plot(Date_d,S(sc).P(:,32),'Color',scen_col(sc,:),'LineWidth',1.1)
 end
-xline(appl_dates,'k:');
+xline(appl_dates,':','Color',col_appl);
 ylabel('NO_3^- pool [gN m^{-2}]')
 title('Soil NO_3^- pool')
 
@@ -120,7 +121,7 @@ if ~isempty(i_ctr) && n_sc > 1
     for sc = setdiff(1:n_sc,i_ctr)
         plot(Date_d,S(sc).PH_d-S(i_ctr).PH_d,'Color',scen_col(sc,:),'LineWidth',1.2)
     end
-    xline(appl_dates,'k:'); yline(0,'k-');
+    xline(appl_dates,':','Color',col_appl); yline(0,'k-');
     legend(scen_names(setdiff(1:n_sc,i_ctr)),'Location','best','AutoUpdate','off')
 end
 ylabel('\DeltapH vs control [-]')
@@ -140,7 +141,7 @@ if ~isempty(i_ctr) && n_sc > 1
     for sc = setdiff(1:n_sc,i_ctr)
         plot(Date_d,cumsum(S(sc).N2Oflx)-cumsum(S(i_ctr).N2Oflx),'Color',scen_col(sc,:),'LineWidth',1.2)
     end
-    xline(appl_dates,'k:'); yline(0,'k-');
+    xline(appl_dates,':','Color',col_appl); yline(0,'k-');
 end
 ylabel('\Delta cumulative N_2O [gN m^{-2}]')
 title('N_2O response to feedstock')
@@ -151,7 +152,7 @@ if ~isempty(i_ctr) && n_sc > 1
     for sc = setdiff(1:n_sc,i_ctr)
         plot(Date_d,cumsum(S(sc).LEAK_NO3)-cumsum(S(i_ctr).LEAK_NO3),'Color',scen_col(sc,:),'LineWidth',1.2)
     end
-    xline(appl_dates,'k:'); yline(0,'k-');
+    xline(appl_dates,':','Color',col_appl); yline(0,'k-');
 end
 ylabel('\Delta cumulative NO_3^- leached [gN m^{-2}]')
 title('NO_3^- leaching response to feedstock')
