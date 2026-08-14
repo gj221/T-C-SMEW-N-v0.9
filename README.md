@@ -37,7 +37,8 @@ leaching remain active.
 From PowerShell at the repository root:
 
 ```powershell
-matlab -batch "cd('v2'); Run_All_12_Parallel('MaxConcurrent',2)"
+matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',10:12,'MaxConcurrent',3,'MaxRuntimeHours',96)"
+matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRuntimeHours',96)"
 matlab -batch "cd('v2'); Plot_Subfield_12"
 ```
 
@@ -45,9 +46,16 @@ From an open MATLAB session in `v2`:
 
 ```matlab
 Run_All_12_Parallel('DryRun',true)
-Run_All_12_Parallel('MaxConcurrent',2)
+Run_All_12_Parallel('Runs',10:12,'MaxConcurrent',3,'MaxRuntimeHours',96)
+Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRuntimeHours',96)
 Plot_Subfield_12
 ```
+
+The first command completes the three vertical 1-D comparisons before the
+2-D runs begin. Stop between the two commands if the second stage needs to
+wait. `Ctrl+C` stops active child runs; completed result files are retained
+and skipped when the same command is run again. Active runs restart from the
+beginning because transient checkpoints are not written.
 
 Results go to `v2/SIM/Subfield_12`. Logs and worker status files go to
 `v2/logs/Subfield_12`. Existing results are skipped unless
@@ -59,5 +67,6 @@ addpath(fullfile('T&C_Code','Tests')); test_subfield_12_smoke_results(1)
 Plot_Subfield_12('NDays',1)
 ```
 
-Two workers is the default for a 32 GB machine. A full 12-column worker
-holds several GB of state, so use three only when more memory is available.
+Two 2-D workers is the default for a 32 GB machine. The three 1-D runs can
+run together. Full 12-column workers hold several GB of state, so increase
+the second-stage limit only after checking available memory.

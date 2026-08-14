@@ -4,7 +4,7 @@ function plan = Run_All_12_Parallel(varargin)
 %%
 %% Options
 %%   MaxConcurrent   maximum live child processes                 [2]
-%%   Runs            matrix ids                                   [1:12]
+%%   Runs            matrix ids                         [10:12 1:9]
 %%   NDays           optional shortened run                       []
 %%   GridNx, GridNy  optional main-grid overrides                 []
 %%   PollSeconds     status polling interval                      [20]
@@ -13,7 +13,7 @@ function plan = Run_All_12_Parallel(varargin)
 %%   Overwrite       rerun when the result already exists         [false]
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-opt = struct('MaxConcurrent',2,'Runs',1:12,'NDays',[], ...
+opt = struct('MaxConcurrent',2,'Runs',[10:12 1:9],'NDays',[], ...
     'GridNx',[],'GridNy',[],'PollSeconds',20, ...
     'MaxRuntimeHours',72,'DryRun',false,'Overwrite',false);
 if mod(numel(varargin),2) ~= 0
