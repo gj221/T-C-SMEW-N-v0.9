@@ -15,6 +15,7 @@ function test_lateral_routing()
 %%  10  buffer -> main diagnostic carries the right sign
 %%  11  adaptive Darcy fluxes match the applied water-volume change
 %%  12  solute export cannot exceed the donor mass
+%%  13  the lateral pool map matches every mobile pool in Biogeo_Leakage
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 fprintf('\n=== test_lateral_routing ===\n');
@@ -128,7 +129,7 @@ C_aq = zeros(topo.N_cells, ms, N_sp);
 C_aq(i_main,:,7) = 50;     %% NO3 only in the wet (donor) field cells
 M_aq = aqueous_mass(theta, C_aq, A, Zlayer_m);
 
-[dM, dM_edge] = Solute_Lateral_Transport(topo, Q_edge, C_aq, M_aq, dt_h);
+[dM, ~] = Solute_Lateral_Transport(topo, Q_edge, C_aq, M_aq, dt_h);
 
 check('lateral advection conserves solute mass', ...
     abs(sum(sum(dM(:,:,7)))) < 1e-9*sum(abs(reshape(dM(:,:,7),[],1))) + 1e-15, ...
@@ -231,6 +232,45 @@ M_limit = reshape([5;0],[2 1 1]);
 dM_limit = Solute_Lateral_Transport(tiny,2,C_limit,M_limit,1);
 check('solute export cannot exceed donor mass', ...
     abs(dM_limit(1)+5) < 1e-12 && abs(dM_limit(2)-5) < 1e-12);
+
+%% ---------------------------------------------------------------------
+%% 13. T&C mobile-pool map and redistribution
+%% ---------------------------------------------------------------------
+P0 = 1:79;
+[P_same, mobile0, mobile_names, mobile_idx, fraction_fields] = Biogeo_Lateral_Pools(P0);
+expected_names = {'DOC','DON','DOP','NH4','NO3','P','K','Ca','Mg','Si'};
+expected_mobile = [P0(12)+P0(13),P0(33),P0(47),P0(31),P0(32), ...
+                   P0(43),P0(52),P0(60),P0(68),P0(76)];
+check('lateral map contains every pool mobile in Biogeo_Leakage', ...
+    isequal(mobile_names,expected_names) && isequal(mobile0,expected_mobile));
+check('packing does not alter the T&C pool vector',isequal(P_same,P0));
+check('non-mobile woody N pool 24 is excluded', ...
+    ~ismember(24,[mobile_idx{:}]));
+expected_fraction_fields = {'aDOC','aDON','aDOP','aNH4','aNO3', ...
+                            'aP','aK','aCa','aMg','aSi'};
+BP = Biogeochemistry_Parameter(1);
+mobile_fraction = cellfun(@(f) BP.(f),fraction_fields);
+check('lateral concentrations use the Biogeo_Leakage mobility fractions', ...
+    isequal(fraction_fields,expected_fraction_fields) && ...
+    max(abs(mobile_fraction-[0.04 1 1 0.05 1 0.005 1 0.4 0.4 0.001])) < 1e-12);
+
+dM_mobile = [-2,1,2,-3,-4,5,6,7,8,9];
+[P1, mobile_before] = Biogeo_Lateral_Pools(P0,dM_mobile);
+[~, mobile_after] = Biogeo_Lateral_Pools(P1);
+check('every mobile pool receives its requested lateral change', ...
+    max(abs(mobile_after-(mobile_before+dM_mobile))) < 1e-12);
+check('lateral redistribution leaves pool 24 unchanged',P1(24) == P0(24));
+check('DOC change preserves its two-pool composition', ...
+    abs(P1(12)/P1(13)-P0(12)/P0(13)) < 1e-12);
+
+P_zero_doc = P0; P_zero_doc([12 13]) = 0;
+P_zero_doc = Biogeo_Lateral_Pools(P_zero_doc,[2 zeros(1,9)]);
+check('incoming DOC splits evenly when both DOC pools are empty', ...
+    P_zero_doc(12) == 1 && P_zero_doc(13) == 1);
+P_bad_doc = P0; P_bad_doc(12) = -1; P_bad_doc(13) = 2;
+assert_error(@() Biogeo_Lateral_Pools(P_bad_doc), ...
+    'Biogeo_Lateral_Pools:BadPools');
+n_pass = n_pass + 1;
 
 %% ---------------------------------------------------------------------
 fprintf('  ---------------------------------------\n');

@@ -5,6 +5,12 @@ The default domain has 12 columns: four 25 m by 25 m field cells, four
 50 m by 5 m side margins, and four 5 m by 5 m corners. This keeps the
 earlier geometry and avoids the cost of a uniform 5 m grid.
 
+Each column runs the full T&C water and energy calculations. Inter-cell
+transport moves subsurface water and every dissolved pool represented by
+`Biogeo_Leakage`: DOC, DON, DOP, NH4, NO3, mineral P, solution K, Ca, Mg
+and Si. T&C does not calculate a lateral heat flux for this configuration,
+so no synthetic heat-transfer term is added.
+
 From PowerShell at the repository root:
 
 ```powershell
