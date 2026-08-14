@@ -11,7 +11,7 @@ all_files = {'TC_ERW_results_Kantola_crop_control.mat';...
     'TC_ERW_results_Kantola_crop_Beerling.mat';...
     'TC_ERW_results_Kantola_crop_calcite.mat'};
 all_names = {'control','basalt','calcite'};
-all_col = [0.85 0.45 0.05; 0 0.20 0.55; 0.35 0.70 0.90]; % control, basalt, calcite
+all_col = [0 0 0; 0 0.20 0.55; 0.35 0.70 0.90]; % control, basalt, calcite
 col_appl = [0.45 0.45 0.45]; % rock/calcite application date markers
 lw_appl = 1.8;               % their line width
 
@@ -36,8 +36,9 @@ Date_d = datetime(S(1).Datam(1,1),S(1).Datam(1,2),S(1).Datam(1,3)) + caldays(0:S
 % rock/calcite application dates (10 Nov each year)
 appl_dates = datetime([2016 11 10; 2017 11 10; 2018 11 10; 2019 11 10]);
 
-figure('Position',[50 50 1250 950]);
+figure('Position',[50 50 1250 950],'Color','w');
 tiledlayout(3,2,'TileSpacing','compact','Padding','compact');
+set(gcf,'DefaultAxesColor','w')
 
 %%%% (1) daily N2O emission
 nexttile; hold on; grid on;
@@ -99,8 +100,9 @@ exportgraphics(gcf,fullfile(res_dir,'Nflux_diagnostics_Kantola.png'),'Resolution
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% Figure 2: feedstock and pH influence on the N fluxes
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-figure('Position',[80 80 1400 950]);
+figure('Position',[80 80 1400 950],'Color','w');
 tiledlayout(2,3,'TileSpacing','compact','Padding','compact');
+set(gcf,'DefaultAxesColor','w')
 
 %%%% (1) total N loss budget by pathway and feedstock
 nexttile; hold on; grid on;
@@ -166,7 +168,7 @@ for sc = 1:n_sc
     scatter(S(sc).PH_d(ok),S(sc).N2Oflx(ok)./den_gas(ok),6,scen_col(sc,:),'filled','MarkerFaceAlpha',0.35)
 end
 pH_th = linspace(4.5,8.5,200);
-plot(pH_th,1./(1+exp(1.5*(pH_th-6.2))),'k--','LineWidth',1.2)
+plot(pH_th,1./(1+exp(1.5*(pH_th-6.2))),':','Color',col_appl,'LineWidth',lw_appl)
 xlabel('pore-water pH [-]'); ylabel('N_2O/(N_2O+N_2) [-]')
 title('Denitrification product ratio vs pH')
 legend([scen_names {'partition curve'}],'Location','best','AutoUpdate','off')
