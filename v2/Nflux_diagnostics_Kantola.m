@@ -11,7 +11,7 @@ all_files = {'TC_ERW_results_Kantola_crop_control.mat';...
     'TC_ERW_results_Kantola_crop_Beerling.mat';...
     'TC_ERW_results_Kantola_crop_calcite.mat'};
 all_names = {'control','basalt','calcite'};
-all_col = [0 0 0; 0 0.35 0.75; 0.85 0.35 0.1];
+all_col = [0.90 0.75 0.10; 0 0.35 0.75; 0.85 0.35 0.1];
 
 vars = {'N2Oflx','N2flx','VOL','LEAK_NO3','LEAK_NH4','P','PH_d','Datam','NNd'};
 scen_names = {}; scen_col = []; n_sc = 0;
