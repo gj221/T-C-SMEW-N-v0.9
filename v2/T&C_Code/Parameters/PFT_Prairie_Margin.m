@@ -123,7 +123,7 @@ gR_L = [0.25 0.25];
 
 %% --- Turnover  [1/d]
 drn_H = [1/730 1/730];  %% 2-year fine-root turnover (perennial grass)
-drn_L = [1/548 1/548];  %% 1.5-year (forb taproot fine roots)
+drn_L = [1/548 1/548];  %% 1.5-year (forb fine roots)
 dsn_H = [0 0];
 dsn_L = [0 0];
 Klf_H = [1/30 1/30];    %% dead-leaf fall
@@ -158,7 +158,7 @@ eps_ac_H   = [0.5 0.5];    eps_ac_L   = [0.5 0.5];
 
 %% --- Allocation: perennial prairie invests heavily belowground
 LtR_H = [1.8 1.8];      %% leaf-to-root ratio maximum, C4 bunchgrass
-LtR_L = [1.5 1.5];      %% forb with storage taproot
+LtR_L = [1.5 1.5];      %% forb with belowground storage
 fab_H = [1.0 1.0];  fbe_H = [0.0 0.0];
 fab_L = [1.0 1.0];  fbe_L = [0.0 0.0];
 ff_r_H = [0.05 0.05];   %% little allocation to reproduction

@@ -288,6 +288,20 @@ for c = 1:N_col
     Check_Land_Cover_Fractions(p.Crock,p.Curb,p.Cwat,p.Cbare,p.Ccrown);
 end
 CcrownFIX = Ccrown_c;
+[~,~,lateral_species,lateral_pool_idx,lateral_fraction_fields] = Biogeo_Lateral_Pools( ...
+    reshape(P(1,:,:),79,N_col).');
+N_lateral_species = numel(lateral_species);
+i_lateral_NO3 = find(strcmp(lateral_species,'NO3'),1);
+lateral_fraction = zeros(N_col,N_lateral_species);
+BiogeoPar_lateral = Biogeochemistry_Parameter(1);
+for s = 1:N_lateral_species
+    lateral_fraction(:,s) = BiogeoPar_lateral.(lateral_fraction_fields{s});
+end
+if any(~isfinite(lateral_fraction(:))) || any(lateral_fraction(:) < 0) || ...
+        any(lateral_fraction(:) > 1)
+    error('MAIN_FRAME_BG_ERW_2D:BadMobileFraction', ...
+        'Biogeo_Leakage mobility fractions must be finite and within [0,1].');
+end
 
 %% ========================================================================
 %% NUMERICAL OPTIONS  (identical to the single-column frame)
@@ -312,8 +326,10 @@ for c = 1:N_col; ERW{c} = struct('init',false,'has_update',false); end
 conv_mol = 1e6; conv_Al = 1e3;
 Tdp_bio_c = zeros(N_col,1); VSUM_c = zeros(N_col,1); VTSUM_c = zeros(N_col,1);
 lateral_diag = struct('water_buf_to_main', zeros(NNd,1), ...
+                      'mass_buf_to_main',  zeros(NNd,N_lateral_species), ...
                       'NO3_buf_to_main',   zeros(NNd,1), ...
-                      'sub_steps_max',     zeros(NNd,1));
+                      'sub_steps_max',     zeros(NNd,1), ...
+                      'species_names',     {lateral_species});
 
 %% Domain-boundary accounting: vertical leakage out of the base of each
 %% column.  The lateral perimeter is closed, so this is the only exit.
@@ -680,23 +696,17 @@ for i = 2:NN
     if N_col > 1
         theta_cell = reshape(O(i,:,:), ms, N_col).';        %% [N_col x ms]
 
-        %% Aqueous concentrations of the transported species.  The 79-pool
-        %% vector holds vertically integrated totals [g/m2], so each pool
-        %% is spread over the column's water volume to obtain [g/m3 water].
-        %% Index map: Ca Mg K Na Al Si NO3 NH4 DOC DIC PO4 An
-        N_sp = 12;
-        C_aq = zeros(N_col, ms, N_sp);
-        Vw_col = zeros(N_col,1);
+        %% Biogeo_Leakage defines which T&C pools are dissolved and mobile.
+        %% The pools are vertically integrated [gX/m2]; the T&C leakage
+        %% formulation treats them as well mixed over the column water.
+        P_cells = reshape(P(j,:,:),79,N_col).';
+        [~,mobile] = Biogeo_Lateral_Pools(P_cells);
+        mobile = mobile .* lateral_fraction;
+        C_aq = zeros(N_col,ms,N_lateral_species);
         for c = 1:N_col
             Vw = sum(max(theta_cell(c,:),1e-9) .* Zlayer_m) * A_cell(c);   %% m3
-            Vw_col(c) = Vw;
-            tot = zeros(N_sp,1);
-            tot(1)  = P(j,60,c);  tot(2)  = P(j,68,c);  tot(3)  = P(j,52,c);
-            tot(6)  = P(j,76,c);  tot(7)  = P(j,32,c);  tot(8)  = P(j,31,c);
-            tot(9)  = P(j,12,c) + P(j,13,c);
-            tot(10) = P(j,24,c);  tot(11) = P(j,43,c);
-            C_col = (tot * A_cell(c)) / max(Vw, eps);        %% [g/m3]
-            C_aq(c,:,:) = repmat(reshape(C_col,1,1,N_sp), [1 ms 1]);
+            C_col = (mobile(c,:).' * A_cell(c)) / max(Vw,eps); %% [gX/m3]
+            C_aq(c,:,:) = repmat(reshape(C_col,1,1,N_lateral_species),[1 ms 1]);
         end
 
         [theta_new, dM_cell, ldiag] = Lateral_Routing_Step( ...
@@ -709,27 +719,11 @@ for i = 2:NN
             V(i,:,c) = (theta_new(c,:) - PAR{c}.Ohy) .* PAR{c}.dz;
         end
 
-        %% Return the advected mass to the pools it came from [g/m2]
-        for c = 1:N_col
-            dM = squeeze(sum(dM_cell(c,:,:),2)) / A_cell(c);   %% [g/m2]
-            P(j,60,c) = P(j,60,c) + dM(1);
-            P(j,68,c) = P(j,68,c) + dM(2);
-            P(j,52,c) = P(j,52,c) + dM(3);
-            P(j,76,c) = P(j,76,c) + dM(6);
-            P(j,32,c) = P(j,32,c) + dM(7);
-            P(j,31,c) = P(j,31,c) + dM(8);
-            doc_tot = P(j,12,c) + P(j,13,c);
-            if doc_tot > eps
-                f12 = P(j,12,c)/doc_tot;
-            else
-                f12 = 0.5;
-            end
-            P(j,12,c) = P(j,12,c) + f12*dM(9);
-            P(j,13,c) = P(j,13,c) + (1-f12)*dM(9);
-            P(j,24,c) = P(j,24,c) + dM(10);
-            P(j,43,c) = P(j,43,c) + dM(11);
-        end
-        transported = [60 68 52 76 32 31 12 13 24 43];
+        %% Return the advected mass to its T&C pools [gX/m2].
+        dM_area = squeeze(sum(dM_cell,2)) ./ A_cell;
+        P_cells = Biogeo_Lateral_Pools(P_cells,dM_area);
+        P(j,:,:) = reshape(P_cells.',1,79,N_col);
+        transported = unique([lateral_pool_idx{:}]);
         Pj = P(j,transported,:);
         if any(Pj(:) < -1e-10)
             error('MAIN_FRAME_BG_ERW_2D:NegativePool', ...
@@ -737,7 +731,8 @@ for i = 2:NN
         end
 
         lateral_diag.water_buf_to_main(j) = lateral_diag.water_buf_to_main(j) + ldiag.buf_to_main.water;
-        lateral_diag.NO3_buf_to_main(j)   = lateral_diag.NO3_buf_to_main(j)   + ldiag.buf_to_main.net(7);
+        lateral_diag.mass_buf_to_main(j,:) = lateral_diag.mass_buf_to_main(j,:) + ldiag.buf_to_main.net.';
+        lateral_diag.NO3_buf_to_main(j)   = lateral_diag.NO3_buf_to_main(j) + ldiag.buf_to_main.net(i_lateral_NO3);
         lateral_diag.sub_steps_max(j)     = max(lateral_diag.sub_steps_max(j), ldiag.sub_steps);
     end
 
