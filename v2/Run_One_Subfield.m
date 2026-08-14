@@ -2,8 +2,9 @@ function result_file = Run_One_Subfield(run_id, varargin)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Run_One_Subfield
 %%
-%% Run one of the nine sub-field simulations defined by Run_Matrix_9 on
-%% the multi-column driver, and save the result.
+%% Run one of the twelve simulations defined by Run_Matrix_12 and save
+%% the result. Runs 1 to 9 use the retained sub-field domain. Runs 10 to
+%% 12 use one plot-scale column and the original vertical transport only.
 %%
 %% This is the 2-D counterpart of ERW_run: it performs the same workbook
 %% read, spin-up load, forcing load and window slice, then partitions the
@@ -19,6 +20,7 @@ function result_file = Run_One_Subfield(run_id, varargin)
 %%
 %% Usage
 %%   Run_One_Subfield(5)                       % run 5 of the matrix
+%%   Run_One_Subfield(11)                      % basalt, one-dimensional
 %%   Run_One_Subfield(5,'NDays',3)             % short smoke test
 %%   Run_One_Subfield(5,'GridNx',1,'GridNy',1) % coarser main grid
 %%
@@ -43,7 +45,7 @@ if ~(islogical(opt.SaveResults) && isscalar(opt.SaveResults))
     error('Run_One_Subfield:BadOptions','SaveResults must be scalar logical.');
 end
 
-RM = Run_Matrix_9();
+RM = Run_Matrix_12();
 if ~(isnumeric(run_id) && isscalar(run_id) && isfinite(run_id) && ...
         run_id == fix(run_id) && run_id >= 1 && run_id <= numel(RM))
     error('Run_One_Subfield:BadId','run_id must be 1..%d', numel(RM));
@@ -58,7 +60,8 @@ Input_Directory     = fullfile(Directory,'Inputs');
 Parameter_Directory = fullfile(Directory,'Parameters');
 addpath(Directory, Input_Directory, Parameter_Directory);
 
-NN_case_study_ERW_MOD = R.case_number;
+CONTROL_CASE = 5;
+NN_case_study_ERW_MOD = CONTROL_CASE;
 OPT_ERW = 1;                    %% chemistry on; apply_rock places the rock
 OPT_SoilBiogeochemistry = 1;
 
@@ -93,16 +96,12 @@ ERW_opts.VariableTypes = {'double','string','string','double','double', ...
 ERW_opts = setvaropts(ERW_opts,{'f_CEC_in','rock_filepath','mineral','rock_f_in'},'FillValue','NaN');
 ERW_PARAM_input = readtable(wb,ERW_opts);
 
-%% Keep the control row too: a cell that receives no amendment is
-%% chemically the control, and the control row is the one that
-%% legitimately carries no rock specification.  Handing an untreated
-%% cell the treated row instead would leave it with a named rock and
-%% zero applications, a combination the ERW initialiser does not define.
-CONTROL_CASE = 5;
-ERW_PARAM_control = ERW_PARAM_input(ERW_PARAM_input.Number == CONTROL_CASE,:);
-ERW_PARAM_input = ERW_PARAM_input(ERW_PARAM_input.Number == NN_case_study_ERW_MOD,:);
-MOD_PARAM_input = MOD_PARAM_input(MOD_PARAM_input.Number == NN_case_study_ERW_MOD,:);
+[MOD_PARAM_input,ERW_PARAM_input,ERW_PARAM_control] = ...
+    Select_Subfield_Parameter_Rows( ...
+    MOD_PARAM_input,ERW_PARAM_input,R.case_number);
+MOD_PARAM_input.Zbio(:) = R.biogeo_depth_mm;
 id_location = char(MOD_PARAM_input.Location);
+fprintf('Active biogeochemical depth: %.0f mm\n',R.biogeo_depth_mm);
 
 %% Spin-up pool state
 load(fullfile(Input_Directory,['Data_' id_location '_BG.mat']));  %#ok<LOAD>
@@ -160,13 +159,17 @@ clear YE MO DA HO
 NNd = ceil(NN/24)+1;
 
 %% ---------------------------------------------------------------------
-%% Sub-plot partition and per-cell configuration
+%% Plot partition and per-column configuration
 %% ---------------------------------------------------------------------
 g = R.geom;
 nx = g.main_grid_nx; ny = g.main_grid_ny;
-if ~isempty(opt.GridNx); nx = opt.GridNx; end
-if ~isempty(opt.GridNy); ny = opt.GridNy; end
-topo = Build_Cell_Topology(g.field_side_m,g.margin_width_m,nx,ny);
+if R.use_subdomains
+    if ~isempty(opt.GridNx); nx = opt.GridNx; end
+    if ~isempty(opt.GridNy); ny = opt.GridNy; end
+    topo = Build_Cell_Topology(g.field_side_m,g.margin_width_m,nx,ny);
+else
+    topo = Build_Single_Cell_Topology(g.field_side_m^2);
+end
 
 base_param = fullfile(Parameter_Directory,[char(MOD_PARAM_input.MOD_PARAM) '.m']);
 is_main = strcmp(topo.cell_region,'main');
@@ -186,11 +189,17 @@ for c = 1:topo.N_cells
         ColCfg(c).ERW_PARAM = ERW_PARAM_control;
     end
 end
-fprintf('Domain: %d columns, %.0f m2 main + %.0f m2 margin (%g m wide)\n', ...
-    topo.N_cells,sum(topo.cell_area_m2(is_main)), ...
-    sum(topo.cell_area_m2(~is_main)),g.margin_width_m);
-fprintf('Rock on: %d main cell(s), %d margin cell(s)\n', ...
-    sum([ColCfg(is_main).apply_rock]), sum([ColCfg(~is_main).apply_rock]));
+if R.use_subdomains
+    fprintf('Domain: %d columns, %.0f m2 main + %.0f m2 margin (%g m wide)\n', ...
+        topo.N_cells,sum(topo.cell_area_m2(is_main)), ...
+        sum(topo.cell_area_m2(~is_main)),g.margin_width_m);
+    fprintf('Rock on: %d main cell(s), %d margin cell(s)\n', ...
+        sum([ColCfg(is_main).apply_rock]),sum([ColCfg(~is_main).apply_rock]));
+else
+    fprintf('Domain: one %.0f m2 column; vertical transport only\n', ...
+        topo.cell_area_m2);
+    fprintf('Rock on: %d column(s)\n',sum([ColCfg.apply_rock]));
+end
 if ~treatment_in_window && ~strcmp(R.treatment,'control')
     fprintf('No amendment event falls inside this shortened window.\n');
 end
@@ -199,7 +208,7 @@ end
 %% Run
 %% ---------------------------------------------------------------------
 old = cd(Directory);
-cleanup = onCleanup(@() cd(old)); %#ok<NASGU>
+cleanup = onCleanup(@() cd(old));
 MAIN_FRAME_BG_ERW_2D;
 clear cleanup
 cd(old);
@@ -209,10 +218,10 @@ cd(old);
 %% ---------------------------------------------------------------------
 result_file = '';
 if opt.SaveResults
-    fl_save = fullfile(current_directory,'SIM','Subfield_9');
+    fl_save = fullfile(current_directory,'SIM','Subfield_12');
     if ~exist(fl_save,'dir'); mkdir(fl_save); end
     tag = R.name;
-    if ~isempty(opt.GridNx) || ~isempty(opt.GridNy)
+    if R.use_subdomains && (~isempty(opt.GridNx) || ~isempty(opt.GridNy))
         tag = sprintf('%s__grid%dx%d',tag,nx,ny);
     end
     if ~isempty(opt.NDays); tag = sprintf('%s__%dd',tag,opt.NDays); end

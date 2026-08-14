@@ -1,6 +1,6 @@
 function Run_Subfield_Worker(run_id, status_file, varargin)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Child-process entry point used by Run_All_9_Parallel.
+%% Child-process entry point used by the parallel scenario launchers.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 write_status(status_file,'running','','');

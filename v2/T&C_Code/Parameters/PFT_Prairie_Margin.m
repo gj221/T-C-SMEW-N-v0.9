@@ -66,6 +66,10 @@ ZR95_L  = [1200 0];
 ZR50_L  = [NaN  NaN];
 ZRmax_L = [NaN  NaN];
 
+%% The prairie biogeochemical zone follows the deepest configured root.
+[Zbio,Bio_Zs] = Biogeochemical_Depth_From_Roots( ...
+    Zs,ZR95_H,ZR95_L);
+
 %% Recompute root fraction profiles for the new depths
 [RfH_Zs,RfL_Zs] = Root_Fraction_General(Zs,CASE_ROOT, ...
     ZR95_H,ZR50_H,ZR95_L,ZR50_L,ZRmax_H,ZRmax_L);

@@ -132,6 +132,8 @@ assert(abs(area_check - L^2) < 1e-9*L^2, ...
 edge_a = []; edge_b = [];
 edge_face_width_m   = [];
 edge_face_distance_m = [];
+edge_face_distance_a_m = [];
+edge_face_distance_b_m = [];
 
 tol = 1e-9*L;
 for a = 1:N_cells
@@ -145,6 +147,8 @@ for a = 1:N_cells
                 edge_b(end+1,1) = b;
                 edge_face_width_m(end+1,1)    = yo_hi - yo_lo;
                 edge_face_distance_m(end+1,1) = cell_dx(a)/2 + cell_dx(b)/2;
+                edge_face_distance_a_m(end+1,1) = cell_dx(a)/2;
+                edge_face_distance_b_m(end+1,1) = cell_dx(b)/2;
             end
         elseif abs(cell_x_hi(b) - cell_x_lo(a)) < tol
             yo_lo = max(cell_y_lo(a), cell_y_lo(b));
@@ -154,6 +158,8 @@ for a = 1:N_cells
                 edge_b(end+1,1) = b;
                 edge_face_width_m(end+1,1)    = yo_hi - yo_lo;
                 edge_face_distance_m(end+1,1) = cell_dx(a)/2 + cell_dx(b)/2;
+                edge_face_distance_a_m(end+1,1) = cell_dx(a)/2;
+                edge_face_distance_b_m(end+1,1) = cell_dx(b)/2;
             end
         end
         % Horizontal shared face: cell_a.y_hi == cell_b.y_lo (or vv)
@@ -165,6 +171,8 @@ for a = 1:N_cells
                 edge_b(end+1,1) = b;
                 edge_face_width_m(end+1,1)    = xo_hi - xo_lo;
                 edge_face_distance_m(end+1,1) = cell_dy(a)/2 + cell_dy(b)/2;
+                edge_face_distance_a_m(end+1,1) = cell_dy(a)/2;
+                edge_face_distance_b_m(end+1,1) = cell_dy(b)/2;
             end
         elseif abs(cell_y_hi(b) - cell_y_lo(a)) < tol
             xo_lo = max(cell_x_lo(a), cell_x_lo(b));
@@ -174,6 +182,8 @@ for a = 1:N_cells
                 edge_b(end+1,1) = b;
                 edge_face_width_m(end+1,1)    = xo_hi - xo_lo;
                 edge_face_distance_m(end+1,1) = cell_dy(a)/2 + cell_dy(b)/2;
+                edge_face_distance_a_m(end+1,1) = cell_dy(a)/2;
+                edge_face_distance_b_m(end+1,1) = cell_dy(b)/2;
             end
         end
     end
@@ -234,6 +244,8 @@ topo.edge_a             = edge_a;
 topo.edge_b             = edge_b;
 topo.edge_face_width_m  = edge_face_width_m;
 topo.edge_face_distance_m = edge_face_distance_m;
+topo.edge_face_distance_a_m = edge_face_distance_a_m;
+topo.edge_face_distance_b_m = edge_face_distance_b_m;
 topo.edge_active        = edge_active;
 topo.adj                = adj;
 topo.outer_face_width_m = outer_face_width_m;
