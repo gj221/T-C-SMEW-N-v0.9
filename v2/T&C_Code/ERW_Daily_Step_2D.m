@@ -1,7 +1,7 @@
-function E = ERW_Daily_Step_2D(E, col, cfg, p, i, j, NN, Datam, Date, Ca, ...
-    O_pd, Lk_pd, f_now, T_H_pd, T_L_pd, Tdp_bio, ...
+function E = ERW_Daily_Step_2D(E, cfg, p, i, j, NN, NNd, Datam, Date, Ca, ...
+    O_c, Lk_c, f_c, T_H_c, T_L_c, Tdp_bio, VSUM, VTSUM, ...
     R_microbe_c, R_litter_c, R_ew_c, R_litter_sur_c, Rmr_H_c, Rmr_L_c, Ccrown, ...
-    P_c, MOD_PARAM_input, ERW_PARAM_input, conv_mol, conv_Al, Parameter_Directory)
+    P_c, MOD_PARAM_input, ERW_PARAM_input, conv_mol, conv_Al)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% ERW_Daily_Step_2D
 %%
@@ -14,151 +14,181 @@ function E = ERW_Daily_Step_2D(E, col, cfg, p, i, j, NN, Datam, Date, Ca, ...
 %%   A column with apply_rock = false still runs the full carbonate and
 %%   cation-exchange chemistry -- it simply gets no rock added, which is
 %%   what makes an untreated field interior comparable with a treated
-%%   margin in the same simulation.
+%%   margin inside one simulation.
 %%
-%% DIFFERENCE FROM THE SINGLE-COLUMN ERW BLOCK
-%%   The 1-D frame rebuilds a timetable spanning the whole simulation on
-%%   every simulated day and then reads one day out of it.  That is
-%%   ~263,000 rows rebuilt 1825 times for a 5-year run; multiplied by one
-%%   column per cell it dominates everything else.  Here the sub-hourly
-%%   forcing window is built for the current day only, by
-%%   ERW_Window_Interp, using the same interpolation rules.
-%%
-%% Returns E with .has_update set when PH and the pool updates are valid.
+%% FIDELITY TO THE SINGLE-COLUMN FRAME
+%%   This mirrors the ERW block of MAIN_FRAME_BG_ERW_10mins step for
+%%   step, including rebuilding the synchronised timetables over the whole
+%%   run on each simulated day.  That is expensive, and an earlier version
+%%   of this file replaced it with a current-day-only interpolation.  The
+%%   shortcut changed the answers, so it was reverted: the ERW path stays
+%%   slow and faithful, and equivalence with the 1-D frame is testable.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 E.has_update = false;
-res_per_h = MOD_PARAM_input.t_res;
-dtw   = 1/(24*res_per_h);          %% [day] ERW timestep
-t_end = NN/24;                     %% [day] simulated days
-n_t   = round(t_end/dtw);          %% ERW steps over the whole run
 
 %% ---------------------------------------------------------------------
 %% One-off initialisation for this column
 %% ---------------------------------------------------------------------
 if ~E.init
-    t = dtw:dtw:t_end;
-    E.t = t;
-    E.dtw = dtw;
     E.opt_TC_biochem = ERW_PARAM_input.opt_TC_biochem;
+    E.dtd = 1;
+    E.t_end = NN/24;
+    E.dtw = 1/(24*MOD_PARAM_input.t_res);
+    E.t = E.dtw:E.dtw:E.t_end;
 
-    C.n        = sum(p.Bio_Zs.*p.Osat);      %% porosity [-]
+    C.n        = sum(p.Bio_Zs.*p.Osat);
     C.rsd_bio  = sum(p.Bio_Zs.*p.rsd);
     C.PH_in    = p.PH;
     C.Zbio     = p.Zbio;
     C.ms       = p.ms;
     C.conv_mol = conv_mol;
     C.conv_Al  = conv_Al;
-
-    %% Rock application schedule for THIS column.  Mass is per unit area,
-    %% so a column receives the same areal rate as the field trial; the
-    %% area weighting happens when results are aggregated.
-    C.M_rock_add       = zeros(n_t,1);
-    C.M_rock_add_CaCO3 = zeros(n_t,1);
-    if cfg.apply_rock
-        C.M_rock_add(1) = ERW_PARAM_input.M_rock_in;
-        if strcmp(char(MOD_PARAM_input.Location),'Kantola') && ERW_PARAM_input.diss_f > 0
-            ta = zeros(1,4);
-            for y = 1:4
-                ta(y) = days(datetime([2015+y 11 10 0 0 0]) - datetime([Datam(1,:) 0 0]));
-            end
-            idx = round(ta/dtw);
-            idx = idx(idx >= 1 & idx <= n_t);
-            if contains(ERW_PARAM_input.ExperimentalDescription,"Beerling")
-                C.M_rock_add(idx)       = 5000*(1-0.026);
-                C.M_rock_add_CaCO3(idx) = 5000*0.026/100.087*1e6;   %% umol
-            else
-                C.M_rock_add(idx) = 5000;
-            end
-        end
-    end
-    ERW_PARAM_input.num_rock_app = sum(C.M_rock_add > 0);
     E.TC_const = C;
 
-    %% Seed dissolved and exchangeable pools from the biogeochemistry.
-    s0 = sum(p.Bio_Zs.*mean(O_pd,1))/C.n;
-    cov_moll = C.n * p.Zbio/1000 * s0 * 1000;      %% [mol/l] -> [mol]
-    E.TC_const.cov_moll = cov_moll;
+    %% Per-column series, filled in as the run proceeds
+    E.TC.s         = zeros(NNd,1);
+    E.TC.temp_soil = zeros(NNd,1);
+    E.TC.r_het     = zeros(NNd,1);
+    E.TC.r_aut     = zeros(NNd,1);
+    E.TC.f_Lw_bio  = zeros(NNd,1);
+    E.TC.f_T_bio   = zeros(NNd,1);
+    E.init_done_j2 = false;
+end
+C = E.TC_const;
 
-    B = P_c(1,:);
-    bg.Ca  = B(60)/40  /cov_moll*1e6;
-    bg.Mg  = B(68)/24.3/cov_moll*1e6;
-    bg.K   = B(52)/39.1/cov_moll*1e6;
+%% ---------------------------------------------------------------------
+%% Water fluxes for this column  (full hourly series, as in the 1-D frame)
+%% ---------------------------------------------------------------------
+cfTL = (sum((ones(length(Ccrown),1)*(p.Bio_Zs>0)).*p.RfL_Zs,2))';
+cfTH = (sum((ones(length(Ccrown),1)*(p.Bio_Zs>0)).*p.RfH_Zs,2))';
+E.TC.Tw = sum(cfTH.*T_H_c + cfTL.*T_L_c, 2)/1000;   %% [m/h]
+E.TC.Iw = f_c/1000;                                  %% [m/h]
+E.TC.Lw = Lk_c/1000;                                 %% [m/h]
+E.TC.Lw(1) = Lk_c(2)/1000;
+
+pdind = max(1,i-24):i-1;
+
+%% Leaching fraction of the active-layer store
+Lk_tot = sum(Lk_c(pdind));
+Lk_tot(Lk_tot > VSUM) = VSUM;
+if VSUM == 0
+    E.TC.f_Lw_bio(j) = 0;
+else
+    E.TC.f_Lw_bio(j) = Lk_tot/VSUM;
+end
+%% Passive uptake fraction from transpiration in the active layers
+T_tot = sum(cfTH.*sum(T_H_c(pdind,:),1) + cfTL.*sum(T_L_c(pdind,:),1), 2);
+T_tot(T_tot > VTSUM) = VTSUM;
+if VTSUM == 0
+    E.TC.f_T_bio(j) = 0;
+else
+    E.TC.f_T_bio(j) = T_tot/VTSUM;
+end
+
+r_het_now = (R_microbe_c(j) + R_litter_c(j) + R_ew_c(j) - R_litter_sur_c(j))/12*conv_mol;
+r_aut_now = (Rmr_H_c(j,:) + Rmr_L_c(j,:))*Ccrown'/12*conv_mol;
+
+if ~E.init_done_j2
+    E.TC.s(1:2,:)         = sum(p.Bio_Zs.*mean(O_c(pdind,:)))/C.n;
+    E.TC.temp_soil(1:2,:) = Tdp_bio;
+    E.TC.r_het(1:2,:)     = (R_microbe_c(2) + R_litter_c(2) + R_ew_c(2) - R_litter_sur_c(2))/12*conv_mol;
+    E.TC.r_aut(1:2,:)     = (Rmr_H_c(2,:) + Rmr_L_c(2,:))*Ccrown'/12*conv_mol;
+else
+    E.TC.s(j,:)         = sum(p.Bio_Zs.*mean(O_c(pdind,:)))/C.n;
+    E.TC.temp_soil(j,:) = Tdp_bio;
+    E.TC.r_het(j,:)     = r_het_now;
+    E.TC.r_aut(j,:)     = r_aut_now;
+end
+
+E.TC.CO2_atm = Ca(:)/22.41;      %% [ppm] -> [umol-conv/L]
+
+cov_moll = C.n * C.Zbio/1000 * E.TC.s(j,:) * 1000;
+E.TC_const.cov_moll = cov_moll;
+
+%% ---------------------------------------------------------------------
+%% Seed dissolved and exchangeable pools on the first ERW day
+%% ---------------------------------------------------------------------
+if ~E.init_done_j2
+    bg.Ca  = P_c(1,60)/40  /cov_moll*1e6;
+    bg.Mg  = P_c(1,68)/24.3/cov_moll*1e6;
+    bg.K   = P_c(1,52)/39.1/cov_moll*1e6;
     bg.Si  = P_c(2,76)/28.1/cov_moll*1e6;
     bg.PO4 = P_c(2,43)/31  /cov_moll*1e6;
     bg.NO3 = P_c(2,32)/14  /cov_moll*1e6;
     bg.NH4 = P_c(2,31)/14  /cov_moll*1e6;
-    bg.excCa = B(61)/40  /cov_moll*1e6;
-    bg.excMg = B(69)/24.3/cov_moll*1e6;
-    bg.excK  = B(53)/39.1/cov_moll*1e6;
+    bg.excCa = P_c(1,61)/40  /cov_moll*1e6;
+    bg.excMg = P_c(1,69)/24.3/cov_moll*1e6;
+    bg.excK  = P_c(1,53)/39.1/cov_moll*1e6;
+    E.bg_seed = bg;
+end
 
-    %% ERW_MOD_PARAM_excel preallocates on length(t) and reads the FIRST
-    %% element of each forcing series, plus max(r_het+r_aut) for the
-    %% initial soil-CO2 estimate.  Supply full-length series seeded from
-    %% the opening state, which reproduces those reads exactly.
-    r_het0 = (R_microbe_c(2) + R_litter_c(2) + R_ew_c(2) - R_litter_sur_c(2))/12*conv_mol;
-    r_aut0 = (Rmr_H_c(2,:) + Rmr_L_c(2,:))*Ccrown'/12*conv_mol;
-    one = ones(n_t,1);
-    TT0.temp_soil = one * Tdp_bio;
-    TT0.CO2_atm   = one * (Ca(1)/22.41);
-    TT0.Tw        = zeros(n_t,1);
-    TT0.Lw        = zeros(n_t,1);
-    TT0.s         = one * s0;
-    TT0.r_het     = one * r_het0;
-    TT0.r_aut     = one * r_aut0;
+%% ---------------------------------------------------------------------
+%% Rock application schedule for THIS column
+%% ---------------------------------------------------------------------
+t   = E.t;
+dtw = E.dtw;
+if strcmp(char(MOD_PARAM_input.Location),'Kantola') && ERW_PARAM_input.diss_f > 0 && cfg.apply_rock
+    ta1 = days(datetime([2016 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
+    ta2 = days(datetime([2017 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
+    ta3 = days(datetime([2018 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
+    ta4 = days(datetime([2019 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
+    time_application = [ta1 ta2 ta3 ta4];
+    M_rock_add = zeros(length(t),1);
+    M_rock_add_CaCO3 = zeros(length(t),1);
+    M_rock_add(1) = ERW_PARAM_input.M_rock_in;
+    idx = time_application/dtw;
+    idx = idx(idx >= 1 & idx <= length(t));
+    if contains(ERW_PARAM_input.ExperimentalDescription,"Beerling")
+        M_rock_add(idx) = 5000*(1-0.026);
+        M_rock_add_CaCO3(idx) = 5000*0.026/100.087*1e6;   %% umol
+    else
+        M_rock_add(idx) = 5000;
+    end
+else
+    M_rock_add = zeros(length(t),1);
+    M_rock_add_CaCO3 = zeros(length(t),1);
+    if cfg.apply_rock
+        M_rock_add(1) = ERW_PARAM_input.M_rock_in;
+    end
+end
+ERW_PARAM_input.num_rock_app = sum(M_rock_add > 0);
+E.TC_const.M_rock_add = M_rock_add;
+E.TC_const.M_rock_add_CaCO3 = M_rock_add_CaCO3;
 
+%% ---------------------------------------------------------------------
+%% Align the T&C and ERW time axes  (same construction as the 1-D frame)
+%% ---------------------------------------------------------------------
+tt_h = [datetime(datevec(Date)); datetime(datevec(Date(end)))+hours(1)];
+tt_d = tt_h(1:24:end);
+
+TT_h_sum = timetable(tt_h, [E.TC.Tw(1);E.TC.Tw], [E.TC.Lw(1);E.TC.Lw], ...
+    [E.TC.Iw(1);E.TC.Iw], 'VariableNames',{'Tw','Lw','Iw'});
+TT_h_d = retime(TT_h_sum,'daily','sum');
+
+TT_h_linear = timetable(tt_h, [E.TC.CO2_atm(1);E.TC.CO2_atm], 'VariableNames',{'CO2_atm'});
+
+TT_d = timetable(tt_d, E.TC.s, E.TC.temp_soil, E.TC.r_het, E.TC.r_aut, ...
+    'VariableNames',{'s','temp_soil','r_het','r_aut'});
+
+TT_m = synchronize(TT_h_linear,TT_d,'regular','linear', ...
+    'TimeStep', minutes(60/MOD_PARAM_input.t_res));
+TT_m = synchronize(TT_m,TT_h_d,'regular','previous', ...
+    'TimeStep', minutes(60/MOD_PARAM_input.t_res));
+TT_m = TT_m(1:length(t),:);
+
+%% ---------------------------------------------------------------------
+%% First ERW day: build the parameter and state structures
+%% ---------------------------------------------------------------------
+if ~E.init_done_j2
     [E.bg, E.plant, E.weath, E.const, E.var, ...
-     E.bg_names, E.weath_names, ~, ~, ~, ~] = ...
-        ERW_MOD_PARAM_excel(t, TT0, E.TC_const, bg, ERW_PARAM_input, 1);
-
-    E.prev = struct('s', s0, 'temp', TT0.temp_soil(1), ...
-                    'r_het', r_het0, 'r_aut', r_aut0);
-    E.dm_end = 1;
+     E.bg_names, E.weath_names, ~, ~, ~] = ...
+        ERW_MOD_PARAM_excel(t, TT_m, E.TC_const, E.bg_seed, ERW_PARAM_input, 1);
+    E.init_done_j2 = true;
     E.init = true;
 end
 
-%% ---------------------------------------------------------------------
-%% Today's forcing for this column
-%% ---------------------------------------------------------------------
-C = E.TC_const;
-
-%% Transpiration drawn from within the biogeochemically active depth
-cfTL = sum((ones(numel(Ccrown),1)*(p.Bio_Zs>0)).*p.RfL_Zs, 2)';
-cfTH = sum((ones(numel(Ccrown),1)*(p.Bio_Zs>0)).*p.RfH_Zs, 2)';
-Tw_day = sum(cfTH.*sum(T_H_pd,1) + cfTL.*sum(T_L_pd,1)) / 1000;   %% [m/d]
-Lw_day = sum(Lk_pd)/1000;                                          %% [m/d]
-Iw_day = f_now/1000*24;                                            %% [m/d]
-
-s_now    = sum(p.Bio_Zs.*mean(O_pd,1))/C.n;
-temp_now = Tdp_bio;
-r_het_now = (R_microbe_c(j) + R_litter_c(j) + R_ew_c(j) - R_litter_sur_c(j))/12*conv_mol;
-r_aut_now = (Rmr_H_c(j,:) + Rmr_L_c(j,:))*Ccrown'/12*conv_mol;
-
-%% Leaching and passive-uptake fractions of the active-layer water store
-VSUM  = sum(p.Bio_Zs.*mean(O_pd,1)) * p.Zbio;
-VTSUM = VSUM;
-Lk_tot = min(sum(Lk_pd), VSUM);
-T_tot  = min(sum(cfTH.*sum(T_H_pd,1) + cfTL.*sum(T_L_pd,1)), VTSUM);
-if VSUM  == 0; f_Lw = 0; else; f_Lw = Lk_tot/VSUM;  end
-if VTSUM == 0; f_T  = 0; else; f_T  = T_tot/VTSUM;  end
-
-%% Hourly CO2 spanning today plus the first hour of tomorrow
-h0 = max(1, i-24);
-h1 = min(numel(Ca), h0+24);
-CO2_h_day = Ca(h0:h1)/22.41;
-if numel(CO2_h_day) < 25
-    CO2_h_day(end+1:25) = CO2_h_day(end);
-end
-
-W = ERW_Window_Interp(dtw, j, res_per_h, CO2_h_day, ...
-    [E.prev.s; s_now], [E.prev.temp; temp_now], ...
-    [E.prev.r_het; r_het_now], [E.prev.r_aut; r_aut_now], ...
-    Tw_day, Lw_day, Iw_day);
-
-cov_moll = C.n * p.Zbio/1000 * s_now * 1000;
-E.TC_const.cov_moll = cov_moll;
-
-%% Change in the biogeochemical totals since yesterday, handed to ERW
+%% Change in the biogeochemical totals since yesterday
 if j > 2
     dCa  = (P_c(j,60) - P_c(j-1,60))/40  *1e6;
     dMg  = (P_c(j,68) - P_c(j-1,68))/24.3*1e6;
@@ -171,29 +201,36 @@ else
     dCa=0; dMg=0; dK=0; dSi=0; dPO4=0; dNO3=0; dNH4=0;
 end
 
+%% Background input
 if ERW_PARAM_input.keyword_add == 1
-    E.const.I_Na = (f_Lw + f_T) * E.bg.Na_tot(max(E.dm_end,1));
-    E.const.I_An = (f_Lw + f_T) * E.bg.An_tot(max(E.dm_end,1));
+    if j == 2
+        E.const.I_Na = mean(E.TC.f_Lw_bio(j)+E.TC.f_T_bio(j)) * E.bg.Na_tot(1);
+        E.const.I_An = mean(E.TC.f_Lw_bio(j)+E.TC.f_T_bio(j)) * E.bg.An_tot(1);
+    else
+        E.const.I_Na = mean(E.TC.f_Lw_bio(j)+E.TC.f_T_bio(j)) * E.bg.Na_tot(E.dm_end);
+        E.const.I_An = mean(E.TC.f_Lw_bio(j)+E.TC.f_T_bio(j)) * E.bg.An_tot(E.dm_end);
+    end
 end
 
 %% ---------------------------------------------------------------------
-%% Sub-daily ERW integration
+%% Sub-daily ERW integration over this day's window
 %% ---------------------------------------------------------------------
-dm_start = max(2, E.dm_end + 1);
-dm_end   = min(dm_start + W.n_sub - 1, numel(E.t));
-if dm_end < dm_start
-    return
+if i == NN
+    pmind = find(Datam(:,4)==1,1,'last'):length(TT_h_linear.tt_h);
+else
+    pmind = max(1,i-24):i;
 end
+dm_start = find(TT_m.tt_h==TT_h_linear.tt_h(pmind(1)),1,'first');
+dm_end   = find(TT_m.tt_h< TT_h_linear.tt_h(pmind(end)),1,'last');
 
 bg = E.bg; weath = E.weath; cst = E.const; var_ = E.var;
-for dt_m = dm_start:dm_end
-    wi = dt_m - dm_start + 1;
-    cst.s_pre = W.s(max(wi-1,1));
-    rock_app = sum(C.M_rock_add(1:dt_m) > 0);
+for dt_m = max(dm_start,2):dm_end
+    cst.s_pre = TT_m.s(dt_m-1,:);
+    rock_app  = sum(M_rock_add(1:dt_m) > 0);
 
     [~, ~, bg_it, weath_it, ~, ~, cst_it] = ERW_function( ...
-        cst.n, cst.s_pre, W.s(wi), W.Lw(max(wi-1,1)), W.Tw(max(wi-1,1)), W.Iw(wi), ...
-        cst.Zrw, W.r_het(max(wi-1,1)), W.r_aut(max(wi-1,1)), W.temp_soil(wi), ...
+        cst.n, cst.s_pre, TT_m.s(dt_m,:), TT_m.Lw(dt_m-1,:), TT_m.Tw(dt_m-1,:), TT_m.Iw(dt_m,:), ...
+        cst.Zrw, TT_m.r_het(dt_m-1,:), TT_m.r_aut(dt_m-1,:), TT_m.temp_soil(dt_m,:), ...
         cst.K_CEC, bg.CEC_tot(dt_m-1,:), ...
         cst.M_rock_in, cst.k_diss_H, cst.k_diss_w, cst.k_diss_OH, ...
         cst.E_H, cst.E_w, cst.E_OH, cst.R, cst.T_ref(dt_m-1,:), ...
@@ -201,7 +238,7 @@ for dt_m = dm_start:dm_end
         cst.rho_rock, cst.b, cst.K_CaCO3, cst.K_MgCO3, cst.MM_min, ...
         cst.min_st, dtw, conv_Al, conv_mol, ...
         bg.Ca(dt_m-1,:), bg.Mg(dt_m-1,:), bg.Na(dt_m-1,:), bg.K(dt_m-1,:), bg.An(dt_m-1,:), ...
-        var_.fsolve_options, cst.Dw_0, cst.D_0, cst.Alk_rain, W.CO2_atm(wi), ...
+        var_.fsolve_options, cst.Dw_0, cst.D_0, cst.Alk_rain, TT_m.CO2_atm(dt_m,:), ...
         bg.CO2_air(dt_m-1,:), cst.Z_CO2, ...
         bg.Ca_tot(dt_m-1,:), bg.Mg_tot(dt_m-1,:), bg.K_tot(dt_m-1,:), ...
         bg.Na_tot(dt_m-1,:), bg.An_tot(dt_m-1,:), bg.Al_tot(dt_m-1,:), bg.Si_tot(dt_m-1,:), ...
@@ -220,13 +257,14 @@ for dt_m = dm_start:dm_end
         dt_m, var_.mineral, cst.K_sp, cst.diss_f, cst.n_H, cst.n_OH, ...
         E.opt_TC_biochem, ...
         dCa, dMg, dK, dSi, ...
-        cov_moll, C.M_rock_add(dt_m,:), cst.psd_perc_in, cst.rock_f_in, ...
-        cst.SSA_in, rock_app, f_Lw, f_T, ...
+        cov_moll, M_rock_add(dt_m,:), cst.psd_perc_in, cst.rock_f_in, ...
+        cst.SSA_in, rock_app, ...
+        E.TC.f_Lw_bio(j), E.TC.f_T_bio(j), ...
         bg.PO4_tot(dt_m-1,:), bg.PO4(dt_m-1,:), dPO4, ...
         bg.NO3_tot(dt_m-1,:), bg.NO3(dt_m-1,:), dNO3, ...
         bg.NH4_tot(dt_m-1,:), bg.NH4(dt_m-1,:), dNH4, ...
         ERW_PARAM_input.keyword_add, ...
-        C.M_rock_add_CaCO3(dt_m,:));
+        M_rock_add_CaCO3(dt_m,:));
 
     for v = 1:size(E.bg_names,1)
         nm = cell2mat(E.bg_names(v));
@@ -256,7 +294,4 @@ E.P76 = bg.Si(dm_end,:) * 28.1 * cov_moll / 1e6;
 E.P43 = bg.PO4(dm_end,:)* 31   * cov_moll / 1e6;
 E.has_update = true;
 
-E.prev = struct('s', s_now, 'temp', temp_now, 'r_het', r_het_now, 'r_aut', r_aut_now);
-
 end
-

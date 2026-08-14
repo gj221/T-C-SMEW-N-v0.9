@@ -300,9 +300,12 @@ if ~exist('OPT_EnvLimitGrowth','var'); OPT_EnvLimitGrowth = 1; end
 OPT_WET = 0;
 
 %% ERW per-column state
-ERW = repmat(struct('init',false), N_col, 1);
+%% Cell array, not a struct array: each column's ERW state gains fields
+%% after its first call, which a struct array cannot absorb elementwise.
+ERW = cell(N_col,1);
+for c = 1:N_col; ERW{c} = struct('init',false,'has_update',false); end
 conv_mol = 1e6; conv_Al = 1e3;
-Tdp_bio_c = zeros(N_col,1);
+Tdp_bio_c = zeros(N_col,1); VSUM_c = zeros(N_col,1); VTSUM_c = zeros(N_col,1);
 lateral_diag = struct('water_buf_to_main', zeros(NNd,1), ...
                       'NO3_buf_to_main',   zeros(NNd,1), ...
                       'sub_steps_max',     zeros(NNd,1));
@@ -352,7 +355,7 @@ for i = 2:NN
 
             [Se_bio,Se_fc,Psi_bio,Tdp_bio,VSUM,VTSUM] = Biogeo_environment( ...
                 Tdp(pdind,:,c),O(pdind,:,c),V(pdind,:,c),p.Soil_Param,p.Phy,p.SPAR,p.Bio_Zs);
-            Tdp_bio_c(c) = Tdp_bio;
+            Tdp_bio_c(c) = Tdp_bio; VSUM_c(c) = VSUM; VTSUM_c(c) = VTSUM;
 
             if OPT_SoilBiogeochemistry == 1
                 IS    = Ccrown*squeeze(ISOIL_L(j-1,:,:,c)) + Ccrown*squeeze(ISOIL_H(j-1,:,:,c));
@@ -744,19 +747,19 @@ for i = 2:NN
     %% ------------------------------------------------------------------
     if OPT_ERW == 1 && ((Datam(i,4) == 1) || i == NN)
         for c = 1:N_col
-            ERW(c) = ERW_Daily_Step_2D(ERW(c), c, ColCfg(c), PAR{c}, ...
-                i, j, NN, Datam, Date, Ca, ...
-                O(pdind,:,c), Lk(pdind,1,c), f(i,c), ...
-                T_H(pdind,:,c), T_L(pdind,:,c), Tdp_bio_c(c), ...
-                R_microbe(:,c), R_litter(:,c), R_ew(:,c), R_litter_sur(:,c), ...
+            ERW{c} = ERW_Daily_Step_2D(ERW{c}, ColCfg(c), PAR{c}, ...
+                i, j, NN, NNd, Datam, Date, Ca, ...
+                O(:,:,c), Lk(:,1,c), f(:,1,c), T_H(:,:,c), T_L(:,:,c), ...
+                Tdp_bio_c(c), VSUM_c(c), VTSUM_c(c), ...
+                R_microbe(:,1,c), R_litter(:,1,c), R_ew(:,1,c), R_litter_sur(:,1,c), ...
                 Rmr_H(:,:,c), Rmr_L(:,:,c), Ccrown_c(c,:), ...
                 P(:,:,c), MOD_PARAM_input, ERW_PARAM_input, ...
-                conv_mol, conv_Al, Parameter_Directory);
-            if ERW(c).has_update
-                PH_c(c)   = ERW(c).PH;
-                P(j,60,c) = ERW(c).P60;  P(j,68,c) = ERW(c).P68;
-                P(j,52,c) = ERW(c).P52;  P(j,76,c) = ERW(c).P76;
-                P(j,43,c) = ERW(c).P43;
+                conv_mol, conv_Al);
+            if ERW{c}.has_update
+                PH_c(c)   = ERW{c}.PH;
+                P(j,60,c) = ERW{c}.P60;  P(j,68,c) = ERW{c}.P68;
+                P(j,52,c) = ERW{c}.P52;  P(j,76,c) = ERW{c}.P76;
+                P(j,43,c) = ERW{c}.P43;
             end
         end
     end

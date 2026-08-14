@@ -322,17 +322,7 @@ H0_2 = fsolve(eqH, H(j_only), fsolve_options);
 
 % solution 1
 x0 = [Alk0, CO2_w0, H0, R_alk0, Al_w0, Al0, Mg0, Ca0, Na0, K0, f_Al(j_only), f_Mg(j_only), f_Na(j_only), f_K(j_only), f_H(j_only), f_Ca(j_only)]';
-%%% Solver options depend only on fsolve_options, which is a constant, so
-%%% rebuilding them on every call is pure overhead: profiling a 20-day run
-%%% showed optimoptions/createSolverOptions taking ~8% of total runtime
-%%% across 2880 calls. Cache them; the objects produced are identical.
-persistent opts_1e12 opts_1e14 opts_src
-if isempty(opts_1e12) || ~isequaln(opts_src, fsolve_options)
-    opts_src  = fsolve_options;
-    opts_1e12 = optimoptions(fsolve_options, 'FunctionTolerance', 1e-12,'MaxIterations',100000);
-    opts_1e14 = optimoptions(fsolve_options, 'FunctionTolerance', 1e-14,'MaxIterations',100000);
-end
-options = opts_1e12;
+options = optimoptions(fsolve_options, 'FunctionTolerance', 1e-12,'MaxIterations',100000);
 [sol, fval] = fsolve(equations, x0, options);
 fsolve_errors = fval; % residuals
 
@@ -340,7 +330,7 @@ fsolve_errors = fval; % residuals
 res_threshold = 1e-1;
 if any(abs(fsolve_errors(:)) > res_threshold) || any(imag(sol))
     x0 = [Alk0, CO2_w0, H0_2, R_alk0, Al_w0, Al0, Mg0, Ca0, Na0, K0, f_Al(j_only), f_Mg(j_only), f_Na(j_only), f_K(j_only), f_H(j_only), f_Ca(j_only)];
-    options = opts_1e14;
+    options = optimoptions(fsolve_options, 'FunctionTolerance', 1e-14,'MaxIterations',100000);
     [sol, fval] = fsolve(equations, x0, options);
 
     fsolve_errors = fval; % residuals
