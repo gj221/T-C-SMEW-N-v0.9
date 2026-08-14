@@ -37,8 +37,8 @@ leaching remain active.
 From PowerShell at the repository root:
 
 ```powershell
-matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',10:12,'MaxConcurrent',3,'MaxRuntimeHours',96)"
-matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRuntimeHours',96)"
+matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',10:12,'MaxConcurrent',3,'MaxRuntimeHours',168)"
+matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRuntimeHours',168)"
 matlab -batch "cd('v2'); Plot_Subfield_12"
 ```
 
@@ -46,8 +46,8 @@ From an open MATLAB session in `v2`:
 
 ```matlab
 Run_All_12_Parallel('DryRun',true)
-Run_All_12_Parallel('Runs',10:12,'MaxConcurrent',3,'MaxRuntimeHours',96)
-Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRuntimeHours',96)
+Run_All_12_Parallel('Runs',10:12,'MaxConcurrent',3,'MaxRuntimeHours',168)
+Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRuntimeHours',168)
 Plot_Subfield_12
 ```
 

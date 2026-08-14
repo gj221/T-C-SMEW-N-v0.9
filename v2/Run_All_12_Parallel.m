@@ -8,14 +8,14 @@ function plan = Run_All_12_Parallel(varargin)
 %%   NDays           optional shortened run                       []
 %%   GridNx, GridNy  optional main-grid overrides                 []
 %%   PollSeconds     status polling interval                      [20]
-%%   MaxRuntimeHours stop waiting after this time per child       [72]
+%%   MaxRuntimeHours stop waiting after this time per child      [168]
 %%   DryRun          return and print commands without launching  [false]
 %%   Overwrite       rerun when the result already exists         [false]
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 opt = struct('MaxConcurrent',2,'Runs',[10:12 1:9],'NDays',[], ...
     'GridNx',[],'GridNy',[],'PollSeconds',20, ...
-    'MaxRuntimeHours',72,'DryRun',false,'Overwrite',false);
+    'MaxRuntimeHours',168,'DryRun',false,'Overwrite',false);
 if mod(numel(varargin),2) ~= 0
     error('Run_All_12_Parallel:BadOptions','Options must be name/value pairs.');
 end
@@ -84,6 +84,7 @@ end
 
 fprintf('\n=== Twelve simulations ===\n');
 fprintf('runs: %s   max concurrent: %d\n',mat2str(runs),opt.MaxConcurrent);
+fprintf('max runtime per run: %.0f h\n',opt.MaxRuntimeHours);
 fprintf('results: %s\nlogs: %s\n',out_dir,log_dir);
 if opt.DryRun
     for q = 1:numel(plan)
