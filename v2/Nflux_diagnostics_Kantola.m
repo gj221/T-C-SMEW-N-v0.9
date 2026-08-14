@@ -6,7 +6,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clear; close all;
 
-res_dir = fullfile(cd,'SIM','Kantola_pH_N2O');
+res_dir = fullfile(cd,'SIM','Kantola_legacy_pH_N');
 all_files = {'TC_ERW_results_Kantola_crop_control.mat';...
     'TC_ERW_results_Kantola_crop_Beerling.mat';...
     'TC_ERW_results_Kantola_crop_calcite.mat'};
@@ -97,7 +97,8 @@ xline(appl_dates,':','Color',col_appl,'LineWidth',lw_appl);
 ylabel('NO_3^- pool [gN m^{-2}]')
 title('Soil NO_3^- pool')
 
-exportgraphics(gcf,fullfile(res_dir,'Nflux_diagnostics_Kantola.png'),'Resolution',300)
+exportgraphics(gcf,fullfile(res_dir,'NO3_N2O_pH.png'),'Resolution',300)
+savefig(gcf,fullfile(res_dir,'NO3_N2O_pH.fig'))
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% Figure 2: feedstock and pH influence on the N fluxes
@@ -177,7 +178,8 @@ xlabel('pore-water pH [-]'); ylabel('N_2O/(N_2O+N_2) [-]')
 title('Denitrification product ratio vs pH')
 legend([scen_names {'partition curve'}],'Location','best','AutoUpdate','off')
 
-exportgraphics(gcf,fullfile(res_dir,'Nflux_feedstock_pH_Kantola.png'),'Resolution',300)
+exportgraphics(gcf,fullfile(res_dir,'N_budget.png'),'Resolution',300)
+savefig(gcf,fullfile(res_dir,'N_budget.fig'))
 
 %%%% run totals
 fprintf('\n%-10s %13s %13s %13s %13s %13s %9s\n','scenario','N2O [gN/m2]','N2 [gN/m2]',...
