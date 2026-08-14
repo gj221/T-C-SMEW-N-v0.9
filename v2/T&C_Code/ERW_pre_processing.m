@@ -187,14 +187,14 @@ elseif excel_input.fX_conc_convention == "Kantola"
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     % INPUT CEC fractions
-    f_Mg = (ERW_biogeochem_input.excMg*n*Zrw*s(1)*1000)/CEC_tot(1)*2;
-    f_Ca = (ERW_biogeochem_input.excCa*n*Zrw*s(1)*1000)/CEC_tot(1)*2;
-    f_K = (ERW_biogeochem_input.excK*n*Zrw*s(1)*1000)/CEC_tot(1);
-    f_H = 0.15;
+    f_Mg(1) = (ERW_biogeochem_input.excMg*n*Zrw*s(1)*1000)/CEC_tot(1)*2;
+    f_Ca(1) = (ERW_biogeochem_input.excCa*n*Zrw*s(1)*1000)/CEC_tot(1)*2;
+    f_K(1) = (ERW_biogeochem_input.excK*n*Zrw*s(1)*1000)/CEC_tot(1);
+    f_H(1) = 0.15;
 
     f_CEC_sat = 0.8;
-    f_Na = f_CEC_sat-f_Ca-f_Mg-f_K;
-    f_Al = (1-f_CEC_sat)-f_H;
+    f_Na(1) = f_CEC_sat-f_Ca(1)-f_Mg(1)-f_K(1);
+    f_Al(1) = (1-f_CEC_sat)-f_H(1);
 
     % estimates of concentrations
     Na(1) = ((Ca(1)/f_Ca(1))*K_Ca_Na)^(1/2)*f_Na(1);

@@ -39,12 +39,7 @@ switch nargin
         Mgl = Nl*7.5;
         Sil = Nl*2;
     case 2
-        if strcmp(crop_type,'Kelland')
-            Cal = Nl*2.3;
-            Mgl = Nl*7.5;
-            Sil = Nl*1.3;
-        
-        elseif strcmp(crop_type,'Maize')
+        if strcmp(crop_type,'Maize')
             Cal = Nl*3.75;
             Mgl = Nl*8.5;
             Sil = Nl*2;

@@ -158,7 +158,7 @@ end
 %% ---------------------------------------------------------------------
 t   = E.t;
 dtw = E.dtw;
-if strcmp(char(MOD_PARAM_input.Location),'Kantola') && ERW_PARAM_input.diss_f > 0 && cfg.apply_rock
+if ERW_PARAM_input.diss_f > 0 && cfg.apply_rock
     ta1 = days(datetime([2016 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
     ta2 = days(datetime([2017 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
     ta3 = days(datetime([2018 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));

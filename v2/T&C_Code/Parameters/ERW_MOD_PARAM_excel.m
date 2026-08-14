@@ -87,6 +87,7 @@ AlOH2 = zeros(length(t), 1);
 AlOH3 = zeros(length(t), 1);
 AlOH4 = zeros(length(t), 1);
 
+Al = zeros(length(t), 1);
 Al_w = zeros(length(t), 1);
 Al_tot = zeros(length(t), 1);
 

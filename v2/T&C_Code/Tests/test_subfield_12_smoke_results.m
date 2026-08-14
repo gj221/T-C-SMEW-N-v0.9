@@ -1,0 +1,99 @@
+function test_subfield_12_smoke_results(n_days)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Saved-result checks for the twelve-scenario smoke run.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+if nargin < 1 || isempty(n_days); n_days = 1; end
+
+fprintf('\n=== test_subfield_12_smoke_results (%d day) ===\n',n_days);
+n_pass = 0;
+v2 = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+result_dir = fullfile(v2,'SIM','Subfield_12');
+RM = Run_Matrix_12();
+
+metadata_ok = true;
+geometry_ok = true;
+placement_ok = true;
+state_ok = true;
+lateral_ok = true;
+min_NO3 = inf;
+max_heat_residual = 0;
+max_erw_residual = 0;
+
+for k = 1:numel(RM)
+    file = fullfile(result_dir,sprintf('TC_2D_run%02d_%s__%dd.mat', ...
+        k,RM(k).name,n_days));
+    if ~isfile(file)
+        error('test_subfield_12_smoke_results:MissingResult', ...
+            'Missing smoke result: %s',file);
+    end
+    S = load(file,'R','N_col','MOD_PARAM_input','topo','ColCfg', ...
+        'P','O','V','Tdp','PH_d','N2Oflx','LEAK_NO3','lateral_diag');
+
+    metadata_ok = metadata_ok && S.R.id == k && ...
+        strcmp(S.R.name,RM(k).name) && ...
+        strcmp(char(S.MOD_PARAM_input.Location),'Kantola') && ...
+        S.MOD_PARAM_input.Zbio == 2500;
+
+    if RM(k).use_subdomains
+        geometry_ok = geometry_ok && S.N_col == 12 && ...
+            abs(sum(S.topo.cell_area_m2)-3600) < 1e-10 && ...
+            abs(sum(S.topo.cell_area_m2(strcmp(S.topo.cell_region,'main')))-2500) < 1e-10;
+    else
+        geometry_ok = geometry_ok && S.N_col == 1 && ...
+            abs(S.topo.cell_area_m2-3600) < 1e-10;
+    end
+
+    is_main = strcmp(S.topo.cell_region,'main');
+    apply_rock = [S.ColCfg.apply_rock].';
+    expected_apply = RM(k).apply_main*is_main + RM(k).apply_margin*(~is_main);
+    placement_ok = placement_ok && isequal(apply_rock,logical(expected_apply));
+    pft = string({S.ColCfg.PFT_OVERRIDE}).';
+    if strcmp(RM(k).layout,'margin_prairie')
+        placement_ok = placement_ok && all(pft(is_main) == "") && ...
+            all(pft(~is_main) == "PFT_Prairie_Margin");
+    else
+        placement_ok = placement_ok && all(pft == "");
+    end
+
+    state_fields = {'P','O','V','Tdp','PH_d','N2Oflx','LEAK_NO3'};
+    for f = 1:numel(state_fields)
+        state_ok = state_ok && all(isfinite(S.(state_fields{f})),'all');
+    end
+    min_NO3 = min(min_NO3,min(S.P(:,32,:),[],'all'));
+    state_ok = state_ok && all(S.O >= 0 & S.O <= 1,'all') && ...
+        all(S.PH_d > 0 & S.PH_d < 14,'all') && min_NO3 >= -1e-12;
+
+    max_heat_residual = max(max_heat_residual, ...
+        max(abs(S.lateral_diag.heat_residual_J),[],'all'));
+    max_erw_residual = max(max_erw_residual, ...
+        max(abs(S.lateral_diag.erw_mass_residual_umol),[],'all'));
+    if ~RM(k).use_subdomains
+        lateral_ok = lateral_ok && ...
+            ~any(S.lateral_diag.water_buf_to_main,'all') && ...
+            ~any(S.lateral_diag.mass_buf_to_main,'all') && ...
+            ~any(S.lateral_diag.heat_buf_to_main_J,'all') && ...
+            ~any(S.lateral_diag.erw_mass_buf_to_main_umol,'all');
+    end
+end
+
+lateral_ok = lateral_ok && max_heat_residual < 1e-8 && max_erw_residual < 1e-8;
+check(metadata_ok,'all results retain the Kantola setup and 2500 mm active depth');
+check(geometry_ok,'all subdomain and one-column geometries are correct');
+check(placement_ok,'feedstock and prairie placement match the twelve-run matrix');
+check(state_ok,'saved water, heat, chemistry and flux states are finite and physical');
+check(lateral_ok,'closed lateral transport conserves heat and ERW mass');
+
+fprintf('  minimum NO3 pool: %.6g gN/m2\n',min_NO3);
+fprintf('  maximum heat residual: %.3e J\n',max_heat_residual);
+fprintf('  maximum ERW residual: %.3e umol\n',max_erw_residual);
+fprintf('  ---------------------------------------\n');
+fprintf('  %d passed, 0 failed\n',n_pass);
+
+    function check(ok,label)
+        assert(ok,'test_subfield_12_smoke_results:Failed','%s',label);
+        n_pass = n_pass + 1;
+        fprintf('  PASS  %s\n',label);
+    end
+
+end

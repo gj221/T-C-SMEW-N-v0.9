@@ -297,6 +297,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ERW_initialized = false;
 for i=2:NN
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     if  (mod(i,1000) == 0) || (i == 2)
@@ -311,28 +312,13 @@ for i=2:NN
         [h_S,delta_S,zeta_S,T_sunrise,T_sunset,L_day(j)]= SetSunVariables(Datam(i,:),DeltaGMT,Lon,Lat,t_bef,t_aft);
         clear delta_S zeta_S T_sunrise T_sunset
         
-        % for lab condition
-        if strcmp(id_location,'Kelland')
-            if j < 61
-                L_day(j) = 18;
-            else
-                L_day(j) = 10;
-            end
-
-            h_S = pi/2;
-        else
-            h_S = NaN;
-
-        end
+        h_S = NaN;
 
         % for rotation: N Fert only applied before maize sowing
-        if strcmp(id_location,'Kantola')
-            if ismember(Datam(i,1),[2009 2011 2012 2014 2015 2017 2018 2020])
-                B_IO.FertN(81:100) = 0.84;
-            else
-                B_IO.FertN = zeros(1,366);
-            end
-
+        if ismember(Datam(i,1),[2009 2011 2012 2014 2015 2017 2018 2020])
+            B_IO.FertN(81:100) = 0.84;
+        else
+            B_IO.FertN = zeros(1,366);
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -672,8 +658,9 @@ for i=2:NN
         if ((Datam(i,4)== 1) || i==NN)
     
             disp('ERW solving at day ');disp(j);
+            first_erw_step = ~ERW_initialized;
             
-            if j ==2
+            if first_erw_step
                 opt_ERW_preprocessing = 1;
                 opt_TC_biochem = ERW_PARAM_input.opt_TC_biochem;
                 
@@ -735,7 +722,7 @@ for i=2:NN
             end
 
 
-            if j==2
+            if first_erw_step
                 % soil water content: [-] 
                 ERW_TC.s(1:2,:) = (sum(Bio_Zs.*mean(O(pdind,:))))/ERW_TC_const.n;
                 
@@ -763,7 +750,7 @@ for i=2:NN
             cov_moll = ERW_TC_const.n * Zbio / 1000 * ERW_TC.s(j,:)* 1000; % conversion factor: [mol/l] -> [mol]
             ERW_TC_const.cov_moll = cov_moll;
 
-            if j == 2
+            if first_erw_step
                 % solution: initial conditions of X concentrations read from TC-BG    
                 % calcium
                 ERW_biogeochem.Ca(j-1,:) = B_out(60)/40/cov_moll*1e6;
@@ -791,7 +778,7 @@ for i=2:NN
             end
 
 
-            if strcmp(id_location,'Kantola') && ERW_PARAM_input.diss_f>0
+            if ERW_PARAM_input.diss_f>0
                 ta1 = days(datetime([2016 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
                 ta2 = days(datetime([2017 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
                 ta3 = days(datetime([2018 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
@@ -840,10 +827,11 @@ for i=2:NN
             TT_m=TT_m(1:length(t),:);
             
             %%%%%%%%%%%%%%%%%% initilising first inputs %%%%%%%%%%%%%%%%%%%
-            if j ==2 
+            if first_erw_step
                 %%%%%%%%%%%%%%
                 [ERW_biogeochem, ERW_plant, ERW_weathering, ERW_const, ERW_var, ERW_biogeochem_varnames, ERW_weathering_varnames, ERW_plant_varnames, ERW_const_varnames, ERW_var_varnames, ERW_all]=...
                   ERW_MOD_PARAM_excel(t, TT_m, ERW_TC_const, ERW_biogeochem, ERW_PARAM_input, opt_ERW_preprocessing);
+                ERW_initialized = true;
             end
 
             % changes in Xtot calculated from TC-BG (further distributed at dtw inside ERW_function)
@@ -872,7 +860,7 @@ for i=2:NN
             
             % background input
             if ERW_PARAM_input.keyword_add == 1
-                if j == 2
+                if first_erw_step
                     ERW_const.I_Na = mean(ERW_TC.f_Lw_bio(j)+ERW_TC.f_T_bio(j))* ERW_biogeochem.Na_tot(1);
                     ERW_const.I_An = mean(ERW_TC.f_Lw_bio(j)+ERW_TC.f_T_bio(j))* ERW_biogeochem.An_tot(1);
                 else

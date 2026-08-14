@@ -18,6 +18,8 @@ All runs use the control Kantola T&C parameters, forcing and initial
 state. The active biogeochemical depth is 2500 mm in every run, set by
 the deepest configured prairie root depth. Treatment rows only supply
 the amendment properties. Untreated cells use the control chemistry row.
+The configuration workbook contains only the five Kantola cases used by
+the single-column comparison and the twelve-run matrix.
 
 The archived Kantola background file contains areal pool totals and no
 depth metadata. It is reused unchanged in every case. This keeps the runs
@@ -53,6 +55,7 @@ Results go to `v2/SIM/Subfield_12`. Logs and worker status files go to
 
 ```matlab
 Run_All_12_Parallel('MaxConcurrent',2,'NDays',1,'Overwrite',true)
+addpath(fullfile('T&C_Code','Tests')); test_subfield_12_smoke_results(1)
 Plot_Subfield_12('NDays',1)
 ```
 

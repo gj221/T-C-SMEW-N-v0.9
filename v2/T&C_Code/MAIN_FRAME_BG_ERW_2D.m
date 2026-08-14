@@ -399,8 +399,8 @@ for i = 2:NN
             RfH_Zs = RfH_Zs_c{c};   RfL_Zs = RfL_Zs_c{c};
             B_IO_c_now = B_IO_c{c};
 
-            %% Rotation fertiliser rule (site-specific, cropped cells only)
-            if strcmp(id_location,'Kantola') && isempty(char(ColCfg(c).PFT_OVERRIDE))
+            %% Rotation fertiliser rule for cropped cells
+            if isempty(char(ColCfg(c).PFT_OVERRIDE))
                 if ismember(Datam(i,1),[2009 2011 2012 2014 2015 2017 2018 2020])
                     B_IO_c_now.FertN(81:100) = 0.84;
                 else

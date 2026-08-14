@@ -15,8 +15,8 @@ addpath(Directory+'\Parameters')
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 SCENARIO_TEST = '\FINAL_mesocosm';
 %%%%%%%%%%%%%%%%%%%%%
-id_location = 'Kelland'; % choose case study: Kelland (1-basalt,2-control), Kantola (3-6: Basalt_B,Basalt_L,control,pretreatment)
-NN_case_study_ERW_MOD = 1; % No. of experiment setup in ERW_MOD sheet
+id_location = 'Kantola';
+NN_case_study_ERW_MOD = 5; % Kantola: 3 Beerling, 4 Lewis, 5 control, 6 pretreatment, 7 calcite
 save_results = 1; % 1 - save results; 0 - no
 save_fig = 1;
 OPT_ERW = 1; % ERW module on or off
@@ -25,11 +25,10 @@ OPT_SoilBiogeochemistry = 1; % soil biogeochemistry module
 %%%%%%%%%%%%%%%%%%%%%
 %%% optional overrides for batch runs (environment variables survive the clear all above)
 if ~isempty(getenv('TC_CASE')); NN_case_study_ERW_MOD = str2double(getenv('TC_CASE')); end
-if ~isempty(getenv('TC_LOCATION')); id_location = getenv('TC_LOCATION'); end
 if ~isempty(getenv('TC_SCENARIO')); SCENARIO_TEST = ['\' getenv('TC_SCENARIO')]; end
 %%%%%%%%%%%%%%%%%%%%%
 MOD_PARAM_opts = detectImportOptions('ERW_MOD_PARAM_parameters.xlsx',"Sheet",'MOD_PARAM');
-MOD_PARAM_opts.DataRange = "A2:Y8";
+MOD_PARAM_opts.DataRange = "A2:Y6";
 MOD_PARAM_opts.VariableTypes = ["double","string","string","double","double",...
     "string","double","double","string","double",...
     "double","double","double","double","string", ...
@@ -40,7 +39,7 @@ MOD_PARAM_input = readtable('ERW_MOD_PARAM_parameters.xlsx',MOD_PARAM_opts);
 
 %%%%%%%%%%%%%% read ERW module parameters fromexcel
 ERW_PARAM_opts = detectImportOptions('ERW_MOD_PARAM_parameters.xlsx',"Sheet",'ERW_MOD');
-ERW_PARAM_opts.DataRange ="A2:AH8";
+ERW_PARAM_opts.DataRange ="A2:AH6";
 ERW_PARAM_opts.VariableTypes ={'double','string','string','double','double',...
   'string','double','double','string','double',...
   'string','string','string','string','double',...
@@ -78,22 +77,15 @@ load(current_directory+"\T&C_Code\Inputs"+"\Data_"+id_location+".mat")
 % Date=D; clear D 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%
-x1=1;
-x2=NN; 
-
-if strcmp(id_location,'Kantola')
-    if NN_case_study_ERW_MOD == 6 % field pretreatment
-        x1 = 7; % starting from 01-Jan-2009
-        % NN = 2861*24;
-        NN = 4382*24;
-        x2 = x1+NN-1;
-        OPT_ERW = 0; 
-
-    else 
-        x1 = 61351; % starting from 01-Jan-2016
-        NN = 1826*24;
-        x2 = x1+NN-1;
-    end
+if NN_case_study_ERW_MOD == 6 % field pretreatment
+    x1 = 7; % starting from 01-Jan-2009
+    NN = 4382*24;
+    x2 = x1+NN-1;
+    OPT_ERW = 0;
+else
+    x1 = 61351; % starting from 01-Jan-2016
+    NN = 1826*24;
+    x2 = x1+NN-1;
 end
 
 %%% optional short-run override for smoke tests
@@ -117,10 +109,6 @@ load(current_directory+"\T&C_Code\Inputs\Ca_Data.mat");
 d1 = find(abs(Date_CO2-Date(1))<1/36);
 d2 = find(abs(Date_CO2-Date(end))<1/36);
 Ca=Ca(d1:d2); 
-
-if strcmp(id_location,'Kelland')
-    Ca = 412*ones(size(Ca)); 
-end
 
 clear d1 d2 Date_CO2 
 Oa= 210000;% Intercellular Partial Pressure Oxygen [umolO2/mol] -

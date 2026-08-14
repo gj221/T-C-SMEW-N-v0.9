@@ -76,7 +76,7 @@ fprintf('=================================================\n');
 %% ---------------------------------------------------------------------
 wb = fullfile(Input_Directory,'ERW_MOD_PARAM_parameters.xlsx');
 MOD_opts = detectImportOptions(wb,"Sheet",'MOD_PARAM');
-MOD_opts.DataRange = "A2:Y8";
+MOD_opts.DataRange = "A2:Y6";
 MOD_opts.VariableTypes = ["double","string","string","double","double", ...
     "string","double","double","string","double", ...
     "double","double","double","double","string", ...
@@ -85,7 +85,7 @@ MOD_opts.VariableTypes = ["double","string","string","double","double", ...
 MOD_PARAM_input = readtable(wb,MOD_opts);
 
 ERW_opts = detectImportOptions(wb,"Sheet",'ERW_MOD');
-ERW_opts.DataRange = "A2:AH8";
+ERW_opts.DataRange = "A2:AH6";
 ERW_opts.VariableTypes = {'double','string','string','double','double', ...
     'string','double','double','string','double', ...
     'string','string','string','string','double', ...
@@ -118,12 +118,9 @@ cc = MOD_PARAM_input.cc;
 
 load(fullfile(Input_Directory,['Data_' id_location '.mat']));     %#ok<LOAD>
 
-x1 = 1; x2 = NN;
-if strcmp(id_location,'Kantola')
-    x1 = 61351;                 %% 01-Jan-2016
-    NN = 1826*24;
-    x2 = x1+NN-1;
-end
+x1 = 61351;                     %% 01-Jan-2016
+NN = 1826*24;
+x2 = x1+NN-1;
 
 if ~isempty(opt.NDays)
     NN = opt.NDays*24;
