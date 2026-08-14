@@ -38,7 +38,9 @@ appl_dates = datetime([2016 11 10; 2017 11 10; 2018 11 10; 2019 11 10]);
 
 figure('Position',[50 50 1250 950],'Color','w');
 tiledlayout(3,2,'TileSpacing','compact','Padding','compact');
-set(gcf,'DefaultAxesColor','w')
+set(gcf,'DefaultAxesColor','w','DefaultAxesXColor','k','DefaultAxesYColor','k',...
+    'DefaultTextColor','k','DefaultLegendColor','w','DefaultLegendTextColor','k',...
+    'DefaultLegendEdgeColor','k')
 
 %%%% (1) daily N2O emission
 nexttile; hold on; grid on;
@@ -102,7 +104,9 @@ exportgraphics(gcf,fullfile(res_dir,'Nflux_diagnostics_Kantola.png'),'Resolution
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 figure('Position',[80 80 1400 950],'Color','w');
 tiledlayout(2,3,'TileSpacing','compact','Padding','compact');
-set(gcf,'DefaultAxesColor','w')
+set(gcf,'DefaultAxesColor','w','DefaultAxesXColor','k','DefaultAxesYColor','k',...
+    'DefaultTextColor','k','DefaultLegendColor','w','DefaultLegendTextColor','k',...
+    'DefaultLegendEdgeColor','k')
 
 %%%% (1) total N loss budget by pathway and feedstock
 nexttile; hold on; grid on;
