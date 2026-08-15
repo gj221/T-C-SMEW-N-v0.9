@@ -48,20 +48,42 @@ A_cell = topo.cell_area_m2(:);
 
 C_aq = zeros(N_cells,ms,N_sp);                         %% umol/m3
 M_aq = zeros(N_cells,ms,N_sp);                         %% umol
+M_full = zeros(N_cells,N_sp);                          %% umol, uncapped
 water_volume = zeros(N_cells,ms);                      %% m3
+V_erw = zeros(N_cells,1);                              %% m3
+%% Two different water volumes are in play and they must not be confused.
+%% ERW defines its aqueous concentrations against its OWN pore water,
+%% n*s*Zrw (see ERW_function: Na_tot = Na*n*Zrw*s*1000 + adsorbed), so
+%% that volume converts concentration <-> total mass. The per-layer T&C
+%% water inside the same weathering depth is what the Darcy fluxes
+%% actually move, so it sets how the mass is spread over layers and the
+%% concentration the upwind scheme advects. Zrw is in metres.
+erw_fraction = zeros(N_cells,ms);
+for c = 1:N_cells
+    erw_fraction(c,:) = min(active_fraction_cell(c,:), ...
+        erw_layer_fraction(ERW{c}.const.Zrw,Zlayer_m));
+end
 for c = 1:N_cells
     E = ERW{c}; row = E.dm_end;
     concentration = [E.bg.Na(row), E.bg.Al(row)+E.bg.AlOH4(row), ...
                      E.bg.An(row), E.bg.DIC(row)]*1000;
+    sat = min(1,max(0,E.current_s));
+    V_erw(c) = E.const.n*sat*E.const.Zrw*A_cell(c);
     water_volume(c,:) = theta_cell(c,:).*Zlayer_m(:).'.* ...
-        active_fraction_cell(c,:)*A_cell(c);
+        erw_fraction(c,:)*A_cell(c);
+    mobile_water = sum(water_volume(c,:));
+    if V_erw(c) <= 0 || mobile_water <= 0
+        continue
+    end
+    layer_weight = water_volume(c,:)/mobile_water;
     for s = 1:N_sp
-        C_aq(c,:,s) = concentration(s);
-        aqueous_mass = concentration(s)*water_volume(c,:);
+        M_full(c,s) = concentration(s)*V_erw(c);
         total_mass = max(0,E.bg.(total_fields{s})(row)*A_cell(c));
-        available = min(total_mass,sum(aqueous_mass));
-        if available > 0 && sum(aqueous_mass) > 0
-            M_aq(c,:,s) = aqueous_mass*(available/sum(aqueous_mass));
+        available = min(total_mass,M_full(c,s));
+        %% Advected concentration is per m3 of the T&C water that moves.
+        C_aq(c,:,s) = (M_full(c,s)/mobile_water).*(erw_fraction(c,:) > 0);
+        if available > 0
+            M_aq(c,:,s) = available*layer_weight;
         end
     end
 end
@@ -105,17 +127,26 @@ for c = 1:N_cells
         ERW{c}.bg.Alk_tot(row) = ERW{c}.bg.Alk_tot(row) + ...
             dM_area(c,1)-dM_area(c,3);
     end
-    volume = sum(water_volume_after(c,:));
-    dissolved = reshape(sum(M_aq_after(c,:,:),2),1,N_sp);
-    if volume == 0
+    %% Rebuild from the uncapped inventory plus the advected change, using
+    %% the same ERW pore volume the concentration was defined against.
+    %% Rebuilding from the capped mass would lower the concentration even
+    %% when no water moved, silently draining the column over successive
+    %% calls; using the T&C layer water would not invert ERW's own
+    %% concentration-to-total relation.
+    dissolved = max(0,M_full(c,:) + ...
+        reshape(sum(dM_aq(c,:,:),2),1,N_sp));
+    if V_erw(c) <= 0
         if any(dissolved > mass_tol)
             error('ERW_Lateral_Transport:DryAqueousPool', ...
-                'Aqueous ERW mass remains in a dry active layer.');
+                'Aqueous ERW mass remains in a dry weathering zone.');
         end
         concentration = zeros(1,N_sp);
     else
-        concentration = dissolved/(1000*volume);          %% umol/L
+        concentration = dissolved/(1000*V_erw(c));         %% umol/L
     end
+    %% Al is re-split by its pre-transport speciation ratio rather than
+    %% re-equilibrated with pH; the ERW chemistry step re-solves the
+    %% speciation on its own schedule, so the split lags by one call.
     al_total = ERW{c}.bg.Al(row)+ERW{c}.bg.AlOH4(row);
     if al_total > 0
         al_fraction = ERW{c}.bg.Al(row)/al_total;
@@ -155,6 +186,13 @@ for e = 1:N_edges
     Ca = Ea.bg.CO2_air(ra)*1000;                          %% umol/m3
     Cb = Eb.bg.CO2_air(rb)*1000;
     requested(e) = conductance*(Ca-Cb)*(dt_h/24);         %% umol
+    %% Explicit pairwise exchange: never transfer more than the amount
+    %% that equalizes the two soil-air concentrations, otherwise a large
+    %% conductance-to-air-volume ratio overshoots and oscillates.
+    equalizing = (Ca-Cb)/(1/air_volume(a)+1/air_volume(b));
+    if abs(requested(e)) > abs(equalizing)
+        requested(e) = equalizing;
+    end
     if requested(e) > 0
         donor(e) = a;
     elseif requested(e) < 0
@@ -213,6 +251,18 @@ bm_sign(~is_main_a & is_main_b) = 1;
 bm_sign(is_main_a & ~is_main_b) = -1;
 end
 
+function frac = erw_layer_fraction(Zrw,Zlayer_m)
+%% Fraction of each soil layer lying inside the ERW weathering depth [m].
+if ~(isscalar(Zrw) && isfinite(Zrw) && Zrw > 0)
+    error('ERW_Lateral_Transport:BadZrw', ...
+        'The ERW weathering depth must be a positive finite scalar.');
+end
+thickness = Zlayer_m(:).';
+top = [0 cumsum(thickness)];
+frac = max(0,min(Zrw,top(2:end))-top(1:end-1))./thickness;
+end
+
+%% =======================================================================
 function [da,db] = edge_half_distances(topo,e)
 if isfield(topo,'edge_face_distance_a_m') && ...
         isfield(topo,'edge_face_distance_b_m')
