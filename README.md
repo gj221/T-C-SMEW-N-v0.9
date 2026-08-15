@@ -32,7 +32,9 @@ and Si. ERW-only Na, Al, residual anion and DIC use the same active-depth
 water flux. Soil-gas CO2 diffuses across shared faces. Soil heat moves by
 Fourier conduction and with liquid-water sensible heat. The outer plot
 boundary is closed laterally. Existing vertical drainage and solute
-leaching remain active.
+leaching remain active. Frozen hydraulic conductivity uses the Hansson
+et al. (2004) ice-impedance factor. Fluxes blocked by frozen pore space
+are excluded when the adaptive lateral time step is calculated.
 
 From PowerShell at the repository root:
 
@@ -85,8 +87,10 @@ Plot_Subfield_12
 The first command completes the three vertical 1-D comparisons before the
 2-D runs begin. Stop between the two commands if the second stage needs to
 wait. `Ctrl+C` stops active child runs; completed result files are retained
-and skipped when the same command is run again. Active runs restart from the
-beginning because transient checkpoints are not written.
+and skipped when the same command is run again. On Windows the launcher
+stops the complete worker process tree, so a MATLAB worker is not left behind.
+Active runs restart from the beginning because transient checkpoints are not
+written.
 
 Results go to `v2/SIM/Subfield_12`. Logs and worker status files go to
 `v2/logs/Subfield_12`. Existing results are skipped unless

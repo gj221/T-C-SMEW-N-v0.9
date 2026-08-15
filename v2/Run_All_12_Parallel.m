@@ -121,7 +121,7 @@ while ~isempty(queue) || ~isempty(running)
         if isfile(plan(q).status_file); delete(plan(q).status_file); end
         if opt.Overwrite && isfile(plan(q).result_file); delete(plan(q).result_file); end
         process{q} = launch_process(matlab_exe,plan(q).batch,plan(q).log_file);
-        process_guard{q} = onCleanup(@() terminate_process(process{q}));
+        process_guard{q} = onCleanup(@() Terminate_Process_Tree(process{q}));
         started(q) = now;
         running(end+1,1) = q; %#ok<AGROW>
         fprintf('  [%s] launch run %d  %s\n',datestr(now,'HH:MM:SS'), ...
@@ -142,14 +142,14 @@ while ~isempty(queue) || ~isempty(running)
                 plan(q).name,plan(q).log_file);
             failed(end+1,1) = q; %#ok<AGROW>
             finished(r) = true;
-        elseif ~process{q}.isAlive()
+        elseif ~process_is_alive(process{q})
             fprintf(2,'  [%s] FAILED run %d  %s (child exit %d); see %s\n', ...
                 datestr(now,'HH:MM:SS'),plan(q).run_id,plan(q).name, ...
-                process{q}.exitValue(),plan(q).log_file);
+                process_exit_value(process{q}),plan(q).log_file);
             failed(end+1,1) = q; %#ok<AGROW>
             finished(r) = true;
         elseif (now-started(q))*24 > opt.MaxRuntimeHours
-            process{q}.destroyForcibly();
+            Terminate_Process_Tree(process{q});
             fprintf(2,'  [%s] TIMEOUT run %d  %s after %.1f h\n', ...
                 datestr(now,'HH:MM:SS'),plan(q).run_id, ...
                 plan(q).name,opt.MaxRuntimeHours);
@@ -190,6 +190,16 @@ args = strjoin(parts,',');
 end
 
 function process = launch_process(matlab_exe,batch,log_file)
+if ispc
+    cmd_exe = fullfile(getenv('SystemRoot'),'System32','cmd.exe');
+    args = sprintf('/d /s /c ""%s" -batch "%s" > "%s" 2>&1"', ...
+        matlab_exe,batch,log_file);
+    start_info = System.Diagnostics.ProcessStartInfo(cmd_exe,args);
+    start_info.UseShellExecute = false;
+    start_info.CreateNoWindow = true;
+    process = System.Diagnostics.Process.Start(start_info);
+    return
+end
 command = java.util.ArrayList;
 command.add(matlab_exe);
 command.add('-batch');
@@ -208,10 +218,27 @@ tok = regexp(txt,'(?m)^state=([^\r\n]+)','tokens','once');
 if ~isempty(tok); state = tok{1}; end
 end
 
-function terminate_process(process)
+function alive = process_is_alive(process)
 try
-    if ~isempty(process) && process.isAlive(); process.destroyForcibly(); end
+    if ispc && isa(process,'System.Diagnostics.Process')
+        alive = ~process.HasExited;
+    else
+        alive = process.isAlive();
+    end
 catch
+    alive = false;
+end
+end
+
+function value = process_exit_value(process)
+try
+    if ispc && isa(process,'System.Diagnostics.Process')
+        value = process.ExitCode;
+    else
+        value = process.exitValue();
+    end
+catch
+    value = -1;
 end
 end
 

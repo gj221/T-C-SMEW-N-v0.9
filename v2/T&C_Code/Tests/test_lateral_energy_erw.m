@@ -85,6 +85,33 @@ check('ice-filled pore space cannot accept liquid water', ...
     all(theta_ice <= Osat-Oice+1e-12), ...
     sprintf('theta %s, upper %s',mat2str(theta_ice),mat2str(Osat-Oice)));
 
+%% A blocked frozen receiver must not force zero-flux substeps.
+two_blocked = two_cell_topology(12.5,2.5,25,[625;250]);
+delta_liquid = 0.02;
+theta_blocked = [Ohy+delta_liquid;Ohy];
+ice_blocked = [Osat-Ohy-delta_liquid;Osat-Ohy];
+[Q_blocked,dtheta_blocked,n_blocked] = Darcy_Lateral_Topology( ...
+    two_blocked,theta_blocked,0.04,soil_fast,1,ice_blocked);
+check('ice-blocked zero flux completes in one substep', ...
+    Q_blocked == 0 && all(dtheta_blocked == 0) && n_blocked == 1, ...
+    sprintf('Q %.3e, max dtheta %.3e, substeps %d', ...
+    Q_blocked,max(abs(dtheta_blocked)),n_blocked));
+
+%% Hansson frozen-pore impedance is applied before edge resistance.
+two_impedance = two_cell_topology(0.5,0.5,1,[1e12;1e12]);
+mobile_range = Osat-Ohy;
+theta_impedance = Ohy+mobile_range*[0.50;0.40];
+ice_fraction = 0.25;
+ice_impedance = ice_fraction*mobile_range*ones(2,1);
+Q_unfrozen = Darcy_Lateral_Topology( ...
+    two_impedance,theta_impedance,0.1,soil_fast,1);
+Q_frozen = Darcy_Lateral_Topology( ...
+    two_impedance,theta_impedance,0.1,soil_fast,1,ice_impedance);
+expected_ratio = 10^(-7*ice_fraction);
+check('frozen-pore impedance reduces liquid conductivity', ...
+    abs(Q_frozen/Q_unfrozen-expected_ratio) < 1e-10, ...
+    sprintf('ratio %.12g expected %.12g',Q_frozen/Q_unfrozen,expected_ratio));
+
 %% Soil conduction is directional, bounded, and energy conserving.
 two_heat = two_cell_topology(0.5,0.5,1,[1;1]);
 Q_zero = 0;

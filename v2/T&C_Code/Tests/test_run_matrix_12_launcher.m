@@ -53,6 +53,19 @@ check(numel(unique({plan.result_file})) == 3 && ...
 full_plan = Run_All_12_Parallel('DryRun',true,'Runs',1);
 check(~strcmp(plan(1).result_file,full_plan.result_file), ...
     'a smoke result cannot cause a full run to be skipped');
+check(exist('Terminate_Process_Tree','file') == 2, ...
+    'launcher provides process-tree cleanup for interrupted workers');
+if ispc
+    [test_process,child_pid] = start_test_process_tree();
+    process_cleanup = onCleanup(@() Terminate_Process_Tree(test_process));
+    check(~test_process.HasExited && child_pid > 0, ...
+        'process-tree test starts a wrapper and child');
+    Terminate_Process_Tree(test_process);
+    pause(0.2);
+    check(test_process.HasExited && ~windows_pid_exists(child_pid), ...
+        'interrupt cleanup terminates the wrapper and child process');
+    clear process_cleanup
+end
 
 assert_error(@() Run_All_12_Parallel('DryRun',true,'Runs',[12 13]), ...
     'Run_All_12_Parallel:BadRuns');
@@ -82,6 +95,30 @@ fprintf('  %d passed, 0 failed\n',n_pass);
         fprintf('  PASS  %s\n',label);
     end
 
+end
+
+function [process,child_pid] = start_test_process_tree
+system_root = getenv('SystemRoot');
+cmd_exe = fullfile(system_root,'System32','cmd.exe');
+ping_exe = fullfile(system_root,'System32','PING.EXE');
+args = sprintf('/d /s /c ""%s" -n 30 127.0.0.1 >NUL"',ping_exe);
+start_info = System.Diagnostics.ProcessStartInfo(cmd_exe,args);
+start_info.UseShellExecute = false;
+start_info.CreateNoWindow = true;
+process = System.Diagnostics.Process.Start(start_info);
+pause(0.3);
+ps = sprintf(['powershell -NoProfile -Command "$p=(Get-CimInstance ' ...
+    'Win32_Process -Filter ''ParentProcessId=%d'').ProcessId; $p"'],process.Id);
+[status,out] = system(ps);
+assert(status == 0,'Could not inspect the launcher test process tree.');
+child_pid = sscanf(out,'%d',1);
+if isempty(child_pid); child_pid = 0; end
+end
+
+function tf = windows_pid_exists(process_id)
+[status,out] = system(sprintf( ...
+    'tasklist /FI "PID eq %d" /FO CSV /NH',process_id));
+tf = status == 0 && contains(out,sprintf('"%d"',process_id));
 end
 
 function assert_error(f,expected_id)

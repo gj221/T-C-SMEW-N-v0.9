@@ -50,7 +50,7 @@ function [Q_edge, dtheta_lat, sub_steps] = Darcy_Lateral_Topology( ...
 %   matric-head-driven.  Mass conservation is exact at the finite-volume
 %   level (every face is shared by exactly two cells); the sub-step is
 %   adaptively rescaled to keep theta within [0, Osat] without ever
-%   clipping a volume.
+%   clipping a volume. Ice impedance follows Hansson et al. (2004).
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 N_cells = topo.N_cells;
@@ -89,7 +89,7 @@ end
 
 %% --- 1. Per-cell K(theta), head(theta), Osat for every layer ----------
 [K_cell, h_cell, Osat_cell, Ohy_cell] = eval_soil_curves( ...
-    topo, theta_cell, soilpar_cell, ms);
+    topo, theta_cell, soilpar_cell, ms, Oice_cell);
 theta_upper = max(Ohy_cell,Osat_cell-Oice_cell);
 tol = 1e-10;
 if any(theta_cell(:) < Ohy_cell(:)-tol) || any(theta_cell(:) > theta_upper(:)+tol)
@@ -98,7 +98,8 @@ if any(theta_cell(:) < Ohy_cell(:)-tol) || any(theta_cell(:) > theta_upper(:)+to
 end
 
 %% --- 2. Volume-based nominal sub-step ---------------------------------
-Q_initial = darcy_flux_rates(topo,Zlayer_m,K_cell,h_cell);
+Q_initial = bounded_darcy_flux_rates( ...
+    topo,theta_cell,Zlayer_m,K_cell,h_cell,Ohy_cell,theta_upper);
 incident_rate = zeros(N_cells,ms);
 for e = 1:N_edges
     incident_rate(topo.edge_a(e),:) = incident_rate(topo.edge_a(e),:) + abs(Q_initial(e,:));
@@ -134,7 +135,8 @@ while elapsed_h < dt_h * (1 - 1e-12)
         error('Darcy_Lateral_Topology:TooManySubsteps', ...
             'Adaptive lateral flow exceeded 100000 substeps.');
     end
-    [K_cell, h_cell] = eval_soil_curves(topo, theta_w, soilpar_cell, ms);
+    [K_cell, h_cell] = eval_soil_curves( ...
+        topo,theta_w,soilpar_cell,ms,Oice_cell);
 end
 %% Time-weighted mean rate over the hydrologic step
 Q_edge     = Q_edge / dt_h;
@@ -143,9 +145,11 @@ dtheta_lat = theta_w - theta_cell;
 end
 
 %% =======================================================================
-function [K_cell, h_cell, Osat_cell, Ohy_cell] = eval_soil_curves(topo, theta, soilpar_cell, ms)
+function [K_cell, h_cell, Osat_cell, Ohy_cell] = eval_soil_curves( ...
+    topo,theta,soilpar_cell,ms,Oice_cell)
 % K [mm/h] and matric HEAD h [mm, negative when unsaturated] per cell-layer.
 N_cells = topo.N_cells;
+ice_impedance = 7;
 K_cell    = zeros(N_cells, ms);
 h_cell    = zeros(N_cells, ms);
 Osat_cell = zeros(N_cells, ms);
@@ -161,14 +165,24 @@ for c = 1:N_cells
             scal(sp.Ks_mac), scal(sp.Omac), scal(sp.alpVGM), ...
             scal(sp.nVGM), scal(sp.lVGM), scal(sp.Phy1), ...
             scal(sp.s_SVG), scal(sp.bVG), theta(c,k));
-        K_cell(c,k) = Ko;
+        Osat_cell(c,k) = scal(sp.Osat);
+        Ohy_cell(c,k)  = scal(sp.Ohy);
+        mobile_porosity = Osat_cell(c,k)-Ohy_cell(c,k);
+        if ~(isfinite(mobile_porosity) && mobile_porosity > 0)
+            error('Darcy_Lateral_Topology:BadSoil', ...
+                'Saturated water content must exceed residual water content.');
+        end
+        ice_fraction = min(1,max(0,Oice_cell(c,k)/mobile_porosity));
+        K_cell(c,k) = Ko*10^(-ice_impedance*ice_fraction);
         if sp.SPAR == 2
             h_cell(c,k) = -Po;    % Saxton-Rawls returns suction -> head
         else
             h_cell(c,k) = Po;     % van Genuchten already returns head
         end
-        Osat_cell(c,k) = scal(sp.Osat);
-        Ohy_cell(c,k)  = scal(sp.Ohy);
+        if ~(isfinite(K_cell(c,k)) && K_cell(c,k) >= 0 && isfinite(h_cell(c,k)))
+            error('Darcy_Lateral_Topology:BadSoilState', ...
+                'Hydraulic conductivity and matric head must be finite.');
+        end
     end
 end
 end
@@ -185,22 +199,8 @@ N_cells = topo.N_cells;
 N_edges = topo.N_edges;
 ms      = numel(Zlayer_m);
 
-Q_step = darcy_flux_rates(topo,Zlayer_m,K_cell,h_cell);
-bound_tol = 1e-12;
-for e = 1:N_edges
-    a = topo.edge_a(e); b = topo.edge_b(e);
-    for k = 1:ms
-        if Q_step(e,k) > 0 && ...
-                (theta(a,k) <= theta_lower(a,k)+bound_tol || ...
-                 theta(b,k) >= theta_upper(b,k)-bound_tol)
-            Q_step(e,k) = 0;
-        elseif Q_step(e,k) < 0 && ...
-                (theta(b,k) <= theta_lower(b,k)+bound_tol || ...
-                 theta(a,k) >= theta_upper(a,k)-bound_tol)
-            Q_step(e,k) = 0;
-        end
-    end
-end
+Q_step = bounded_darcy_flux_rates( ...
+    topo,theta,Zlayer_m,K_cell,h_cell,theta_lower,theta_upper);
 
 % Per-cell volumetric in/out over dt_h
 dV_cell = zeros(N_cells, ms);                 % m3
@@ -252,6 +252,27 @@ for c = 1:N_cells
     end
 end
 
+end
+
+%% =======================================================================
+function Q = bounded_darcy_flux_rates( ...
+    topo,theta,Zlayer_m,K_cell,h_cell,theta_lower,theta_upper)
+Q = darcy_flux_rates(topo,Zlayer_m,K_cell,h_cell);
+bound_tol = 1e-12;
+for e = 1:topo.N_edges
+    a = topo.edge_a(e); b = topo.edge_b(e);
+    for k = 1:numel(Zlayer_m)
+        if Q(e,k) > 0 && ...
+                (theta(a,k) <= theta_lower(a,k)+bound_tol || ...
+                 theta(b,k) >= theta_upper(b,k)-bound_tol)
+            Q(e,k) = 0;
+        elseif Q(e,k) < 0 && ...
+                (theta(b,k) <= theta_lower(b,k)+bound_tol || ...
+                 theta(a,k) >= theta_upper(a,k)-bound_tol)
+            Q(e,k) = 0;
+        end
+    end
+end
 end
 
 %% =======================================================================
