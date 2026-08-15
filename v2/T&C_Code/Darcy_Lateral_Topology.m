@@ -149,7 +149,7 @@ function [K_cell, h_cell, Osat_cell, Ohy_cell] = eval_soil_curves( ...
     topo,theta,soilpar_cell,ms,Oice_cell)
 % K [mm/h] and matric HEAD h [mm, negative when unsaturated] per cell-layer.
 N_cells = topo.N_cells;
-ice_impedance = 7;
+ice_impedance = 5;
 K_cell    = zeros(N_cells, ms);
 h_cell    = zeros(N_cells, ms);
 Osat_cell = zeros(N_cells, ms);
@@ -172,7 +172,16 @@ for c = 1:N_cells
             error('Darcy_Lateral_Topology:BadSoil', ...
                 'Saturated water content must exceed residual water content.');
         end
-        ice_fraction = min(1,max(0,Oice_cell(c,k)/mobile_porosity));
+        mobile_water = Oice_cell(c,k)+max(0,theta(c,k)-Ohy_cell(c,k));
+        if mobile_water > mobile_porosity+1e-10
+            error('Darcy_Lateral_Topology:BadIce', ...
+                'Combined liquid and ice cannot exceed the mobile pore volume.');
+        end
+        if mobile_water > 0
+            ice_fraction = Oice_cell(c,k)/mobile_water;
+        else
+            ice_fraction = 0;
+        end
         K_cell(c,k) = Ko*10^(-ice_impedance*ice_fraction);
         if sp.SPAR == 2
             h_cell(c,k) = -Po;    % Saxton-Rawls returns suction -> head

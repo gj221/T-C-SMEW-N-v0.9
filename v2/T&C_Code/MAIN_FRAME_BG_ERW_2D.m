@@ -358,6 +358,7 @@ lateral_diag = struct('water_buf_to_main', zeros(NNd,1), ...
                       'NO3_buf_to_main',   zeros(NNd,1), ...
                       'heat_buf_to_main_J',zeros(NNd,1), ...
                       'heat_residual_J',   zeros(NNd,1), ...
+                      'heat_residual_relative',zeros(NNd,1), ...
                       'heat_sub_steps_max',zeros(NNd,1), ...
                       'erw_mass_buf_to_main_umol',zeros(NNd,4), ...
                       'erw_CO2_buf_to_main_umol',zeros(NNd,1), ...
@@ -366,9 +367,10 @@ lateral_diag = struct('water_buf_to_main', zeros(NNd,1), ...
                       'species_names',     {lateral_species}, ...
                       'erw_species_names', {{'Na','Al','An','DIC'}});
 
-%% Domain-boundary accounting: vertical leakage out of the base of each
-%% column.  The lateral perimeter is closed, so this is the only exit.
+%% Domain-boundary accounting. The subsurface lateral perimeter is closed;
+%% bottom leakage and unrouted surface runoff leave the modeled plot.
 exit_water_vert_m3 = zeros(N_col,1);
+exit_water_surface_m3 = zeros(N_col,1);
 
 j = 1;
 tic;
@@ -730,6 +732,8 @@ for i = 2:NN
 
         %% Vertical exit at the base of the column [m3]
         exit_water_vert_m3(c) = exit_water_vert_m3(c) + (Lk(i,c)/1000)*A_cell(c)*dth;
+        exit_water_surface_m3(c) = exit_water_surface_m3(c) + ...
+            ((Rh(i,c)+Rd(i,c))/1000)*A_cell(c);
     end
 
     %% ------------------------------------------------------------------
@@ -751,26 +755,30 @@ for i = 2:NN
             mobile,A_cell,theta_cell,Zlayer_m,bio_active_fraction);
 
         lambda_cell = zeros(N_col,ms);
-        cv_cell = zeros(N_col,ms);
+        capp_cell = zeros(N_col,ms);
         for c = 1:N_col
-            p = PAR{c}; sp = p.Soil_Param;
-            [lambda_cell(c,:),cv_cell(c,:)] = Soil_Thermal_properties_FT( ...
-                T_cell(c,:),Pre(i),sp.rsd,sp.lan_dry,sp.lan_s,sp.cv_s, ...
-                p.SPAR,sp.L,sp.Pe,sp.O33,sp.alpVG,sp.nVG,p.Phy, ...
-                sp.s_SVG,sp.bVG,sp.Osat,sp.Ohy, ...
-                theta_cell(c,:)+Oice_cell(c,:),OPT_FR_SOIL);
+            p = PAR{c};
+            [lambda_cell(c,:),capp_cell(c,:)] = Soil_Lateral_Thermal_State( ...
+                T_cell(c,:),theta_cell(c,:)+Oice_cell(c,:), ...
+                Pre(i),p,OPT_FR_SOIL);
         end
         thermal = struct('T_cell',T_cell,'lambda_cell',lambda_cell, ...
-            'cv_cell',cv_cell,'Oice_cell',Oice_cell);
-        [theta_new, dM_cell, ldiag, T_new] = Lateral_Routing_Step( ...
+            'capp_cell',capp_cell,'Oice_cell',Oice_cell);
+        thermal.parameter_cell = PAR;
+        thermal.Pre = Pre(i);
+        thermal.OPT_FR_SOIL = OPT_FR_SOIL;
+        [theta_new, dM_cell, ldiag, T_new, Oice_new] = Lateral_Routing_Step( ...
             topo,theta_cell,C_aq,soilpar_cell,Zlayer_m,dth,thermal, ...
             bio_active_fraction);
 
         %% Write the redistributed moisture back, keeping V consistent
         %% with O through the column's own residual water content.
         for c = 1:N_col
+            p = PAR{c};
             O(i,:,c) = theta_new(c,:);
-            V(i,:,c) = (theta_new(c,:) - PAR{c}.Ohy) .* PAR{c}.dz;
+            Oice(i,:,c) = Oice_new(c,:);
+            V(i,:,c) = (theta_new(c,:) - p.Ohy) .* p.dz;
+            Vice(i,:,c) = Oice_new(c,:) .* p.dz;
             Tdp(i,:,c) = T_new(c,:);
             [Tdp_H(i,:,c),Tdp_L(i,:,c)] = RootZone_Temp( ...
                 T_new(c,:),RfH_Zs_c{c},RfL_Zs_c{c});
@@ -793,24 +801,15 @@ for i = 2:NN
         lateral_diag.sub_steps_max(j)     = max(lateral_diag.sub_steps_max(j), ldiag.sub_steps);
         lateral_diag.heat_buf_to_main_J(j)= lateral_diag.heat_buf_to_main_J(j) + ldiag.buf_to_main.heat_J;
         lateral_diag.heat_residual_J(j)   = lateral_diag.heat_residual_J(j) + ldiag.heat.energy_residual_J;
+        lateral_diag.heat_residual_relative(j) = max( ...
+            lateral_diag.heat_residual_relative(j), ...
+            ldiag.heat.energy_residual_relative);
         lateral_diag.heat_sub_steps_max(j)= max(lateral_diag.heat_sub_steps_max(j),ldiag.heat.sub_steps);
     end
 
     %% ------------------------------------------------------------------
     %% ERW  --  once per day, per column
     %% ------------------------------------------------------------------
-    if N_col > 1 && OPT_ERW == 1 && i == NN && ...
-            all(cellfun(@(x) isfield(x,'init') && x.init,ERW))
-        [ERW,erw_ldiag] = ERW_Lateral_Transport( ...
-            ERW,topo,ldiag.Q_edge,theta_cell,Zlayer_m,bio_active_fraction,dth);
-        lateral_diag.erw_mass_buf_to_main_umol(j,:) = ...
-            lateral_diag.erw_mass_buf_to_main_umol(j,:) + erw_ldiag.buf_to_main.aqueous_umol.';
-        lateral_diag.erw_CO2_buf_to_main_umol(j) = ...
-            lateral_diag.erw_CO2_buf_to_main_umol(j) + erw_ldiag.buf_to_main.CO2_umol;
-        lateral_diag.erw_mass_residual_umol(j,:) = ...
-            lateral_diag.erw_mass_residual_umol(j,:) + erw_ldiag.mass_residual_umol.';
-    end
-
     if OPT_ERW == 1 && ((Datam(i,4) == 1) || i == NN)
         for c = 1:N_col
             ERW_PARAM_cell = ERW_PARAM_input;
@@ -834,10 +833,11 @@ for i = 2:NN
         end
     end
 
-    if N_col > 1 && OPT_ERW == 1 && i < NN && ...
+    if N_col > 1 && OPT_ERW == 1 && ...
             all(cellfun(@(x) isfield(x,'init') && x.init,ERW))
         [ERW,erw_ldiag] = ERW_Lateral_Transport( ...
-            ERW,topo,ldiag.Q_edge,theta_cell,Zlayer_m,bio_active_fraction,dth);
+            ERW,topo,ldiag.Q_edge,theta_cell,Zlayer_m,bio_active_fraction, ...
+            dth,Ca(i)/22.41);
         lateral_diag.erw_mass_buf_to_main_umol(j,:) = ...
             lateral_diag.erw_mass_buf_to_main_umol(j,:) + erw_ldiag.buf_to_main.aqueous_umol.';
         lateral_diag.erw_CO2_buf_to_main_umol(j) = ...
@@ -865,6 +865,8 @@ Domain.PH_d          = squeeze(PH_d)    * w_col.';
 Domain.NO3_pool      = squeeze(P(:,32,:))* w_col.';
 Domain.lateral       = lateral_diag;
 Domain.exit_water_vert_m3 = exit_water_vert_m3;
+Domain.exit_water_surface_m3 = exit_water_surface_m3;
+Domain.exit_water_total_m3 = exit_water_vert_m3+exit_water_surface_m3;
 Domain.cell_region   = topo.cell_region;
 Domain.cell_area_m2  = A_cell;
 

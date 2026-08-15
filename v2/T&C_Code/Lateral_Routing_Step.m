@@ -1,4 +1,4 @@
-function [theta_cell, dM_cell, diag, T_cell] = Lateral_Routing_Step( ...
+function [theta_cell, dM_cell, diag, T_cell, Oice_cell] = Lateral_Routing_Step( ...
     topo, theta_cell, C_aq_cell, soilpar_cell, Zlayer_m, dt_h, thermal, ...
     solute_active_fraction)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -24,7 +24,8 @@ function [theta_cell, dM_cell, diag, T_cell] = Lateral_Routing_Step( ...
 %%   Zlayer_m      [1 x ms] soil layer thickness [m]
 %%   dt_h          hydrologic timestep [h]
 %%   thermal       optional struct with T_cell [degC], lambda_cell [W/m/K],
-%%                 cv_cell [J/m3/K], and Oice_cell [m3/m3]
+%%                 capp_cell [J/m3/K], Oice_cell [m3/m3], per-column
+%%                 parameters, pressure, and the frozen-soil option
 %%   solute_active_fraction  optional [N_cells x ms] fraction of each
 %%                 layer represented by the biogeochemical pools
 %%
@@ -36,6 +37,7 @@ function [theta_cell, dM_cell, diag, T_cell] = Lateral_Routing_Step( ...
 %%                 .buf_to_main.water  net water buffer->main this step [m3]
 %%                 .buf_to_main.net    [N_species x 1] net mass buffer->main
 %%   T_cell        updated soil temperature [degC], or [] without thermal input
+%%   Oice_cell     updated equilibrium ice content [m3/m3]
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 N_cells = topo.N_cells;
@@ -55,10 +57,11 @@ if isempty(thermal)
     Oice_cell = zeros(N_cells,ms);
     T_cell = [];
 else
-    required = {'T_cell','lambda_cell','cv_cell','Oice_cell'};
+    required = {'T_cell','lambda_cell','capp_cell','Oice_cell', ...
+        'parameter_cell','Pre','OPT_FR_SOIL'};
     if ~isstruct(thermal) || ~all(isfield(thermal,required))
         error('Lateral_Routing_Step:BadThermal', ...
-            'thermal must contain T_cell, lambda_cell, cv_cell, and Oice_cell.');
+            'thermal is missing the temperature, phase, or parameter state.');
     end
     Oice_cell = thermal.Oice_cell;
     T_cell = thermal.T_cell;
@@ -83,11 +86,12 @@ M_aq_cell = C_aq_cell .* reshape(Vw_layer,N_cells,ms,1);
 if isempty(thermal)
     heat_diag = struct('advective_edge_J',zeros(topo.N_edges,ms), ...
         'conductive_edge_J',zeros(topo.N_edges,ms), ...
-        'sub_steps',0,'energy_residual_J',0);
+        'sub_steps',0,'energy_residual_J',0,'energy_scale_J',1, ...
+        'energy_residual_relative',0);
 else
-    [T_cell,heat_diag] = Soil_Lateral_Heat_Transport( ...
+    [T_cell,heat_diag,theta_cell,Oice_cell] = Soil_Lateral_Heat_Transport( ...
         topo,Q_edge,theta_before,theta_cell,T_cell,thermal.lambda_cell, ...
-        thermal.cv_cell,Zlayer_m,dt_h);
+        thermal.capp_cell,Zlayer_m,dt_h,thermal);
 end
 
 %% --- 4. Buffer <-> main diagnostic ------------------------------------

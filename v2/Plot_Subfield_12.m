@@ -10,8 +10,8 @@ function [summary,fig,plot_file,time_fig,time_plot_file] = Plot_Subfield_12(vara
 %%   Runs             complete treatment groups  [1:12]
 %%   NDays            shortened-run filename tag []
 %%   Visible          figure visibility          ['on']
-%%   OutputFile       output PNG                  [summary in result folder]
-%%   TimeOutputFile   time-dynamics PNG           [time dynamics in result folder]
+%%   OutputFile       output PNG and companion FIG [summary in result folder]
+%%   TimeOutputFile   output PNG and companion FIG [time dynamics in result folder]
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 here = fileparts(mfilename('fullpath'));
@@ -236,7 +236,11 @@ else
     plot_file = char(opt.OutputFile);
 end
 exportgraphics(fig,plot_file,'Resolution',200);
+[plot_folder,plot_name] = fileparts(plot_file);
+fig_file = fullfile(plot_folder,[plot_name '.fig']);
+savefig(fig,fig_file);
 fprintf('Saved: %s\n',plot_file);
+fprintf('Saved: %s\n',fig_file);
 
 time_fig = figure('Color','w','Visible',char(opt.Visible), ...
     'Name',time_name);
@@ -324,7 +328,11 @@ else
     time_plot_file = char(opt.TimeOutputFile);
 end
 exportgraphics(time_fig,time_plot_file,'Resolution',200);
+[time_plot_folder,time_plot_name] = fileparts(time_plot_file);
+time_fig_file = fullfile(time_plot_folder,[time_plot_name '.fig']);
+savefig(time_fig,time_fig_file);
 fprintf('Saved: %s\n',time_plot_file);
+fprintf('Saved: %s\n',time_fig_file);
 
 end
 

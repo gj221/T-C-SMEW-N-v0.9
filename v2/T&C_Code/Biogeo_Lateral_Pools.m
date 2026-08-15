@@ -4,9 +4,9 @@ function [P_out, mobile, names, pool_idx, fraction_fields] = Biogeo_Lateral_Pool
 %% P_in and dM have one row per cell. Pool units remain gX/m2.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-names = {'DOC','DON','DOP','NH4','NO3','P','K','Ca','Mg','Si'};
-pool_idx = {[12 13],33,47,31,32,43,52,60,68,76};
-fraction_fields = {'aDOC','aDON','aDOP','aNH4','aNO3', ...
+names = {'DOC_bacteria','DOC_fungi','DON','DOP','NH4','NO3','P','K','Ca','Mg','Si'};
+pool_idx = {12,13,33,47,31,32,43,52,60,68,76};
+fraction_fields = {'aDOC','aDOC','aDON','aDOP','aNH4','aNO3', ...
                    'aP','aK','aCa','aMg','aSi'};
 
 if ~(isnumeric(P_in) && ismatrix(P_in) && size(P_in,2) >= 76)

@@ -619,7 +619,7 @@ end
 
 %%
 % structure containing biogeochemical variables
-ERW_biogeochem_varnames = {'pH';'CO2_air';'Ca';'Mg';'K';'Na';'An';'Al';'AlOH4';'Si';'PO4';'NO3';'NH4';'H';
+ERW_biogeochem_varnames = {'pH';'CO2_air';'Ca';'Mg';'K';'Na';'An';'Al';'AlOH';'AlOH2';'AlOH3';'AlOH4';'Si';'PO4';'NO3';'NH4';'H';
     'Ca_tot';'Mg_tot';'K_tot';'Na_tot';'An_tot';'Al_tot';'Si_tot';'PO4_tot';'NO3_tot';'NH4_tot';'IC_tot';'CEC_tot';'K_CEC';
     'R_alk';'Fs';'DIC';'CaCO3';'MgCO3';'f_Ca';'f_Mg';'f_K';'f_Na';'f_Al';'f_H';'f_CEC';'M_min';'CO2_w';'Alk';'Alk_tot';'k_H';'ADV';'DIC_rain';'D';'CO3';...
     'Al_w';'HCO3';'Leak_Na';'Leak_Al';'Leak_An';'Leak_DIC';'Na_uptake';'An_uptake'};
