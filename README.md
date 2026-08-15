@@ -52,6 +52,16 @@ harvested fruit/grain carbon in g C m^-2, so prairie PFTs contribute zero
 yield. Both productivity metrics use the full 3600 m^2 domain area as the
 denominator.
 
+The completed 1-D runs can be plotted before the 2-D runs finish:
+
+```matlab
+[summary1D,fig1D,~,timeFig1D] = Plot_Subfield_12('Runs',10:12);
+savefig(fig1D,fullfile('SIM','Subfield_12','Vertical_1D_summary.fig'))
+savefig(timeFig1D,fullfile('SIM','Subfield_12','Vertical_1D_time_dynamics.fig'))
+```
+
+This writes updated six-panel PNG and FIG outputs for runs 10 to 12 only.
+
 From an open MATLAB session in `v2`:
 
 ```matlab
