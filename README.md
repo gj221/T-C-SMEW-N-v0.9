@@ -46,7 +46,11 @@ The plotting command writes `Subfield_12_summary.png` and
 `Subfield_12_time_dynamics.png` to `v2/SIM/Subfield_12`. The time plot
 has one column for each scenario group and shows control, basalt and
 calcite through time for cumulative N2O, cumulative nitrate leaching,
-the soil nitrate pool and soil pH.
+the soil nitrate pool, pore-water pH, vegetation NPP and cumulative crop
+yield. Vegetation NPP includes crop and prairie PFTs. Crop yield is
+harvested fruit/grain carbon in g C m^-2, so prairie PFTs contribute zero
+yield. Both productivity metrics use the full 3600 m^2 domain area as the
+denominator.
 
 From an open MATLAB session in `v2`:
 
