@@ -689,6 +689,7 @@ N2flx = (1-rN2O)*DENITflx; %% [gN/gsoil d] N2 emission
 N2Oflx = N2Oflx_nit + rN2O*DENITflx; %% [gN/gsoil d] total N2O emission
 %%%%%
 %%%%%%% Porporato et al., 2003
+imm_cut = zeros(1,4); %%% [gN/gsoil d] unmet demand withheld from microbes
 if NMIN_IN >= 0
     NH4_in = 0.90*NMIN_IN; %%% [gN/gsoil d] Mineralization NH4
     NO3_in = 0.10*NMIN_IN; %%% [gN/gsoil d] Mineralization NO3
@@ -715,7 +716,21 @@ else
     end
     NH4_in = -NH4_imm/dtd;
     NO3_in = -NO3_imm/dtd;
-    Norg_imm = (-NMIN_IN*dtd-mineral_imm)/dtd;
+    %%% The organic-N draw cannot exceed the SOM nitrogen actually present.
+    %%% Whatever demand neither mineral N nor SOM N can meet is withheld
+    %%% from the microbial pools in proportion to their gross
+    %%% immobilization, so total N stays conserved.
+    Norg_dem = (-NMIN_IN*dtd-mineral_imm)/dtd;
+    Norg_imm = min(Norg_dem,max(0,B(26))/dtd);
+    N_imm_deficit = Norg_dem - Norg_imm;
+    if N_imm_deficit > 0
+        imm_gross = [Nimm_b + N_imm_fix_b*dtd, Nimm_f + N_imm_fix_f*dtd, ...
+            Nimm_am, Nimm_em]/dtd;
+        imm_gross_tot = sum(imm_gross);
+        if imm_gross_tot > 0
+            imm_cut = N_imm_deficit*imm_gross/imm_gross_tot;
+        end
+    end
 end
 %%%%%
 S_DON = 0.01*B(33); %% Stabilization DON
@@ -933,10 +948,10 @@ dB(23)=  IS.N_sur_lit - (D1)/CN_met_sur_lit - (D2+D3)/CN_str_sur_lit ; %%% B23 N
 dB(24)=  IS.N_wod_lit - (D4+D5)/CN_wod_lit;%%% B24 Nitrogen Above-ground Woody
 dB(25)=  IS.N_ssr_lit - (D6)/CN_met_ssr_lit -(D7+D8)/CN_str_ssr_lit;%%% B25 Nitrogen Below-ground Litter
 dB(26)=  Ip_som_nit - (fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CN_som  + (F8b/CN_bac + F8f/CN_fun + F8am/CN_mycAM + F8em/CN_mycEM) -FewN + S_DON - Norg_imm; %%% B26 Nitrogen SOM
-dB(27)=  (1-lambda_N)*(fd*(F2c_b) + (F3_b))/CN_som  - F8b/CN_bac + (N_imm_fix_b*dtd+Nimm_b-Nmin_b)/dtd;  %%% B27 Nitrogen Bacteria
-dB(28)=  (1-lambda_N)*(fd*(F2l + F2c_f) + (F3_f))/CN_som  - F8f/CN_fun + (N_imm_fix_f*dtd+Nimm_f-Nmin_f)/dtd; %%% B28 Nitrogen Fungi S
-dB(29)=  (Nimm_am-Nmin_am)/dtd - F8am/CN_mycAM ; %% B29 Nitrogen AM Mycorrhizal
-dB(30)=  (Nimm_em-Nmin_em)/dtd - F8em/CN_mycEM ; %% B30 Nitrogen EM Mycorrhizal
+dB(27)=  (1-lambda_N)*(fd*(F2c_b) + (F3_b))/CN_som  - F8b/CN_bac + (N_imm_fix_b*dtd+Nimm_b-Nmin_b)/dtd - imm_cut(1);  %%% B27 Nitrogen Bacteria
+dB(28)=  (1-lambda_N)*(fd*(F2l + F2c_f) + (F3_f))/CN_som  - F8f/CN_fun + (N_imm_fix_f*dtd+Nimm_f-Nmin_f)/dtd - imm_cut(2); %%% B28 Nitrogen Fungi S
+dB(29)=  (Nimm_am-Nmin_am)/dtd - F8am/CN_mycAM - imm_cut(3); %% B29 Nitrogen AM Mycorrhizal
+dB(30)=  (Nimm_em-Nmin_em)/dtd - F8em/CN_mycEM - imm_cut(4); %% B30 Nitrogen EM Mycorrhizal
 dB(31)=  Incoming_N + (1-f_org_lea)*Ip_lea_nit  +  NH4_in  - NO3flx  - NH4_Uptake - LEAK_NH4 - VOL;  %%% B31 Nitrogen Ione Ammonium NH4+
 dB(32)=  NO3_in + NO3flx - N2Oflx_nit - NO3_Uptake - LEAK_NO3 - DENITflx;%%% B32 Nitrogen Nitrate NO3-
 dB(33) = f_org_lea*Ip_lea_nit + (lambda_N)*(fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CN_som  - LEAK_DON - S_DON;  %%% B33 DON

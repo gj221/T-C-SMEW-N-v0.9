@@ -185,6 +185,45 @@ Ca_Uptake=sum(Ca_Uptake_H.*(1-SupCa_H) + Ca_Uptake_L.*(1-SupCa_L));
 Mg_Uptake=sum(Mg_Uptake_H.*(1-SupMg_H) + Mg_Uptake_L.*(1-SupMg_L));
 Si_Uptake=sum(Si_Uptake_H.*(1-SupSi_H) + Si_Uptake_L.*(1-SupSi_L));
 
+%%%%%%% Joint uptake/leaching limit on the dissolved mineral pools.
+%%%%%%% Biogeo_uptake caps each PFT at Ccrown*B(p) and Biogeo_Leakage caps
+%%%%%%% leaching at B(p) independently, so the two sinks can together
+%%%%%%% withdraw more than the pool holds and drive B(p) negative. Scale
+%%%%%%% the per-PFT uptake so uptake + leaching never exceeds the pool.
+%%%%%%% Leaching keeps priority because Biogeo_Leakage is already bounded.
+uptake_pool_idx = [31 32 43 52 60 68 76];
+uptake_leak = [LEAK_NH4 LEAK_NO3 LEAK_P LEAK_K LEAK_Ca LEAK_Mg LEAK_Si];
+uptake_total = [NH4_Uptake NO3_Uptake P_Uptake K_Uptake ...
+    Ca_Uptake Mg_Uptake Si_Uptake];
+uptake_scale = ones(1,numel(uptake_pool_idx));
+for iu = 1:numel(uptake_pool_idx)
+    headroom = max(0,Ptm1(uptake_pool_idx(iu)) - uptake_leak(iu));
+    if uptake_total(iu) > headroom
+        uptake_scale(iu) = headroom/uptake_total(iu);
+    end
+end
+NH4_Uptake_H = NH4_Uptake_H*uptake_scale(1);
+NH4_Uptake_L = NH4_Uptake_L*uptake_scale(1);
+NO3_Uptake_H = NO3_Uptake_H*uptake_scale(2);
+NO3_Uptake_L = NO3_Uptake_L*uptake_scale(2);
+P_Uptake_H   = P_Uptake_H*uptake_scale(3);
+P_Uptake_L   = P_Uptake_L*uptake_scale(3);
+K_Uptake_H   = K_Uptake_H*uptake_scale(4);
+K_Uptake_L   = K_Uptake_L*uptake_scale(4);
+Ca_Uptake_H  = Ca_Uptake_H*uptake_scale(5);
+Ca_Uptake_L  = Ca_Uptake_L*uptake_scale(5);
+Mg_Uptake_H  = Mg_Uptake_H*uptake_scale(6);
+Mg_Uptake_L  = Mg_Uptake_L*uptake_scale(6);
+Si_Uptake_H  = Si_Uptake_H*uptake_scale(7);
+Si_Uptake_L  = Si_Uptake_L*uptake_scale(7);
+NH4_Uptake = NH4_Uptake*uptake_scale(1);
+NO3_Uptake = NO3_Uptake*uptake_scale(2);
+P_Uptake   = P_Uptake*uptake_scale(3);
+K_Uptake   = K_Uptake*uptake_scale(4);
+Ca_Uptake  = Ca_Uptake*uptake_scale(5);
+Mg_Uptake  = Mg_Uptake*uptake_scale(6);
+Si_Uptake  = Si_Uptake*uptake_scale(7);
+
 %%%%
 [BfixN]= Biogeo_Bio_fixation(AAET,LAI,Ptm1,RexmyI,Ts,opt_BfixN);
 %%%%%

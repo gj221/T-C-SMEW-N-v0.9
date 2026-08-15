@@ -192,8 +192,8 @@ function [Q_step, theta_new, scale] = darcy_step( ...
     topo, theta, Zlayer_m, K_cell, h_cell, dt_h, theta_lower, theta_upper)
 % scale in (0,1] is the fraction of dt_h actually applied.  scale<1 means
 % the candidate fluxes would have pushed a (cell,layer) outside
-% [0, Osat]; Q_step and dV are rescaled uniformly to land exactly on the
-% bound.  Mass-conservative: the unused fraction of dt_h is recovered by
+% [Ohy, Osat-Oice]; Q_step and dV are rescaled uniformly to land exactly
+% on the bound.  Mass-conservative: the unused fraction of dt_h is recovered by
 % the next iteration of the outer adaptive loop.
 N_cells = topo.N_cells;
 N_edges = topo.N_edges;
