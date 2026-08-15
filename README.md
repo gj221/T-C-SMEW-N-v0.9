@@ -94,12 +94,19 @@ written.
 
 Results go to `v2/SIM/Subfield_12`. Logs and worker status files go to
 `v2/logs/Subfield_12`. Existing results are skipped unless
-`'Overwrite',true` is passed. A one-day check uses:
+`'Overwrite',true` is passed. Use overwrite after a solver change so all
+comparisons use the same code. A one-day check uses:
 
 ```matlab
 Run_All_12_Parallel('MaxConcurrent',2,'NDays',1,'Overwrite',true)
 addpath(fullfile('T&C_Code','Tests')); test_subfield_12_smoke_results(1)
 Plot_Subfield_12('NDays',1)
+```
+
+The September 2019 mineral-N regression uses a small saved fixture:
+
+```matlab
+addpath(fullfile('T&C_Code','Tests')); test_no3_immobilization_replay
 ```
 
 Two 2-D workers is the default for a 32 GB machine. The three 1-D runs can

@@ -211,7 +211,10 @@ B(60)=B(60)-Ca_Uptake;%% Calcium  Mineral  solution
 B(68)=B(68)-Mg_Uptake;%% Magnesium  Mineral  solution
 B(76)=B(76)-Si_Uptake;%% Silicate  Mineral  solution
 
+%%% Mineral N reaction rates are zero-safe; retain physical depletion
+mineral_N = max(B([31 32]),0);
 B(B<=0)=1e-15;
+B([31 32]) = mineral_N;
 %%%% Decay Constant on a 40�C basis (Kirschbaum 2002)
 k_met_sur = BiogeoPar.k_met_sur; %%[1/day]
 k_str_sur = BiogeoPar.k_str_sur; %% %[1/day]
@@ -651,40 +654,6 @@ N_imm_fix_f = 0.011*(B(32))/dtd; %% [gN/gsoil day] %% Continous immobilization d
 NMIN = (Nmin_b + Nmin_f + Nmin_am + Nmin_em)/dtd; %% [gN/gsoil day]
 NIMM = (Nimm_b + Nimm_f + Nimm_am + Nimm_em  + N_imm_fix_f*dtd + N_imm_fix_b*dtd)/dtd; %% [gN/gsoil day]
 NMIN_IN = NMIN - NIMM; %% [gN/gsoil day]
-%%%%%%% NH4/NO3 partition of net mineralization: 90:10 Porporato et al., 2003
-%%%%%%% Under net immobilization (NMIN_IN < 0) the demand is instead charged in
-%%%%%%% proportion to the pool sizes, so the fixed 10% share cannot overdraw the
-%%%%%%% NO3 pool when it is much smaller than NH4
-if NMIN_IN >= 0
-    f_NH4_min = 0.90;
-    f_NO3_min = 0.10;
-else
-    if B(31) + B(32) > 0
-        f_NO3_min = B(32)/(B(31) + B(32));
-    else
-        f_NO3_min = 0.10;
-    end
-    f_NH4_min = 1 - f_NO3_min;
-end
-%%%%%%%%%%%%%
-if  B(31) + NMIN_IN < 0
-    Norg_imm = -NMIN_IN - B(31);
-    %NIMM_M = B(31) + NMIN;
-    B(31)=0;
-    %Nimm_b = Nimm_b*NIMM_M/NIMM;
-    %Nimm_f = Nimm_f*NIMM_M/NIMM;
-    %Nimm_am = Nimm_am*NIMM_M/NIMM;
-    %Nimm_em = Nimm_em*NIMM_M/NIMM;
-    %N_imm_fix_f = N_imm_fix_f*NIMM_M/NIMM;
-    %N_imm_fix_b = N_imm_fix_b*NIMM_M/NIMM;
-else
-    Norg_imm = 0;
-end
-%NIMM = (Nimm_b + Nimm_f + Nimm_am + Nimm_em  + N_imm_fix_f*dtd + N_imm_fix_b*dtd)/dtd; %% [gN/gsoil day]
-%NMIN_IN = NMIN - NIMM; %% [gN/gsoil day]
-%%%%%%% Porporato et al., 2003
-NH4_in = f_NH4_min*NMIN_IN; %%% [gN/gsoil d] Mineralization - Immoblization NH4
-NO3_in = f_NO3_min*NMIN_IN; %%% [gN/gsoil d]
 %%%% External source, Biological fixation, deposition, fertilization
 %%%  added as NH4 only to simplifiy -->  Dickinson et al., 2002
 Incoming_N = (FertN + DepN + BfixN)/(ZBIOG*rsd);  %% [gN/ gsoil d]
@@ -718,6 +687,36 @@ DENITflx = KNmax*ftemp*fmoist*fpH_den*B(32); %% [gN/gsoil d] total denitrificati
 rN2O = 1/(1+exp(BiogeoPar.k_rN2O*(PH-BiogeoPar.pH0_rN2O))); %% [-]
 N2flx = (1-rN2O)*DENITflx; %% [gN/gsoil d] N2 emission
 N2Oflx = N2Oflx_nit + rN2O*DENITflx; %% [gN/gsoil d] total N2O emission
+%%%%%
+%%%%%%% Porporato et al., 2003
+if NMIN_IN >= 0
+    NH4_in = 0.90*NMIN_IN; %%% [gN/gsoil d] Mineralization NH4
+    NO3_in = 0.10*NMIN_IN; %%% [gN/gsoil d] Mineralization NO3
+    Norg_imm = 0;
+else
+    %%% Immobilization is limited by mineral N remaining after other sinks
+    NH4_avail = max(0,B(31) + dtd*(Incoming_N + ...
+        (1-f_org_lea)*Ip_lea_nit - NO3flx - LEAK_NH4 - VOL));
+    NO3_avail = max(0,B(32) + dtd*(NO3flx - N2Oflx_nit - ...
+        LEAK_NO3 - DENITflx));
+    mineral_avail = NH4_avail + NO3_avail;
+    mineral_imm = min(-NMIN_IN*dtd,mineral_avail);
+    if mineral_avail > 0
+        if mineral_imm == mineral_avail
+            NH4_imm = NH4_avail;
+            NO3_imm = NO3_avail;
+        else
+            NH4_imm = mineral_imm*NH4_avail/mineral_avail;
+            NO3_imm = mineral_imm-NH4_imm;
+        end
+    else
+        NH4_imm = 0;
+        NO3_imm = 0;
+    end
+    NH4_in = -NH4_imm/dtd;
+    NO3_in = -NO3_imm/dtd;
+    Norg_imm = (-NMIN_IN*dtd-mineral_imm)/dtd;
+end
 %%%%%
 S_DON = 0.01*B(33); %% Stabilization DON
 %%%%%%%%%%%%%%%%%%%%%%%%
@@ -938,8 +937,8 @@ dB(27)=  (1-lambda_N)*(fd*(F2c_b) + (F3_b))/CN_som  - F8b/CN_bac + (N_imm_fix_b*
 dB(28)=  (1-lambda_N)*(fd*(F2l + F2c_f) + (F3_f))/CN_som  - F8f/CN_fun + (N_imm_fix_f*dtd+Nimm_f-Nmin_f)/dtd; %%% B28 Nitrogen Fungi S
 dB(29)=  (Nimm_am-Nmin_am)/dtd - F8am/CN_mycAM ; %% B29 Nitrogen AM Mycorrhizal
 dB(30)=  (Nimm_em-Nmin_em)/dtd - F8em/CN_mycEM ; %% B30 Nitrogen EM Mycorrhizal
-dB(31)=  Incoming_N + (1-f_org_lea)*Ip_lea_nit  +  NH4_in  - NO3flx  - NH4_Uptake - LEAK_NH4 - VOL + f_NH4_min*Norg_imm;  %%% B31 Nitrogen Ione Ammonium NH4+
-dB(32)=  NO3_in + NO3flx - N2Oflx_nit - NO3_Uptake - LEAK_NO3 - DENITflx + f_NO3_min*Norg_imm ;%%% B32 Nitrogen Nitrate NO3-
+dB(31)=  Incoming_N + (1-f_org_lea)*Ip_lea_nit  +  NH4_in  - NO3flx  - NH4_Uptake - LEAK_NH4 - VOL;  %%% B31 Nitrogen Ione Ammonium NH4+
+dB(32)=  NO3_in + NO3flx - N2Oflx_nit - NO3_Uptake - LEAK_NO3 - DENITflx;%%% B32 Nitrogen Nitrate NO3-
 dB(33) = f_org_lea*Ip_lea_nit + (lambda_N)*(fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CN_som  - LEAK_DON - S_DON;  %%% B33 DON
 dB(34) = FewN; %%  B34 Earthworm -N
 %%%%%%
