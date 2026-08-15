@@ -44,12 +44,13 @@ matlab -batch "cd('v2'); Plot_Subfield_12"
 
 The plotting command writes `Subfield_12_summary.png` and
 `Subfield_12_time_dynamics.png` to `v2/SIM/Subfield_12`. The time plot
-has one column for each scenario group and shows control, basalt and
-calcite through time for cumulative N2O, cumulative nitrate leaching,
-the soil nitrate pool, pore-water pH, vegetation NPP and cumulative crop
-yield. Vegetation NPP includes crop and prairie PFTs. Crop yield is
+uses two columns per scenario group and no more than three stacked rows.
+It shows control, basalt and calcite through time for cumulative N2O,
+cumulative nitrate leaching, the soil nitrate pool, pore-water pH, NEE
+and cumulative crop yield. NEE is respiration minus crown-weighted NPP;
+positive values are carbon release to the atmosphere. Crop yield is
 harvested fruit/grain carbon in g C m^-2, so prairie PFTs contribute zero
-yield. Both productivity metrics use the full 3600 m^2 domain area as the
+yield. Both carbon metrics use the full 3600 m^2 domain area as the
 denominator.
 
 The completed 1-D runs can be plotted before the 2-D runs finish:
@@ -61,6 +62,16 @@ savefig(timeFig1D,fullfile('SIM','Subfield_12','Vertical_1D_time_dynamics.fig'))
 ```
 
 This writes updated six-panel PNG and FIG outputs for runs 10 to 12 only.
+When runs 1 to 9 finish, the three 2-D groups can be plotted without
+reloading the 1-D results:
+
+```matlab
+Plot_Subfield_12('Runs',1:9)
+```
+
+This writes `Subfield_2D_summary.png` and
+`Subfield_2D_time_dynamics.png`. Calling `Plot_Subfield_12` without a
+`Runs` option still plots all 12 scenarios together.
 
 From an open MATLAB session in `v2`:
 

@@ -1,8 +1,9 @@
 function [summary,fig,plot_file,time_fig,time_plot_file] = Plot_Subfield_12(varargin)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Plot summary values and daily dynamics for complete treatment groups.
-%% Vegetation NPP includes crop and prairie PFTs. Yield uses the Kantola
-%% low crop PFTs only. Both are normalised by the full domain area.
+%% NEE follows the TC sign convention: positive is carbon released to the
+%% atmosphere. Yield uses the Kantola low crop PFTs only. Both are
+%% normalised by the full domain area.
 %%
 %% Options
 %%   ResultDirectory  result folder              [SIM/Subfield_12]
@@ -59,15 +60,17 @@ n2o = nan(n,1);
 no3_leach = nan(n,1);
 no3_final = nan(n,1);
 ph_final = nan(n,1);
-vegetation_npp = nan(n,1);
+nee = nan(n,1);
 crop_harvest = nan(n,1);
 Date_d = datetime.empty(0,1);
 n2o_daily = [];
 no3_leach_daily = [];
 no3_pool_daily = [];
 ph_daily = [];
-vegetation_npp_daily = [];
+nee_daily = [];
 crop_harvest_daily = [];
+carbon_fields = {'NPP_H','NPP_L','Ccrown_t','R_litter','R_microbe','R_ew'};
+result_fields = {'R','Domain','Datam','RB_L','topo','ColCfg'};
 for i = 1:n
     run_id = RM(i).id;
     tag = RM(i).name;
@@ -77,8 +80,17 @@ for i = 1:n
     if ~isfile(result_file)
         error('Plot_Subfield_12:MissingResult','Result not found: %s',result_file);
     end
-    S = load(result_file,'R','Domain','Datam', ...
-        'NPP_H','NPP_L','Ccrown_t','RB_L','topo','ColCfg');
+    saved = whos('-file',result_file);
+    saved_names = {saved.name};
+    if ~all(ismember(carbon_fields,saved_names))
+        error('Plot_Subfield_12:IncompleteCarbonResult', ...
+            'Carbon state is incomplete in %s.',result_file);
+    end
+    if ~all(ismember(result_fields,saved_names))
+        error('Plot_Subfield_12:IncompleteResult', ...
+            'Required result state is incomplete in %s.',result_file);
+    end
+    S = load(result_file,result_fields{:},carbon_fields{:});
     if ~isfield(S,'R') || ~isfield(S,'Domain') || ...
             S.R.id ~= run_id || ~strcmp(S.R.name,RM(i).name)
         error('Plot_Subfield_12:WrongResult', ...
@@ -112,7 +124,7 @@ for i = 1:n
     end
     run_date = datetime(S.Datam(1,1),S.Datam(1,2),S.Datam(1,3)) + ...
         caldays((0:n_time(1)-1).');
-    [run_vegetation_npp,run_crop_harvest] = vegetation_dynamics( ...
+    [run_nee,run_crop_harvest] = carbon_dynamics( ...
         S,n_time(1),result_file);
     if i == 1
         Date_d = run_date;
@@ -120,7 +132,7 @@ for i = 1:n
         no3_leach_daily = zeros(n_time(1),n);
         no3_pool_daily = zeros(n_time(1),n);
         ph_daily = zeros(n_time(1),n);
-        vegetation_npp_daily = zeros(n_time(1),n);
+        nee_daily = zeros(n_time(1),n);
         crop_harvest_daily = zeros(n_time(1),n);
     elseif ~isequal(run_date,Date_d)
         error('Plot_Subfield_12:TimeAxisMismatch', ...
@@ -131,22 +143,22 @@ for i = 1:n
     no3_leach_daily(:,i) = S.Domain.LEAK_NO3(:); %#ok<AGROW>
     no3_pool_daily(:,i) = S.Domain.NO3_pool(:); %#ok<AGROW>
     ph_daily(:,i) = S.Domain.PH_d(:); %#ok<AGROW>
-    vegetation_npp_daily(:,i) = run_vegetation_npp; %#ok<AGROW>
+    nee_daily(:,i) = run_nee; %#ok<AGROW>
     crop_harvest_daily(:,i) = run_crop_harvest; %#ok<AGROW>
     n2o(i) = sum(n2o_daily(:,i));
     no3_leach(i) = sum(no3_leach_daily(:,i));
     no3_final(i) = no3_pool_daily(end,i);
     ph_final(i) = ph_daily(end,i);
-    vegetation_npp(i) = sum(vegetation_npp_daily(:,i));
+    nee(i) = sum(nee_daily(:,i));
     crop_harvest(i) = sum(crop_harvest_daily(:,i));
 end
 
 summary = table([RM.id].',string({RM.layout}).',string({RM.treatment}).', ...
-    n2o,no3_leach,no3_final,ph_final,vegetation_npp,crop_harvest, ...
+    n2o,no3_leach,no3_final,ph_final,nee,crop_harvest, ...
     'VariableNames',{'RunID','ScenarioGroup','Treatment', ...
     'CumulativeN2O_gN_m2','CumulativeNO3Leaching_gN_m2', ...
     'FinalNO3Pool_gN_m2','FinalPoreWaterPH', ...
-    'CumulativeVegetationNPP_gC_m2','CumulativeCropYield_gC_m2'});
+    'CumulativeNEE_gC_m2','CumulativeCropYield_gC_m2'});
 
 all_group_labels = {'Whole field','Margin with crop', ...
     'Margin with prairie','Vertical 1-D'};
@@ -161,6 +173,12 @@ if isequal(run_ids,1:12)
     time_name = 'T&C-SMEW-N twelve-scenario time dynamics';
     summary_title = 'Treatment response across four scenario groups';
     time_title = 'Treatment dynamics across four scenario groups';
+elseif isequal(run_ids,1:9)
+    output_stem = 'Subfield_2D';
+    summary_name = 'T&C-SMEW-N 2-D scenario summary';
+    time_name = 'T&C-SMEW-N 2-D scenario time dynamics';
+    summary_title = 'Treatment response across three 2-D scenario groups';
+    time_title = 'Treatment dynamics across three 2-D scenario groups';
 elseif n_group == 1
     output_stem = all_group_stems{group_ids};
     summary_name = sprintf('T&C-SMEW-N %s summary',group_labels{1});
@@ -193,7 +211,7 @@ summary_axes(4) = nexttile(tl);
 draw_panel(summary_axes(4),ph_final,'Final pore-water pH','pH', ...
     group_labels,treatment_colors);
 summary_axes(5) = nexttile(tl);
-draw_panel(summary_axes(5),vegetation_npp,'Cumulative vegetation NPP', ...
+draw_panel(summary_axes(5),nee,'Cumulative NEE (+ to atmosphere)', ...
     'g C m^{-2} domain', ...
     group_labels,treatment_colors);
 summary_axes(6) = nexttile(tl);
@@ -222,62 +240,71 @@ fprintf('Saved: %s\n',plot_file);
 
 time_fig = figure('Color','w','Visible',char(opt.Visible), ...
     'Name',time_name);
-time_fig.Position(3:4) = [max(700,425*n_group) 1500];
-time_tl = tiledlayout(time_fig,6,n_group, ...
+time_fig.Position(3:4) = [max(1200,700*n_group) 1050];
+n_time_columns = 2*n_group;
+time_tl = tiledlayout(time_fig,3,n_time_columns, ...
     'TileSpacing','compact','Padding','compact');
 time_value = {cumsum(n2o_daily,1),cumsum(no3_leach_daily,1), ...
-    no3_pool_daily,ph_daily,vegetation_npp_daily, ...
+    no3_pool_daily,ph_daily,nee_daily, ...
     cumsum(crop_harvest_daily,1)};
 time_label = {'Cumulative N_2O','Cumulative NO_3 leaching', ...
-    'Soil NO_3 pool','Pore-water pH','Vegetation NPP', ...
+    'Soil NO_3 pool','Pore-water pH','NEE (+ to atmosphere)', ...
     'Cumulative crop yield'};
 time_units = {'g N m^{-2}','g N m^{-2}','g N m^{-2}','pH', ...
     'g C m^{-2} domain d^{-1}','g C m^{-2} domain'};
 time_tag = {'CumulativeN2O','CumulativeNO3Leaching','NO3Pool', ...
-    'PoreWaterPH','VegetationNPP','CumulativeCropYield'};
+    'PoreWaterPH','NEE','CumulativeCropYield'};
 application_dates = datetime([2016 11 10; 2017 11 10; ...
     2018 11 10; 2019 11 10]);
 application_dates = application_dates( ...
     application_dates >= Date_d(1) & application_dates <= Date_d(end));
 application_color = [0.45 0.45 0.45];
-time_axes = gobjects(6*n_group,1);
+time_axes = gobjects(6,n_group);
 legend_lines = gobjects(3,1);
 application_legend = gobjects(1);
-iax = 0;
-for row = 1:6
+for plot_row = 1:3
     for group = 1:n_group
-        iax = iax+1;
-        ax = nexttile(time_tl);
-        time_axes(iax) = ax;
-        ax.Tag = sprintf('TimeRow%dGroup%d',row,group);
-        ids = (group-1)*3+(1:3);
-        ln = plot(ax,Date_d,time_value{row}(:,ids),'LineWidth',1.15);
-        for treatment = 1:3
-            ln(treatment).Color = treatment_colors(treatment,:);
-        end
-        set(ln,'Tag',time_tag{row});
-        if ~isempty(application_dates)
-            marker = xline(ax,application_dates,':','Color',application_color, ...
-                'LineWidth',1.1,'Tag','FeedstockApplication');
-            if row == 1 && group == 1; application_legend = marker(1); end
-        end
-        format_time_axis(ax);
-        if row == 1; title(ax,group_labels{group},'Color','k'); end
-        if group == 1; ylabel(ax,time_units{row},'Color','k'); end
-        if row == 6; xlabel(ax,'Date','Color','k'); end
-        if group == 1
-            text(ax,0.02,0.96,time_label{row},'Units','normalized', ...
+        for pair_column = 1:2
+            measurement = 2*(plot_row-1)+pair_column;
+            tile_column = 2*(group-1)+pair_column;
+            tile_id = (plot_row-1)*n_time_columns+tile_column;
+            ax = nexttile(time_tl,tile_id);
+            time_axes(measurement,group) = ax;
+            ax.Tag = sprintf('TimeMetric%dGroup%d',measurement,group);
+            ids = (group-1)*3+(1:3);
+            ln = plot(ax,Date_d,time_value{measurement}(:,ids),'LineWidth',1.15);
+            for treatment = 1:3
+                ln(treatment).Color = treatment_colors(treatment,:);
+            end
+            set(ln,'Tag',time_tag{measurement});
+            if ~isempty(application_dates)
+                marker = xline(ax,application_dates,':','Color',application_color, ...
+                    'LineWidth',1.1,'Tag','FeedstockApplication');
+                if measurement == 1 && group == 1
+                    application_legend = marker(1);
+                end
+            end
+            format_time_axis(ax);
+            if plot_row == 1
+                title(ax,group_labels{group},'Color','k');
+            end
+            if group == 1
+                ylabel(ax,time_units{measurement},'Color','k');
+            end
+            if plot_row == 3; xlabel(ax,'Date','Color','k'); end
+            text(ax,0.02,0.96,time_label{measurement},'Units','normalized', ...
                 'VerticalAlignment','top','Color','k','FontWeight','bold');
+            if measurement == 1 && group == 1; legend_lines = ln; end
         end
-        if row == 1 && group == 1; legend_lines = ln; end
     end
 end
-linkaxes(time_axes,'x');
-set(time_axes(1:5*n_group),'XTickLabel',[]);
-for row = 1:6
-    ids = (row-1)*n_group+(1:n_group);
-    row_lim = vertcat(time_axes(ids).YLim);
-    set(time_axes(ids),'YLim',[min(row_lim(:,1)) max(row_lim(:,2))]);
+linkaxes(time_axes(:),'x');
+set(time_axes(1:4,:),'XTickLabel',[]);
+for measurement = 1:6
+    measurement_axes = time_axes(measurement,:);
+    measurement_lim = vertcat(measurement_axes.YLim);
+    set(measurement_axes,'YLim', ...
+        [min(measurement_lim(:,1)) max(measurement_lim(:,2))]);
 end
 legend_handles = legend_lines;
 legend_labels = treatment_labels;
@@ -301,21 +328,22 @@ fprintf('Saved: %s\n',time_plot_file);
 
 end
 
-function [vegetation_npp,crop_harvest] = vegetation_dynamics( ...
+function [nee,crop_harvest] = carbon_dynamics( ...
         S,n_time,result_file)
-required = {'NPP_H','NPP_L','Ccrown_t','RB_L','topo','ColCfg'};
+required = {'NPP_H','NPP_L','Ccrown_t','R_litter','R_microbe', ...
+    'R_ew','RB_L','topo','ColCfg'};
 if ~all(isfield(S,required)) || ~isstruct(S.topo) || ...
         ~isfield(S.topo,'cell_area_m2') || ~isstruct(S.ColCfg)
-    error('Plot_Subfield_12:IncompleteCropResult', ...
-        'Vegetation state is incomplete in %s.',result_file);
+    error('Plot_Subfield_12:IncompleteCarbonResult', ...
+        'Carbon state is incomplete in %s.',result_file);
 end
 
 A_cell = S.topo.cell_area_m2(:);
 n_col = numel(A_cell);
 if n_col < 1 || numel(S.ColCfg) ~= n_col || ...
         any(~isfinite(A_cell)) || any(A_cell <= 0)
-    error('Plot_Subfield_12:IncompleteCropResult', ...
-        'Vegetation cell areas or configuration are invalid in %s.',result_file);
+    error('Plot_Subfield_12:IncompleteCarbonResult', ...
+        'Carbon cell areas or configuration are invalid in %s.',result_file);
 end
 
 crop_cell = false(n_col,1);
@@ -324,16 +352,21 @@ for c = 1:n_col
             ~(ischar(S.ColCfg(c).PFT_OVERRIDE) || ...
             (isstring(S.ColCfg(c).PFT_OVERRIDE) && ...
             isscalar(S.ColCfg(c).PFT_OVERRIDE)))
-        error('Plot_Subfield_12:IncompleteCropResult', ...
+        error('Plot_Subfield_12:IncompleteCarbonResult', ...
             'Cell PFT configuration is incomplete in %s.',result_file);
     end
     crop_cell(c) = isempty(char(S.ColCfg(c).PFT_OVERRIDE));
 end
 
 if ~(isnumeric(S.NPP_H) && isnumeric(S.NPP_L) && ...
-        isnumeric(S.Ccrown_t) && isnumeric(S.RB_L))
+        isnumeric(S.Ccrown_t) && isnumeric(S.R_litter) && ...
+        isnumeric(S.R_microbe) && isnumeric(S.R_ew))
+    error('Plot_Subfield_12:CarbonTimeLengthMismatch', ...
+        'NEE arrays must be numeric in %s.',result_file);
+end
+if ~isnumeric(S.RB_L)
     error('Plot_Subfield_12:CropTimeLengthMismatch', ...
-        'Vegetation arrays must be numeric in %s.',result_file);
+        'Crop-removal arrays must be numeric in %s.',result_file);
 end
 cc = size(S.NPP_L,2);
 if cc < 1 || ...
@@ -343,31 +376,48 @@ if cc < 1 || ...
         size(S.NPP_L,3) ~= n_col || ...
         size(S.Ccrown_t,1) ~= n_time || size(S.Ccrown_t,2) ~= cc || ...
         size(S.Ccrown_t,3) ~= n_col || ...
-        size(S.RB_L,1) ~= n_time || size(S.RB_L,2) ~= cc || ...
+        size(S.R_litter,1) ~= n_time || size(S.R_litter,2) ~= 1 || ...
+        size(S.R_litter,3) ~= n_col || ...
+        size(S.R_microbe,1) ~= n_time || size(S.R_microbe,2) ~= 1 || ...
+        size(S.R_microbe,3) ~= n_col || ...
+        size(S.R_ew,1) ~= n_time || size(S.R_ew,2) ~= 1 || ...
+        size(S.R_ew,3) ~= n_col
+    error('Plot_Subfield_12:CarbonTimeLengthMismatch', ...
+        'NEE arrays do not match the daily domain dimensions in %s.',result_file);
+end
+if size(S.RB_L,1) ~= n_time || size(S.RB_L,2) ~= cc || ...
         size(S.RB_L,3) ~= 7 || size(S.RB_L,4) ~= n_col
     error('Plot_Subfield_12:CropTimeLengthMismatch', ...
-        'Productivity arrays do not match the daily domain dimensions in %s.',result_file);
+        'Crop-removal arrays do not match the daily domain dimensions in %s.',result_file);
 end
 if any(~isfinite(S.NPP_H(:))) || any(~isfinite(S.NPP_L(:))) || ...
-        any(~isfinite(S.Ccrown_t(:))) || ...
-        any(~isfinite(S.RB_L(:)))
+        any(~isfinite(S.Ccrown_t(:))) || any(~isfinite(S.R_litter(:))) || ...
+        any(~isfinite(S.R_microbe(:))) || any(~isfinite(S.R_ew(:)))
+    error('Plot_Subfield_12:NonfiniteCarbonMeasurement', ...
+        'NEE arrays contain nonfinite values in %s.',result_file);
+end
+if any(~isfinite(S.RB_L(:)))
     error('Plot_Subfield_12:NonfiniteCropMeasurement', ...
-        'Productivity arrays contain nonfinite values in %s.',result_file);
+        'Crop-removal arrays contain nonfinite values in %s.',result_file);
 end
 if any(S.Ccrown_t(:) < 0) || any(S.Ccrown_t(:) > 1)
-    error('Plot_Subfield_12:UnphysicalCropMeasurement', ...
+    error('Plot_Subfield_12:UnphysicalCarbonMeasurement', ...
         'Crown fractions must lie between zero and one in %s.',result_file);
 end
 
 NPP_H = reshape(S.NPP_H,n_time,cc,n_col);
 NPP_L = reshape(S.NPP_L,n_time,cc,n_col);
 Ccrown_t = reshape(S.Ccrown_t,n_time,cc,n_col);
+R_litter = reshape(S.R_litter,n_time,n_col);
+R_microbe = reshape(S.R_microbe,n_time,n_col);
+R_ew = reshape(S.R_ew,n_time,n_col);
 RB_L = reshape(S.RB_L,n_time,cc,7,n_col);
-vegetation_npp_cell = zeros(n_time,n_col);
+nee_cell = zeros(n_time,n_col);
 crop_harvest_cell = zeros(n_time,n_col);
 for c = 1:n_col
-    vegetation_npp_cell(:,c) = sum(Ccrown_t(:,:,c).* ...
+    ecosystem_npp = sum(Ccrown_t(:,:,c).* ...
         (NPP_H(:,:,c)+NPP_L(:,:,c)),2);
+    nee_cell(:,c) = R_litter(:,c)+R_microbe(:,c)+R_ew(:,c)-ecosystem_npp;
     if ~crop_cell(c); continue; end
     %% Both Kantola crops set fract_left_fr=0, so all B5 removal is yield.
     for k = 1:cc
@@ -378,7 +428,7 @@ for c = 1:n_col
     end
 end
 w_col = A_cell/sum(A_cell);
-vegetation_npp = vegetation_npp_cell*w_col;
+nee = nee_cell*w_col;
 crop_harvest = crop_harvest_cell*w_col;
 end
 
