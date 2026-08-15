@@ -44,8 +44,9 @@ matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRu
 matlab -batch "cd('v2'); Plot_Subfield_12"
 ```
 
-The plotting command writes `Subfield_12_summary.png` and
-`Subfield_12_time_dynamics.png` to `v2/SIM/Subfield_12`. The time plot
+The plotting command writes `Subfield_12_summary.png`,
+`Subfield_12_summary.fig`, `Subfield_12_time_dynamics.png` and
+`Subfield_12_time_dynamics.fig` to `v2/SIM/Subfield_12`. The time plot
 uses two columns per scenario group and no more than three stacked rows.
 It shows control, basalt and calcite through time for cumulative N2O,
 cumulative nitrate leaching, the soil nitrate pool, pore-water pH, NEE
@@ -58,9 +59,7 @@ denominator.
 The completed 1-D runs can be plotted before the 2-D runs finish:
 
 ```matlab
-[summary1D,fig1D,~,timeFig1D] = Plot_Subfield_12('Runs',10:12);
-savefig(fig1D,fullfile('SIM','Subfield_12','Vertical_1D_summary.fig'))
-savefig(timeFig1D,fullfile('SIM','Subfield_12','Vertical_1D_time_dynamics.fig'))
+Plot_Subfield_12('Runs',10:12)
 ```
 
 This writes updated six-panel PNG and FIG outputs for runs 10 to 12 only.
@@ -71,9 +70,9 @@ reloading the 1-D results:
 Plot_Subfield_12('Runs',1:9)
 ```
 
-This writes `Subfield_2D_summary.png` and
-`Subfield_2D_time_dynamics.png`. Calling `Plot_Subfield_12` without a
-`Runs` option still plots all 12 scenarios together.
+This writes PNG and FIG copies of `Subfield_2D_summary` and
+`Subfield_2D_time_dynamics`. Calling `Plot_Subfield_12` without a `Runs`
+option still plots all 12 scenarios together.
 
 From an open MATLAB session in `v2`:
 

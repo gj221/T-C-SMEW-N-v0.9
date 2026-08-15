@@ -9,7 +9,7 @@ function [ERW_data, ERW_TC, ERW_biogeochem, ERW_weathering, ERW_plant,ERW_var, E
         Ca, Mg, Na, K, An,...
         fsolve_options, Dw_0, D_0, Alk_rain, CO2_atm, CO2_air, Z_CO2, ...
         Ca_tot,Mg_tot, K_tot,Na_tot,An_tot,Al_tot,Si_tot, ...
-        Al, AlOH4, Si, ...
+        Al, AlOH, AlOH2, AlOH3, AlOH4, Si, ...
         R_alk,H, ...
         EW, IC_tot, Wr, psd, d, lamb, SSA,...
         Fs, DIC, ...
@@ -258,9 +258,12 @@ NH4_tot= NH4_tot(j_only)+dNH4_tot(1)*dtw;
 
 %% explicit mass balances
 % Biogeo Leak and plant uptake
+Al_dissolved = Al(j_only)+AlOH(j_only)+AlOH2(j_only)+ ...
+    AlOH3(j_only)+AlOH4(j_only);
 if keyword_add == 0
     Leak_Na = max(0,min([Na_tot(j_only)*f_Lk_biogeo, Na_tot(j_only), Lw(j_only)*1000*Na(j_only)]));
-    Leak_Al = max(0,min([(Al(j_only)+AlOH4(j_only))*n*Zrw*s*1000*f_Lk_biogeo*1e-3, Al_tot(j_only), Lw(j_only)*1000*(Al(j_only)+AlOH4(j_only))]));
+    Leak_Al = max(0,min([Al_dissolved*n*Zrw*s*1000*f_Lk_biogeo, ...
+        Al_tot(j_only), Lw(j_only)*1000*Al_dissolved]));
     Leak_An = max(0,min([An_tot(j_only)*f_Lk_biogeo, An_tot(j_only), Lw(j_only)*1000*An(j_only)]));
     Leak_DIC = max(0,min([IC_tot(j_only)*f_Lk_biogeo, IC_tot(j_only), Lw(j_only)*1000*DIC(j_only)]));
 
@@ -268,7 +271,8 @@ if keyword_add == 0
     An_uptake = max(0,min([An_tot(j_only)*f_T_biogeo, An_tot(j_only), Tw(j_only)*1000*An(j_only)]));
 else
     Leak_Na = max(0,min([Na_tot(j_only)*f_Lk_biogeo, Na_tot(j_only)]));
-    Leak_Al = max(0,min([(Al(j_only)+AlOH4(j_only))*n*Zrw*s*1000*f_Lk_biogeo*1e-3, Al_tot(j_only)]));
+    Leak_Al = max(0,min([Al_dissolved*n*Zrw*s*1000*f_Lk_biogeo, ...
+        Al_tot(j_only)]));
     Leak_An = max(0,min([An_tot(j_only)*f_Lk_biogeo, An_tot(j_only)]));
     Leak_DIC = max(0,min([IC_tot(j_only)*f_Lk_biogeo, IC_tot(j_only)]));
 
@@ -745,6 +749,5 @@ function [Omega] = Omega_sil(mineral, K, Ca, Mg, Na, Si, Al, PO4, CO3, H, K_sp, 
 
 
 end
-
 
 

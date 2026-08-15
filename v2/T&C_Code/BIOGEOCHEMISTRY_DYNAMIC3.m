@@ -211,10 +211,12 @@ B(60)=B(60)-Ca_Uptake;%% Calcium  Mineral  solution
 B(68)=B(68)-Mg_Uptake;%% Magnesium  Mineral  solution
 B(76)=B(76)-Si_Uptake;%% Silicate  Mineral  solution
 
-%%% Mineral N reaction rates are zero-safe; retain physical depletion
-mineral_N = max(B([31 32]),0);
-B(B<=0)=1e-15;
-B([31 32]) = mineral_N;
+%%% Retain physical inventory after plant uptake
+if any(~isfinite(B)) || any(B < 0)
+    error('BIOGEOCHEMISTRY_DYNAMIC3:InvalidPoolState', ...
+        'Biogeochemistry pools must be finite and nonnegative after uptake.');
+end
+B_physical = B;
 %%%% Decay Constant on a 40�C basis (Kirschbaum 2002)
 k_met_sur = BiogeoPar.k_met_sur; %%[1/day]
 k_str_sur = BiogeoPar.k_str_sur; %% %[1/day]
@@ -403,66 +405,27 @@ fT2(Ts <-31)=0; fT1(Ta <-31)=0;
 %%%%%%% C/N Ratios
 %%% Parton et all 1988 - Krinner et al 2005  Orwin et al 2011
 r_met_str_CN = 5; %% Ratio between metabolic and structural [C/N]
-N_met_sur = B(23)/(1+(B(2)+B(3))/(r_met_str_CN*(B(1)))); %%
-N_str_sur= B(23)-N_met_sur;
-f_str_sur = N_str_sur./B(23);
-N_met_ssr = B(25)/(1+(B(7)+B(8))/(r_met_str_CN*(B(6)))); %%[gN/gP]
-N_str_ssr = B(25)-N_met_ssr;
-f_str_ssr = N_str_ssr./B(25);
+f_str_sur = safe_fraction(B(2)+B(3), ...
+    r_met_str_CN*B(1)+B(2)+B(3));
+f_str_ssr = safe_fraction(B(7)+B(8), ...
+    r_met_str_CN*B(6)+B(7)+B(8));
 %%%%
-CN_met_sur_lit= (B(1))/N_met_sur; %% [gC/gN]
-CN_str_sur_lit= (B(2)+B(3))/N_str_sur; %% [gC/gN]
-CN_wod_lit= (B(4)+B(5))/B(24); %% [gC/gN]
-CN_met_ssr_lit= (B(6))/N_met_ssr; %% [gC/gN]
-CN_str_ssr_lit= (B(7)+B(8))/N_str_ssr; %% [gC/gN]
-CN_som = (B(9)+B(10)+B(11))/B(26); %% [gC/gN]
-CN_bac = B(18)/B(27); %% [gC/gN]
-CN_fun = B(19)/B(28); %% [gC/gN]
+CN_met_sur_lit= safe_ratio(B(1),(1-f_str_sur)*B_physical(23)); %% [gC/gN]
+CN_str_sur_lit= safe_ratio(B(2)+B(3),f_str_sur*B_physical(23)); %% [gC/gN]
+CN_wod_lit= safe_ratio(B(4)+B(5),B_physical(24)); %% [gC/gN]
+CN_met_ssr_lit= safe_ratio(B(6),(1-f_str_ssr)*B_physical(25)); %% [gC/gN]
+CN_str_ssr_lit= safe_ratio(B(7)+B(8),f_str_ssr*B_physical(25)); %% [gC/gN]
+CN_som = safe_ratio(B(9)+B(10)+B(11),B_physical(26)); %% [gC/gN]
+CN_bac = safe_ratio(B(18),B_physical(27)); %% [gC/gN]
+CN_fun = safe_ratio(B(19),B_physical(28)); %% [gC/gN]
 %CN_ew = B(22)/B(34); %% [gC/gN]
-CN_mycAM = B(20)/B(29); %% [gC/gN]
-CN_mycEM = B(21)/B(30); %% [gC/gN]
+CN_mycAM = safe_ratio(B(20),B_physical(29)); %% [gC/gN]
+CN_mycEM = safe_ratio(B(21),B_physical(30)); %% [gC/gN]
 %%%  C/P Ratios
-CP_met_sur_lit= (B(1))/((1-f_str_sur)*B(35)); %% [gC/gP]
-CP_str_sur_lit= (B(2)+B(3))/(f_str_sur*B(35)); %% [gC/gP]
-CP_wod_lit= (B(4)+B(5))/B(36); %% [gC/gP]
-CP_met_ssr_lit= (B(6))/((1-f_str_ssr)*B(37)); %% [gC/gP]
-CP_str_ssr_lit= (B(7)+B(8))/(f_str_ssr*B(37)); %% [gC/gP]
-CP_som = (B(9)+B(10)+B(11))/(B(38)); %% [gC/gP]
-CP_bac = B(18)/B(39); %% [gC/gP]
-CP_fun = B(19)/B(40); %% [gC/gP]
-CP_mycAM = B(20)/B(41); %% [gC/gP]
-CP_mycEM = B(21)/B(42); %% [gC/gP]
-%%% C/K Ratios
-CK_met_sur_lit= (B(1))/((1-f_str_sur)*B(48)); %% [gC/gK]
-CK_str_sur_lit= (B(2)+B(3))/(f_str_sur*B(48)); %% [gC/gK]
-CK_wod_lit= (B(4)+B(5))/B(49); %% [gC/gK]
-CK_met_ssr_lit= (B(6))/((1-f_str_ssr)*B(50)); %% [gC/gK]
-CK_str_ssr_lit= (B(7)+B(8))/(f_str_ssr*B(50)); %% [gC/gK]
-CK_som = (B(9)+B(10)+B(11))/B(51); %% [gC/gK]
-
-
-%%% C/Ca Ratios
-CCa_met_sur_lit= (B(1))/((1-f_str_sur)*B(56)); %% [gC/gCa]
-CCa_str_sur_lit= (B(2)+B(3))/(f_str_sur*B(56)); %% [gC/gCa]
-CCa_wod_lit= (B(4)+B(5))/B(57); %% [gC/gCa]
-CCa_met_ssr_lit= (B(6))/((1-f_str_ssr)*B(58)); %% [gC/gCa]
-CCa_str_ssr_lit= (B(7)+B(8))/(f_str_ssr*B(58)); %% [gC/gCa]
-CCa_som = (B(9)+B(10)+B(11))/B(59); %% [gC/gCa]
-%%% C/Mg Ratios
-CMg_met_sur_lit= (B(1))/((1-f_str_sur)*B(64)); %% [gC/gMg]
-CMg_str_sur_lit= (B(2)+B(3))/(f_str_sur*B(64)); %% [gC/gMg]
-CMg_wod_lit= (B(4)+B(5))/B(65); %% [gC/gMg]
-CMg_met_ssr_lit= (B(6))/((1-f_str_ssr)*B(66)); %% [gC/gMg]
-CMg_str_ssr_lit= (B(7)+B(8))/(f_str_ssr*B(66)); %% [gC/gMg]
-CMg_som = (B(9)+B(10)+B(11))/B(67); %% [gC/gMg]
-%%% C/Si Ratios
-CSi_met_sur_lit= (B(1))/((1-f_str_sur)*B(72)); %% [gC/gSi]
-CSi_str_sur_lit= (B(2)+B(3))/(f_str_sur*B(72)); %% [gC/gSi]
-CSi_wod_lit= (B(4)+B(5))/B(73); %% [gC/gSi]
-CSi_met_ssr_lit= (B(6))/((1-f_str_ssr)*B(74)); %% [gC/gSi]
-CSi_str_ssr_lit= (B(7)+B(8))/(f_str_ssr*B(74)); %% [gC/gSi]
-CSi_som = (B(9)+B(10)+B(11))/B(75); %% [gC/gSi]
-
+CP_bac = safe_ratio(B(18),B_physical(39)); %% [gC/gP]
+CP_fun = safe_ratio(B(19),B_physical(40)); %% [gC/gP]
+CP_mycAM = safe_ratio(B(20),B_physical(41)); %% [gC/gP]
+CP_mycEM = safe_ratio(B(21),B_physical(42)); %% [gC/gP]
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%% CUE-Litter and CUE-Microbe/Fungi
 %%% Sinsabaguh et al 2013 ; Manzoni et al 2008
@@ -481,8 +444,6 @@ CUE_wod_sur=CUEmax./(1 +0.015*CN_wod_lit);%1-0.55;
 CUE_met_ssr=CUEmax./(1 +0.015*CN_met_ssr_lit);%1-0.55;
 CUE_str_ssr=CUEmax./(1 +0.015*CN_str_ssr_lit);%1-0.55;
 %%%%%
-TER_cn = 2.33*CN_som.^0.78;
-TER_cp = 2.91*CP_som.^0.83;
 %%% Microbe
 Ecb = BiogeoPar.Ecb; % carbon use efficiency [-]
 %Ecb = min(CUEmax,min(Ae*CN_bac./TER_cn,Ae*CP_bac./TER_cp));
@@ -513,10 +474,11 @@ if opt_cons_CUE == 1
 end
 %%%%%%%% Decomposition rates  %%[1/day]
 D_met_sur_lit = k_met_sur*fT1;
-D_str_sur_lit = k_str_sur*fT1*exp(-5*B(3)/(B(2)+B(3)));
+D_str_sur_lit = k_str_sur*fT1*exp(-5*safe_fraction(B(3),B(2)+B(3)));
 D_met_ssr_lit = k_met_ssr*fT2*fSM_litter;
-D_str_ssr_lit = k_str_ssr*fT2*fSM_litter*exp(-5*B(8)/(B(7)+B(8)));
-D_wod_sur_lit = k_wod_sur*fT1*exp(-5*B(5)/(B(4)+B(5)));
+D_str_ssr_lit = k_str_ssr*fT2*fSM_litter* ...
+    exp(-5*safe_fraction(B(8),B(7)+B(8)));
+D_wod_sur_lit = k_wod_sur*fT1*exp(-5*safe_fraction(B(5),B(4)+B(5)));
 
 %%% Decomposition Fluxes  [gC/gsoil  day]
 D1=D_met_sur_lit*B(1);
@@ -527,6 +489,14 @@ D5=D_wod_sur_lit*B(5);
 D6=D_met_ssr_lit*B(6);
 D7=D_str_ssr_lit*B(7);
 D8=D_str_ssr_lit*B(8);
+D1=limit_outgoing_fluxes(B_physical(1),0,D1,dtd);
+D2=limit_outgoing_fluxes(B_physical(2),0,D2,dtd);
+D3=limit_outgoing_fluxes(B_physical(3),0,D3,dtd);
+D4=limit_outgoing_fluxes(B_physical(4),0,D4,dtd);
+D5=limit_outgoing_fluxes(B_physical(5),0,D5,dtd);
+D6=limit_outgoing_fluxes(B_physical(6),0,D6,dtd);
+D7=limit_outgoing_fluxes(B_physical(7),0,D7,dtd);
+D8=limit_outgoing_fluxes(B_physical(8),0,D8,dtd);
 %%% Input to SOC
 Ip_som_poc_lig = (1-rr_str_sur)*D3 + (1-rr_wod_sur)*D5 +  (1-rr_str_ssr)*D8 ; %%% [gC/gsoil d]
 Ip_som_poc_cel = (1-rr_met_sur)*D1 + (1-rr_str_sur)*D2 +  (1-rr_met_ssr)*D6  + (1-rr_str_ssr)*D7  + (1-rr_wod_sur)*D4 ; %% [gC/gsoil d]
@@ -567,9 +537,23 @@ F10em_f= rem*B(17);
 %%%%%%%%%%%%%%%%%%%%%
 Resp_mycAM = mram*B(20); %%% Respiration maintenance AM-Mycorrhizal
 Resp_mycEM = mrem*B(21); %%% Respiration maintenance EM-Mycorrhizal
-R_microbe =  F4b+F4f+F5f+F5b + Resp_mycAM + Resp_mycEM; % [gC/gsoil d]
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-Rbf = (B(12)/(B(12)+B(13))); %% Ratio of DOC - Bacteria to B+F
+F10ep_b=limit_outgoing_fluxes(B_physical(14),0,F10ep_b,dtd);
+F10ep_f=limit_outgoing_fluxes(B_physical(15),0,F10ep_f,dtd);
+F10em_b=limit_outgoing_fluxes(B_physical(16),0,F10em_b,dtd);
+F10em_f=limit_outgoing_fluxes(B_physical(17),0,F10em_f,dtd);
+turnover_b = limit_outgoing_fluxes(B_physical(18),0, ...
+    [F8b F9ep_b F9em_b],dtd);
+F8b = turnover_b(1); F9ep_b = turnover_b(2); F9em_b = turnover_b(3);
+turnover_f = limit_outgoing_fluxes(B_physical(19),0, ...
+    [F8f F9ep_f F9em_f],dtd);
+F8f = turnover_f(1); F9ep_f = turnover_f(2); F9em_f = turnover_f(3);
+turnover_am = limit_outgoing_fluxes(B_physical(20),0, ...
+    [F8am Resp_mycAM],dtd);
+F8am = turnover_am(1); Resp_mycAM = turnover_am(2);
+turnover_em = limit_outgoing_fluxes(B_physical(21),0, ...
+    [F8em Resp_mycEM F9ep_em F9em_em],dtd);
+F8em = turnover_em(1); Resp_mycEM = turnover_em(2);
+F9ep_em = turnover_em(3); F9em_em = turnover_em(4);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Earthworms
 fpal = 1.6 - (0.04*CN_som); fpal(fpal<0)=0;
 Tref=BiogeoPar.T3; Tref_k=Tref+273.15;
@@ -580,20 +564,63 @@ fClay3 =  2.938*exp(-4.82*Pcla) + -2.509*exp(-11.82*Pcla); fClay3(Pcla<0.15)=1;
 %Few  = fabsE*B(22)*B(10)/(kse + B(10))*VmaxE*fpal*fT3*Aew; %%% [gC/ gsoil d] POC consumed by earthworms
 Few  = fabsE*B(10)*VmaxE*fpal*fT3*fClay3*fPH*Aew; %%% % [gC/ gsoil d] POC consumed by earthworms
 RespEw_m =  Aew*rmanEa*B(22)*fT4 + (1-Aew)*rmanEp*B(22)*fT4 ; %%% Maintenance Respiration
+M_ew = dew*B(22)*fT4; %% % [gC/gsoil d]  Death of Earthworms
+earthworm_turnover = limit_outgoing_fluxes(B_physical(22),0, ...
+    [RespEw_m M_ew],dtd);
+RespEw_m = earthworm_turnover(1); M_ew = earthworm_turnover(2);
+DOC_mortality = F8b+F8f+F8am+F8em+M_ew;
+F2l = limit_outgoing_fluxes(B_physical(9),Ip_som_poc_lig,F2l,dtd);
+poc_flux = limit_outgoing_fluxes(B_physical(10), ...
+    Ip_som_poc_cel+(1-gd)*DOC_mortality,[F2c_b F2c_f Few],dtd);
+F2c_b = poc_flux(1); F2c_f = poc_flux(2); Few = poc_flux(3);
+moc_source = (1-fd)*(F2l+F2c_b+F2c_f);
+moc_flux = limit_outgoing_fluxes(B_physical(11),moc_source, ...
+    [F3_b F3_f],dtd);
+F3_b = moc_flux(1); F3_f = moc_flux(2);
 RespEw_g = (1-CUEmax)*Few ; %% Growth Respiration
 %CUEapp  = CUEmax*((Few + RespEw_m)./Few);
 RespE = RespEw_g + RespEw_m ; %% [gC/gsoil d]  Total EW Respiration
-M_ew = dew*B(22)*fT4; %% % [gC/gsoil d]  Death of Earthworms
 FewN =  (Few - RespE - M_ew)/R_CN_ew; %% [gN/gsoil d]  N-requirement
+FewN_loss = limit_outgoing_fluxes(B_physical(34),0,max(0,-FewN),dtd);
+FewN = max(0,FewN)-FewN_loss;
+DOC_total = B_physical(12)+B_physical(13);
+if DOC_total > 0
+    Rbf = B_physical(12)/DOC_total; %% Ratio of DOC - Bacteria to B+F
+else
+    Rbf = 0.5;
+end
+DOC_source_b = Rbf*Id + fd*F2c_b + Rbf*gd*DOC_mortality + ...
+    F3_b + F10ep_b + F10em_b;
+DOC_source_f = (1-Rbf)*Id + fd*(F2l+F2c_f) + ...
+    (1-Rbf)*gd*DOC_mortality + F3_f + F10ep_f + F10em_f;
+DOC_avail_b = max(0,B_physical(12)/dtd+DOC_source_b-Rbf*LEAK_DOC);
+DOC_avail_f = max(0,B_physical(13)/dtd+DOC_source_f-(1-Rbf)*LEAK_DOC);
+if F1b > DOC_avail_b
+    DOC_scale_b = DOC_avail_b/F1b;
+    F1b = F1b*DOC_scale_b;
+    F4b = F4b*DOC_scale_b;
+    F5b = F5b*DOC_scale_b;
+end
+if F1f > DOC_avail_f
+    DOC_scale_f = DOC_avail_f/F1f;
+    F1f = F1f*DOC_scale_f;
+    F4f = F4f*DOC_scale_f;
+    F5f = F5f*DOC_scale_f;
+end
+R_microbe =  F4b+F4f+F5f+F5b + Resp_mycAM + Resp_mycEM; % [gC/gsoil d]
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% Nitrogen Fluxes  %%% Kirschbaum et al 2002
+N_mort_b = proportional_flux(F8b,B_physical(27),B_physical(18));
+N_mort_f = proportional_flux(F8f,B_physical(28),B_physical(19));
+N_mort_am = proportional_flux(F8am,B_physical(29),B_physical(20));
+N_mort_em = proportional_flux(F8em,B_physical(30),B_physical(21));
 if CN_bac < R_CN_bac
     %%% Minerelazation
-    Nmin_b = B(27) - B(18)/R_CN_bac;  %% [gN/gsoil]
+    Nmin_b = B_physical(27) - B(18)/R_CN_bac;  %% [gN/gsoil]
     Nimm_b=0;
 else
     %%% Immobilization
-    Nimm_b = B(18)/R_CN_bac - B(27);  %% [gN/gsoil]
+    Nimm_b = B(18)/R_CN_bac - B_physical(27);  %% [gN/gsoil]
     %if Nimm_b > 0.90*B(31)
     %    Nimm_b = 0.90*B(31);
     %end
@@ -601,11 +628,11 @@ else
 end
 if CN_fun < R_CN_fun
     %%% Minerelazation
-    Nmin_f = B(28) - B(19)/R_CN_fun;  %% [gN/gsoil]
+    Nmin_f = B_physical(28) - B(19)/R_CN_fun;  %% [gN/gsoil]
     Nimm_f=0;
 else
     %%% Immobilization
-    Nimm_f = B(19)/R_CN_fun - B(28);  %% [gN/gsoil]
+    Nimm_f = B(19)/R_CN_fun - B_physical(28);  %% [gN/gsoil]
     Nmin_f=0;
     %if Nimm_f > 0.90*B(31)
     %    Nimm_f = 0.90*B(31);
@@ -614,11 +641,11 @@ end
 if ExEM < 1
     if CN_mycAM < R_CN_mycAM
         %%% Minerelazation
-        Nmin_am = B(29) - B(20)/R_CN_mycAM;  %% [gN/gsoil]
+        Nmin_am = B_physical(29) - B(20)/R_CN_mycAM;  %% [gN/gsoil]
         Nimm_am=0;
     else
         %%% Immobilization
-        Nimm_am = B(20)/R_CN_mycAM - B(29);  %% [gN/gsoil]
+        Nimm_am = B(20)/R_CN_mycAM - B_physical(29);  %% [gN/gsoil]
         Nmin_am=0;
         %if Nimm_am > 0.90*B(31)
         %    Nimm_am = 0.90*B(31);
@@ -630,11 +657,11 @@ end
 if ExEM > 0
     if CN_mycEM < R_CN_mycEM
         %%% Minerelazation
-        Nmin_em = B(30) - B(21)/R_CN_mycEM;  %% [gN/gsoil]
+        Nmin_em = B_physical(30) - B(21)/R_CN_mycEM;  %% [gN/gsoil]
         Nimm_em=0;
     else
         %%% Immobilization
-        Nimm_em = B(21)/R_CN_mycEM - B(30);  %% [gN/gsoil]
+        Nimm_em = B(21)/R_CN_mycEM - B_physical(30);  %% [gN/gsoil]
         Nmin_em=0;
         %if Nimm_em > 0.90*B(31)
         %    Nimm_em = 0.90*B(31);
@@ -643,10 +670,39 @@ if ExEM > 0
 else
     Nimm_em=0; Nmin_em=0;
 end
+Nmin_b = dtd*limit_outgoing_fluxes(B_physical(27), ...
+    -N_mort_b,Nmin_b/dtd,dtd);
+Nmin_f = dtd*limit_outgoing_fluxes(B_physical(28), ...
+    -N_mort_f,Nmin_f/dtd,dtd);
+Nmin_am = dtd*limit_outgoing_fluxes(B_physical(29), ...
+    -N_mort_am,Nmin_am/dtd,dtd);
+Nmin_em = dtd*limit_outgoing_fluxes(B_physical(30), ...
+    -N_mort_em,Nmin_em/dtd,dtd);
 %%% Input to SOC - Nitrogen
-Ip_som_nit = (D1)/CN_met_sur_lit + (D2+D3)/CN_str_sur_lit  + (D4+D5)/CN_wod_lit  +  (D6)/CN_met_ssr_lit +(D7+D8)/CN_str_ssr_lit;
+N_sur_flux = limit_outgoing_fluxes(B_physical(23),0, ...
+    [proportional_flux(D1,(1-f_str_sur)*B_physical(23),B_physical(1)) ...
+    proportional_flux(D2+D3,f_str_sur*B_physical(23), ...
+    B_physical(2)+B_physical(3))],dtd);
+N_wod_flux = limit_outgoing_fluxes(B_physical(24),0, ...
+    proportional_flux(D4+D5,B_physical(24), ...
+    B_physical(4)+B_physical(5)),dtd);
+N_ssr_flux = limit_outgoing_fluxes(B_physical(25),0, ...
+    [proportional_flux(D6,(1-f_str_ssr)*B_physical(25),B_physical(6)) ...
+    proportional_flux(D7+D8,f_str_ssr*B_physical(25), ...
+    B_physical(7)+B_physical(8))],dtd);
+Ip_som_nit = sum(N_sur_flux)+N_wod_flux+sum(N_ssr_flux);
 Ip_lea_nit = (lambda_N)*Ip_som_nit;  %% leaching of mineral-N
 Ip_som_nit =  (1-lambda_N)*Ip_som_nit;
+som_C = B_physical(9)+B_physical(10)+B_physical(11);
+N_decomp_b = proportional_flux(fd*F2c_b+F3_b,B_physical(26),som_C);
+N_decomp_f = proportional_flux(fd*(F2l+F2c_f)+F3_f, ...
+    B_physical(26),som_C);
+N_mortality = N_mort_b+N_mort_f+N_mort_am+N_mort_em;
+N_som_flux = limit_outgoing_fluxes(B_physical(26), ...
+    Ip_som_nit+N_mortality+max(0,-FewN), ...
+    [N_decomp_b N_decomp_f max(0,FewN)],dtd);
+N_decomp_b = N_som_flux(1); N_decomp_f = N_som_flux(2);
+FewN = N_som_flux(3)+min(0,FewN);
 %%%%%%
 N_imm_fix_b = 0.011*(B(31))/dtd; %% [gN/gsoil day] %% Continous immobilization due to chemical stabilization
 N_imm_fix_f = 0.011*(B(32))/dtd; %% [gN/gsoil day] %% Continous immobilization due to chemical stabilization
@@ -668,6 +724,14 @@ fmoist = Se*(1-Se)/(0.25);  %% Dickinson et al., 2002
 fpH_nit = 0.56 + atan(pi*0.45*(-5+PH))/pi;
 fpH_nit(fpH_nit>1)=1; fpH_nit(fpH_nit<0)=0;
 NO3flx = KNmax*ftemp*fmoist*fpH_nit*B(31); %% [gN/gsoil d]
+NH4_reaction_avail = max(0,B(31)/dtd + Incoming_N + ...
+    (1-f_org_lea)*Ip_lea_nit - LEAK_NH4);
+NH4_reaction = NO3flx+VOL;
+if NH4_reaction > NH4_reaction_avail
+    reaction_scale = NH4_reaction_avail/NH4_reaction;
+    NO3flx = NO3flx*reaction_scale;
+    VOL = VOL*reaction_scale;
+end
 %%% N2O yield of nitrification - Goodroad and Keeney 1984; Khalil et al 2004
 N2Oflx_nit = BiogeoPar.f_N2O_nit*NO3flx; %% [gN/gsoil d]
 %%%%%%% Denitrification (Anaerobic)
@@ -682,6 +746,9 @@ KNmax= BiogeoPar.KNmaxd; %% [1/d] % Dickinson et al., 2002
 fpH_den = (PH-3.5)/3.0;
 fpH_den(fpH_den>1)=1; fpH_den(fpH_den<0)=0;
 DENITflx = KNmax*ftemp*fmoist*fpH_den*B(32); %% [gN/gsoil d] total denitrification (N2+N2O)
+NO3_reaction_avail = max(0,B(32)/dtd + NO3flx - ...
+    N2Oflx_nit - LEAK_NO3);
+DENITflx = min(DENITflx,NO3_reaction_avail);
 %%% N2O/(N2O+N2) product ratio: N2O reductase inhibited at low pH
 %%% Simek and Cooper 2002; Cuhel et al 2010; Liu et al 2010
 rN2O = 1/(1+exp(BiogeoPar.k_rN2O*(PH-BiogeoPar.pH0_rN2O))); %% [-]
@@ -690,6 +757,12 @@ N2Oflx = N2Oflx_nit + rN2O*DENITflx; %% [gN/gsoil d] total N2O emission
 %%%%%
 %%%%%%% Porporato et al., 2003
 imm_cut = zeros(1,4); %%% [gN/gsoil d] unmet demand withheld from microbes
+DON_source = f_org_lea*Ip_lea_nit + lambda_N* ...
+    (N_decomp_b+N_decomp_f);
+S_DON = min(0.01*B_physical(33), ...
+    max(0,B_physical(33)/dtd+DON_source-LEAK_DON));
+som_N_preimm = Ip_som_nit-(N_decomp_b+N_decomp_f) + ...
+    N_mortality-FewN+S_DON;
 if NMIN_IN >= 0
     NH4_in = 0.90*NMIN_IN; %%% [gN/gsoil d] Mineralization NH4
     NO3_in = 0.10*NMIN_IN; %%% [gN/gsoil d] Mineralization NO3
@@ -716,33 +789,35 @@ else
     end
     NH4_in = -NH4_imm/dtd;
     NO3_in = -NO3_imm/dtd;
-    %%% The organic-N draw cannot exceed the SOM nitrogen actually present.
-    %%% Whatever demand neither mineral N nor SOM N can meet is withheld
-    %%% from the microbial pools in proportion to their gross
-    %%% immobilization, so total N stays conserved.
     Norg_dem = (-NMIN_IN*dtd-mineral_imm)/dtd;
-    Norg_imm = min(Norg_dem,max(0,B(26))/dtd);
+    Norg_avail = max(0,B_physical(26)/dtd+som_N_preimm);
+    Norg_imm = min(Norg_dem,Norg_avail);
     N_imm_deficit = Norg_dem - Norg_imm;
     if N_imm_deficit > 0
         imm_gross = [Nimm_b + N_imm_fix_b*dtd, Nimm_f + N_imm_fix_f*dtd, ...
             Nimm_am, Nimm_em]/dtd;
         imm_gross_tot = sum(imm_gross);
-        if imm_gross_tot > 0
+        if N_imm_deficit >= imm_gross_tot
+            imm_cut = imm_gross;
+        elseif imm_gross_tot > 0
             imm_cut = N_imm_deficit*imm_gross/imm_gross_tot;
         end
     end
 end
 %%%%%
-S_DON = 0.01*B(33); %% Stabilization DON
 %%%%%%%%%%%%%%%%%%%%%%%%
 %Phosphorus Fluxes
+P_mort_b = proportional_flux(F8b,B_physical(39),B_physical(18));
+P_mort_f = proportional_flux(F8f,B_physical(40),B_physical(19));
+P_mort_am = proportional_flux(F8am,B_physical(41),B_physical(20));
+P_mort_em = proportional_flux(F8em,B_physical(42),B_physical(21));
 if CP_bac < R_CP_bac
     %%% Minerelazation
-    Pmin_b = B(39) - B(18)/R_CP_bac;  %% [gP/gsoil]
+    Pmin_b = B_physical(39) - B(18)/R_CP_bac;  %% [gP/gsoil]
     Pimm_b=0;
 else
     %%% Immobilization
-    Pimm_b = B(18)/R_CP_bac - B(39);  %% [gP/gsoil]
+    Pimm_b = B(18)/R_CP_bac - B_physical(39);  %% [gP/gsoil]
     Pmin_b=0;
     %if Pimm_b > B(43)
     %    Pimm_b = B(43);
@@ -750,11 +825,11 @@ else
 end
 if CP_fun < R_CP_fun
     %%% Minerelazation
-    Pmin_f = B(40) - B(19)/R_CP_fun;  %% [gP/gsoil]
+    Pmin_f = B_physical(40) - B(19)/R_CP_fun;  %% [gP/gsoil]
     Pimm_f=0;
 else
     %%% Immobilization
-    Pimm_f = B(19)/R_CP_fun - B(40);  %% [g/gsoil]
+    Pimm_f = B(19)/R_CP_fun - B_physical(40);  %% [g/gsoil]
     Pmin_f =0;
     %if Pimm_f > B(43)
     %    Pimm_f = B(43);
@@ -763,11 +838,11 @@ end
 if ExEM < 1
     if CP_mycAM < R_CP_mycAM
         %%% Minerelazation
-        Pmin_am = B(41) - B(20)/R_CP_mycAM;  %% [gP/gsoil]
+        Pmin_am = B_physical(41) - B(20)/R_CP_mycAM;  %% [gP/gsoil]
         Pimm_am=0;
     else
         %%% Immobilization
-        Pimm_am = B(20)/R_CP_mycAM - B(41);  %% [gP/gsoil]
+        Pimm_am = B(20)/R_CP_mycAM - B_physical(41);  %% [gP/gsoil]
         Pmin_am =0;
         %if Pimm_am > B(43)
         %    Pimm_am = B(43);
@@ -779,11 +854,11 @@ end
 if ExEM > 0
     if CP_mycEM < R_CP_mycEM
         %%% Minerelazation
-        Pmin_em = B(42) - B(21)/R_CP_mycEM;  %% [gP/gsoil]
+        Pmin_em = B_physical(42) - B(21)/R_CP_mycEM;  %% [gP/gsoil]
         Pimm_em=0;
     else
         %%% Immobilization
-        Pimm_em = B(21)/R_CP_mycEM - B(42);  %% [g/gsoil]
+        Pimm_em = B(21)/R_CP_mycEM - B_physical(42);  %% [g/gsoil]
         Pmin_em =0;
         %if Pimm_em > B(43)
         %    Pimm_em = B(43);
@@ -792,10 +867,36 @@ if ExEM > 0
 else
     Pimm_em=0;Pmin_em =0;
 end
+Pmin_b = dtd*limit_outgoing_fluxes(B_physical(39), ...
+    -P_mort_b,Pmin_b/dtd,dtd);
+Pmin_f = dtd*limit_outgoing_fluxes(B_physical(40), ...
+    -P_mort_f,Pmin_f/dtd,dtd);
+Pmin_am = dtd*limit_outgoing_fluxes(B_physical(41), ...
+    -P_mort_am,Pmin_am/dtd,dtd);
+Pmin_em = dtd*limit_outgoing_fluxes(B_physical(42), ...
+    -P_mort_em,Pmin_em/dtd,dtd);
 %%% Input to SOC - Phosporus
-Ip_som_pho = (D1)/CP_met_sur_lit + (D2+D3)/CP_str_sur_lit  + (D4+D5)/CP_wod_lit  +  (D6)/CP_met_ssr_lit +(D7+D8)/CP_str_ssr_lit;
+P_sur_flux = limit_outgoing_fluxes(B_physical(35),0, ...
+    [proportional_flux(D1,(1-f_str_sur)*B_physical(35),B_physical(1)) ...
+    proportional_flux(D2+D3,f_str_sur*B_physical(35), ...
+    B_physical(2)+B_physical(3))],dtd);
+P_wod_flux = limit_outgoing_fluxes(B_physical(36),0, ...
+    proportional_flux(D4+D5,B_physical(36), ...
+    B_physical(4)+B_physical(5)),dtd);
+P_ssr_flux = limit_outgoing_fluxes(B_physical(37),0, ...
+    [proportional_flux(D6,(1-f_str_ssr)*B_physical(37),B_physical(6)) ...
+    proportional_flux(D7+D8,f_str_ssr*B_physical(37), ...
+    B_physical(7)+B_physical(8))],dtd);
+Ip_som_pho = sum(P_sur_flux)+P_wod_flux+sum(P_ssr_flux);
 Ip_lea_pho = (lambda_P)*Ip_som_pho;
 Ip_som_pho =  (1-lambda_P)*Ip_som_pho;
+P_decomp_b = proportional_flux(fd*F2c_b+F3_b,B_physical(38),som_C);
+P_decomp_f = proportional_flux(fd*(F2l+F2c_f)+F3_f, ...
+    B_physical(38),som_C);
+P_mortality = P_mort_b+P_mort_f+P_mort_am+P_mort_em;
+P_som_flux = limit_outgoing_fluxes(B_physical(38), ...
+    Ip_som_pho+P_mortality,[P_decomp_b P_decomp_f],dtd);
+P_decomp_b = P_som_flux(1); P_decomp_f = P_som_flux(2);
 %%%%%%
 K1p= BiogeoPar.K1p; %%% [1/day]
 K2p= BiogeoPar.K2p; %% [1/day]
@@ -803,31 +904,64 @@ K3p= BiogeoPar.K3p; %% [1/day]
 K4p= BiogeoPar.K4p; %% [1/day]
 PMIN = (Pmin_b + Pmin_f + Pmin_em + Pmin_am)/dtd ; PIMM =  (Pimm_b + Pimm_f + Pimm_em + Pimm_am)/dtd;  %% [gP/gsoil d]
 PMIN_IN = (PMIN - PIMM );  %% [gP/gsoil d]
-%%%
-if  B(43) + PMIN_IN < 0
-    Porg_imm = -PMIN_IN - B(43);
-    %PIMM_M = B(43) + PMIN;
-    B(43)=0;
-    %Pimm_b = Pimm_b*PIMM_M/PIMM;
-    %Pimm_f = Pimm_f*PIMM_M/PIMM ;
-    %Pimm_am = Pimm_am*PIMM_M/PIMM ;
-    %Pimm_em = Pimm_em*PIMM_M/PIMM ;
-else
-    Porg_imm = 0;
+Incoming_P = (FertP + DepP)/(ZBIOG*rsd);  %% [gP/ gsoil d]
+Psec_exch = K1p*B_physical(43) - K2p*B_physical(45);
+Ppri_exch = K4p*B_physical(44); %% %% [gP/gsoil day]
+Pocc_exch = K3p*B_physical(45);
+P_external_base = Incoming_P + (1-f_org_lea)*Ip_lea_pho - LEAK_P;
+P_flux = limit_internal_fluxes(B_physical([43 44 45 46]), ...
+    [P_external_base+max(PMIN_IN,0) Tup_P 0 0],[1 2 3],[3 1 4], ...
+    [Psec_exch Ppri_exch Pocc_exch],dtd);
+Psec_exch = P_flux(1); Ppri_exch = P_flux(2); Pocc_exch = P_flux(3);
+P_internal_solution = -Psec_exch+Ppri_exch;
+P_decomp = P_decomp_b+P_decomp_f;
+DOP_source = f_org_lea*Ip_lea_pho + lambda_P*P_decomp;
+S_DOP = min(0.01*B_physical(47), ...
+    max(0,B_physical(47)/dtd+DOP_source-LEAK_DOP));
+P_som_preimm = Ip_som_pho-P_decomp+P_mortality+S_DOP;
+Porg_imm = 0;
+P_imm_deficit = 0;
+P_imm_cut = zeros(1,4);
+if PMIN_IN < 0
+    Pmineral_avail = max(0,B_physical(43)/dtd + P_external_base + ...
+        P_internal_solution);
+    Pmineral_imm = min(-PMIN_IN,Pmineral_avail);
+    Porg_dem = -PMIN_IN-Pmineral_imm;
+    Porg_avail = max(0,B_physical(38)/dtd+P_som_preimm);
+    Porg_imm = min(Porg_dem,Porg_avail);
+    P_imm_deficit = Porg_dem-Porg_imm;
+    if P_imm_deficit > 0 && PIMM > 0
+        P_imm_gross = [Pimm_b Pimm_f Pimm_am Pimm_em]/dtd;
+        if P_imm_deficit >= PIMM
+            P_imm_cut = P_imm_gross;
+        else
+            P_imm_cut = P_imm_deficit*P_imm_gross/PIMM;
+        end
+    end
 end
+P_mineral_transfer = PMIN_IN+Porg_imm+P_imm_deficit;
 %PIMM =  Pimm_b + Pimm_f + Pimm_em + Pimm_am;
 %PMIN_IN = (PMIN - PIMM);  %% [gP/gsoil d]
-%%%%
-Psec_exch = K1p*B(43) - K2p*B(45);
-Ppri_exch = K4p*B(44); %% %% [gP/gsoil day]
-Pocc_exch = K3p*B(45);
-%%%
-S_DOP = 0.01*B(47); %% Stabilization DOP
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 %%% Input to SOC - Potassium
-Ip_som_pot = (D1)/CK_met_sur_lit + (D2+D3)/CK_str_sur_lit  + (D4+D5)/CK_wod_lit  +  (D6)/CK_met_ssr_lit +(D7+D8)/CK_str_ssr_lit;
+K_sur_flux = limit_outgoing_fluxes(B_physical(48),0, ...
+    [proportional_flux(D1,(1-f_str_sur)*B_physical(48),B_physical(1)) ...
+    proportional_flux(D2+D3,f_str_sur*B_physical(48), ...
+    B_physical(2)+B_physical(3))],dtd);
+K_wod_flux = limit_outgoing_fluxes(B_physical(49),0, ...
+    proportional_flux(D4+D5,B_physical(49), ...
+    B_physical(4)+B_physical(5)),dtd);
+K_ssr_flux = limit_outgoing_fluxes(B_physical(50),0, ...
+    [proportional_flux(D6,(1-f_str_ssr)*B_physical(50),B_physical(6)) ...
+    proportional_flux(D7+D8,f_str_ssr*B_physical(50), ...
+    B_physical(7)+B_physical(8))],dtd);
+Ip_som_pot = sum(K_sur_flux)+K_wod_flux+sum(K_ssr_flux);
 Ip_lea_pot = (lambda_K)*Ip_som_pot;
 Ip_som_pot =  (1-lambda_K)*Ip_som_pot;
+K_decomp = proportional_flux(fd*(F2l+F2c_b+F2c_f)+F3_b+F3_f, ...
+    B_physical(51),som_C);
+K_decomp = limit_outgoing_fluxes(B_physical(51),Ip_som_pot, ...
+    K_decomp,dtd);
 %%%%%%
 Kdk=BiogeoPar.Kdk;%%%% [1/day]
 Kak= BiogeoPar.Kak; %% [1/day]
@@ -840,15 +974,30 @@ end
 K1k= BiogeoPar.K1k ; % []; %%% [1/day]
 K2k= BiogeoPar.K2k; % []; %% [1/day]
 K3k= BiogeoPar.K3k; %% [1/day]
-Kex_sol =  Kdk*B(53)- Kak*B(52); %% Absrorptio desporption
-Kfix_sol = K2k*B(54) - K1k*B(52);  %% From fixed to solution
-Kmin_rel = K3k*B(55) ; %% %% [gK/gsoil day] Conversion mineral
+Kex_sol =  Kdk*B_physical(53)- Kak*B_physical(52); %% Absrorptio desporption
+Kfix_sol = K2k*B_physical(54) - K1k*B_physical(52);  %% From fixed to solution
+Kmin_rel = K3k*B_physical(55) ; %% %% [gK/gsoil day] Conversion mineral
 
 
 %%% Input to SOC - Calcium
-Ip_som_cal = (D1)/CCa_met_sur_lit + (D2+D3)/CCa_str_sur_lit  + (D4+D5)/CCa_wod_lit  +  (D6)/CCa_met_ssr_lit +(D7+D8)/CCa_str_ssr_lit;
+Ca_sur_flux = limit_outgoing_fluxes(B_physical(56),0, ...
+    [proportional_flux(D1,(1-f_str_sur)*B_physical(56),B_physical(1)) ...
+    proportional_flux(D2+D3,f_str_sur*B_physical(56), ...
+    B_physical(2)+B_physical(3))],dtd);
+Ca_wod_flux = limit_outgoing_fluxes(B_physical(57),0, ...
+    proportional_flux(D4+D5,B_physical(57), ...
+    B_physical(4)+B_physical(5)),dtd);
+Ca_ssr_flux = limit_outgoing_fluxes(B_physical(58),0, ...
+    [proportional_flux(D6,(1-f_str_ssr)*B_physical(58),B_physical(6)) ...
+    proportional_flux(D7+D8,f_str_ssr*B_physical(58), ...
+    B_physical(7)+B_physical(8))],dtd);
+Ip_som_cal = sum(Ca_sur_flux)+Ca_wod_flux+sum(Ca_ssr_flux);
 Ip_lea_cal = (lambda_Ca)*Ip_som_cal;
 Ip_som_cal =  (1-lambda_Ca)*Ip_som_cal;
+Ca_decomp = proportional_flux(fd*(F2l+F2c_b+F2c_f)+F3_b+F3_f, ...
+    B_physical(59),som_C);
+Ca_decomp = limit_outgoing_fluxes(B_physical(59),Ip_som_cal, ...
+    Ca_decomp,dtd);
 %%%%%%
 Kdca=BiogeoPar.Kdca;%%%% [1/day]
 Kaca= BiogeoPar.Kaca; %% [1/day]
@@ -862,15 +1011,30 @@ end
 K1ca= BiogeoPar.K1ca ; % []; %%% [1/day]
 K2ca= BiogeoPar.K2ca; % []; %% [1/day]
 K3ca= BiogeoPar.K3ca; %% [1/day]
-Caex_sol =  Kdca*B(61)- Kaca*B(60); %% Absrorptio desporption
-Cafix_sol = K2ca*B(62) - K1ca*B(60);  %% From fixed to solution
-Camin_rel = K3ca*B(63) ; %% %% [gCa/gsoil day] Conversion mineral
+Caex_sol =  Kdca*B_physical(61)- Kaca*B_physical(60); %% Absrorptio desporption
+Cafix_sol = K2ca*B_physical(62) - K1ca*B_physical(60);  %% From fixed to solution
+Camin_rel = K3ca*B_physical(63) ; %% %% [gCa/gsoil day] Conversion mineral
 
 
 %%% Input to SOC - Magnesium
-Ip_som_mag = (D1)/CMg_met_sur_lit + (D2+D3)/CMg_str_sur_lit  + (D4+D5)/CMg_wod_lit  +  (D6)/CMg_met_ssr_lit +(D7+D8)/CMg_str_ssr_lit;
+Mg_sur_flux = limit_outgoing_fluxes(B_physical(64),0, ...
+    [proportional_flux(D1,(1-f_str_sur)*B_physical(64),B_physical(1)) ...
+    proportional_flux(D2+D3,f_str_sur*B_physical(64), ...
+    B_physical(2)+B_physical(3))],dtd);
+Mg_wod_flux = limit_outgoing_fluxes(B_physical(65),0, ...
+    proportional_flux(D4+D5,B_physical(65), ...
+    B_physical(4)+B_physical(5)),dtd);
+Mg_ssr_flux = limit_outgoing_fluxes(B_physical(66),0, ...
+    [proportional_flux(D6,(1-f_str_ssr)*B_physical(66),B_physical(6)) ...
+    proportional_flux(D7+D8,f_str_ssr*B_physical(66), ...
+    B_physical(7)+B_physical(8))],dtd);
+Ip_som_mag = sum(Mg_sur_flux)+Mg_wod_flux+sum(Mg_ssr_flux);
 Ip_lea_mag = (lambda_Mg)*Ip_som_mag;
 Ip_som_mag =  (1-lambda_Mg)*Ip_som_mag;
+Mg_decomp = proportional_flux(fd*(F2l+F2c_b+F2c_f)+F3_b+F3_f, ...
+    B_physical(67),som_C);
+Mg_decomp = limit_outgoing_fluxes(B_physical(67),Ip_som_mag, ...
+    Mg_decomp,dtd);
 %%%%%%
 Kdmg=BiogeoPar.Kdmg;%%%% [1/day]
 Kamg= BiogeoPar.Kamg; %% [1/day]
@@ -882,15 +1046,30 @@ end
 K1mg= BiogeoPar.K1mg ; % []; %%% [1/day]
 K2mg= BiogeoPar.K2mg; % []; %% [1/day]
 K3mg= BiogeoPar.K3mg; %% [1/day]
-Mgex_sol =  Kdmg*B(69)- Kamg*B(68); %% Absrorptio desporption
-Mgfix_sol = K2mg*B(70) - K1mg*B(68);  %% From fixed to solution
-Mgmin_rel = K3mg*B(71) ; %% %% [gMg/gsoil day] Conversion mineral
+Mgex_sol =  Kdmg*B_physical(69)- Kamg*B_physical(68); %% Absrorptio desporption
+Mgfix_sol = K2mg*B_physical(70) - K1mg*B_physical(68);  %% From fixed to solution
+Mgmin_rel = K3mg*B_physical(71) ; %% %% [gMg/gsoil day] Conversion mineral
 
 
 %%% Input to SOC - Silicate
-Ip_som_sil = (D1)/CSi_met_sur_lit + (D2+D3)/CSi_str_sur_lit  + (D4+D5)/CSi_wod_lit  +  (D6)/CSi_met_ssr_lit +(D7+D8)/CSi_str_ssr_lit;
+Si_sur_flux = limit_outgoing_fluxes(B_physical(72),0, ...
+    [proportional_flux(D1,(1-f_str_sur)*B_physical(72),B_physical(1)) ...
+    proportional_flux(D2+D3,f_str_sur*B_physical(72), ...
+    B_physical(2)+B_physical(3))],dtd);
+Si_wod_flux = limit_outgoing_fluxes(B_physical(73),0, ...
+    proportional_flux(D4+D5,B_physical(73), ...
+    B_physical(4)+B_physical(5)),dtd);
+Si_ssr_flux = limit_outgoing_fluxes(B_physical(74),0, ...
+    [proportional_flux(D6,(1-f_str_ssr)*B_physical(74),B_physical(6)) ...
+    proportional_flux(D7+D8,f_str_ssr*B_physical(74), ...
+    B_physical(7)+B_physical(8))],dtd);
+Ip_som_sil = sum(Si_sur_flux)+Si_wod_flux+sum(Si_ssr_flux);
 Ip_lea_sil = (lambda_Si)*Ip_som_sil;
 Ip_som_sil =  (1-lambda_Si)*Ip_som_sil;
+Si_decomp = proportional_flux(fd*(F2l+F2c_b+F2c_f)+F3_b+F3_f, ...
+    B_physical(75),som_C);
+Si_decomp = limit_outgoing_fluxes(B_physical(75),Ip_som_sil, ...
+    Si_decomp,dtd);
 %%%%%%
 Kdsi=BiogeoPar.Kdsi;%%%% [1/day]
 Kasi= BiogeoPar.Kasi; %% [1/day]
@@ -903,17 +1082,36 @@ K1si= BiogeoPar.K1si ; % []; %%% [1/day]
 K2si= BiogeoPar.K2si; % []; %% [1/day]
 K3si= BiogeoPar.K3si; %% [1/day]
 Siex_sol =  0; %% Absrorptio desporption
-Sifix_sol = K2si*B(78) - K1si*B(76);  %% From fixed to solution
-Simin_rel = K3si*B(79) ; %% %% [gSi/gsoil day] Conversion mineral
+Sifix_sol = K2si*B_physical(78) - K1si*B_physical(76);  %% From fixed to solution
+Simin_rel = K3si*B_physical(79) ; %% %% [gSi/gsoil day] Conversion mineral
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-Incoming_P = (FertP + DepP)/(ZBIOG*rsd);  %% [gP/ gsoil d]
 Incoming_K = (FertK + DepK)/(ZBIOG*rsd);  %% [gK/ gsoil d]
 
 Incoming_Ca = (FertCa + DepCa)/(ZBIOG*rsd);  %% [gCa/ gsoil d]
 Incoming_Mg = (FertMg + DepMg)/(ZBIOG*rsd);  %% [gMg/ gsoil d]
 Incoming_Si = (FertSi + DepSi)/(ZBIOG*rsd);  %% [gSi/ gsoil d]
+
+K_base = Incoming_K+Ip_lea_pot+K_decomp-LEAK_K;
+K_flux = limit_internal_fluxes(B_physical(52:55),[K_base 0 0 Tup_K], ...
+    [2 3 4],[1 1 1],[Kex_sol Kfix_sol Kmin_rel],dtd);
+Kex_sol = K_flux(1); Kfix_sol = K_flux(2); Kmin_rel = K_flux(3);
+
+Ca_base = Incoming_Ca+Ip_lea_cal+Ca_decomp-LEAK_Ca;
+Ca_flux = limit_internal_fluxes(B_physical(60:63),[Ca_base 0 0 Tup_Ca], ...
+    [2 3 4],[1 1 1],[Caex_sol Cafix_sol Camin_rel],dtd);
+Caex_sol = Ca_flux(1); Cafix_sol = Ca_flux(2); Camin_rel = Ca_flux(3);
+
+Mg_base = Incoming_Mg+Ip_lea_mag+Mg_decomp-LEAK_Mg;
+Mg_flux = limit_internal_fluxes(B_physical(68:71),[Mg_base 0 0 Tup_Mg], ...
+    [2 3 4],[1 1 1],[Mgex_sol Mgfix_sol Mgmin_rel],dtd);
+Mgex_sol = Mg_flux(1); Mgfix_sol = Mg_flux(2); Mgmin_rel = Mg_flux(3);
+
+Si_base = Incoming_Si+Ip_lea_sil+Si_decomp-LEAK_Si;
+Si_flux = limit_internal_fluxes(B_physical(76:79),[Si_base 0 0 Tup_Si], ...
+    [2 3 4],[1 1 1],[Siex_sol Sifix_sol Simin_rel],dtd);
+Siex_sol = Si_flux(1); Sifix_sol = Si_flux(2); Simin_rel = Si_flux(3);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%% MASS BALANCE %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -944,44 +1142,44 @@ dB(22)= Few - RespE - M_ew; %% B22 Earthworm -C
 %%%%%%
 %%%%%%%%%%%%%% Nitrogen [gN/ gsoil  d]
 %%%%%% NITROGEN POOL
-dB(23)=  IS.N_sur_lit - (D1)/CN_met_sur_lit - (D2+D3)/CN_str_sur_lit ; %%% B23 Nitrogen Above-ground Litter
-dB(24)=  IS.N_wod_lit - (D4+D5)/CN_wod_lit;%%% B24 Nitrogen Above-ground Woody
-dB(25)=  IS.N_ssr_lit - (D6)/CN_met_ssr_lit -(D7+D8)/CN_str_ssr_lit;%%% B25 Nitrogen Below-ground Litter
-dB(26)=  Ip_som_nit - (fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CN_som  + (F8b/CN_bac + F8f/CN_fun + F8am/CN_mycAM + F8em/CN_mycEM) -FewN + S_DON - Norg_imm; %%% B26 Nitrogen SOM
-dB(27)=  (1-lambda_N)*(fd*(F2c_b) + (F3_b))/CN_som  - F8b/CN_bac + (N_imm_fix_b*dtd+Nimm_b-Nmin_b)/dtd - imm_cut(1);  %%% B27 Nitrogen Bacteria
-dB(28)=  (1-lambda_N)*(fd*(F2l + F2c_f) + (F3_f))/CN_som  - F8f/CN_fun + (N_imm_fix_f*dtd+Nimm_f-Nmin_f)/dtd - imm_cut(2); %%% B28 Nitrogen Fungi S
-dB(29)=  (Nimm_am-Nmin_am)/dtd - F8am/CN_mycAM - imm_cut(3); %% B29 Nitrogen AM Mycorrhizal
-dB(30)=  (Nimm_em-Nmin_em)/dtd - F8em/CN_mycEM - imm_cut(4); %% B30 Nitrogen EM Mycorrhizal
+dB(23)=  IS.N_sur_lit-sum(N_sur_flux); %%% B23 Nitrogen Above-ground Litter
+dB(24)=  IS.N_wod_lit-N_wod_flux;%%% B24 Nitrogen Above-ground Woody
+dB(25)=  IS.N_ssr_lit-sum(N_ssr_flux);%%% B25 Nitrogen Below-ground Litter
+dB(26)= som_N_preimm - Norg_imm; %%% B26 Nitrogen SOM
+dB(27)=  (1-lambda_N)*N_decomp_b-N_mort_b + (N_imm_fix_b*dtd+Nimm_b-Nmin_b)/dtd - imm_cut(1);  %%% B27 Nitrogen Bacteria
+dB(28)=  (1-lambda_N)*N_decomp_f-N_mort_f + (N_imm_fix_f*dtd+Nimm_f-Nmin_f)/dtd - imm_cut(2); %%% B28 Nitrogen Fungi S
+dB(29)=  (Nimm_am-Nmin_am)/dtd-N_mort_am-imm_cut(3); %% B29 Nitrogen AM Mycorrhizal
+dB(30)=  (Nimm_em-Nmin_em)/dtd-N_mort_em-imm_cut(4); %% B30 Nitrogen EM Mycorrhizal
 dB(31)=  Incoming_N + (1-f_org_lea)*Ip_lea_nit  +  NH4_in  - NO3flx  - NH4_Uptake - LEAK_NH4 - VOL;  %%% B31 Nitrogen Ione Ammonium NH4+
 dB(32)=  NO3_in + NO3flx - N2Oflx_nit - NO3_Uptake - LEAK_NO3 - DENITflx;%%% B32 Nitrogen Nitrate NO3-
-dB(33) = f_org_lea*Ip_lea_nit + (lambda_N)*(fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CN_som  - LEAK_DON - S_DON;  %%% B33 DON
+dB(33) = f_org_lea*Ip_lea_nit + lambda_N*(N_decomp_b+N_decomp_f) - LEAK_DON - S_DON;  %%% B33 DON
 dB(34) = FewN; %%  B34 Earthworm -N
 %%%%%%
 %%%%%%%%%%%%%% Phosphorus [gP/gsoil  d]
 %%%%%% PHOSPHORUS POOL
-dB(35)=  IS.P_sur_lit - (D1)/CP_met_sur_lit - (D2+D3)/CP_str_sur_lit ; %%%B35 phosphorus Above-ground Litter
-dB(36)=  IS.P_wod_lit- (D4+D5)/CP_wod_lit;%%%B36 phosphorus Above-ground Woody
-dB(37)=  IS.P_ssr_lit - (D6)/CP_met_ssr_lit -(D7+D8)/CP_str_ssr_lit;%%% B37 phosphorus Below-ground Litter
-dB(38)=  Ip_som_pho - (fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CP_som  + (F8b/CP_bac + F8f/CP_fun + F8am/CP_mycAM + F8em/CP_mycEM) + S_DOP - Porg_imm ; %%% B38 phosphorus SOM
-dB(39)=  (1-lambda_P)*(fd*(F2c_b) + (F3_b))/CP_som - F8b/CP_bac + (Pimm_b - Pmin_b)/dtd  ;  %%%B39 phosphorus Bacteria
-dB(40)=  (1-lambda_P)*(fd*(F2l + F2c_f) + (F3_f))/CP_som  - F8f/CP_fun + (Pimm_f - Pmin_f)/dtd; %%% B40 phosphorus Fungi
-dB(41)= (Pimm_am - Pmin_am)/dtd - F8am/CP_mycAM ;%% B41 phosphorus AM- Mycorrhizal
-dB(42)= (Pimm_em - Pmin_em)/dtd - F8em/CP_mycEM ;%% B42 phosphorus EM- Mycorrhizal
-dB(43)=  Incoming_P + (1-f_org_lea)*Ip_lea_pho + PMIN_IN - P_Uptake- Psec_exch + Ppri_exch  - LEAK_P + Porg_imm ;  %%% B43 phosphorus Mineral
+dB(35)=  IS.P_sur_lit-sum(P_sur_flux); %%%B35 phosphorus Above-ground Litter
+dB(36)=  IS.P_wod_lit-P_wod_flux;%%%B36 phosphorus Above-ground Woody
+dB(37)=  IS.P_ssr_lit-sum(P_ssr_flux);%%% B37 phosphorus Below-ground Litter
+dB(38)= P_som_preimm - Porg_imm; %%% B38 phosphorus SOM
+dB(39)=  (1-lambda_P)*P_decomp_b-P_mort_b + (Pimm_b - Pmin_b)/dtd - P_imm_cut(1);  %%%B39 phosphorus Bacteria
+dB(40)=  (1-lambda_P)*P_decomp_f-P_mort_f + (Pimm_f - Pmin_f)/dtd - P_imm_cut(2); %%% B40 phosphorus Fungi
+dB(41)= (Pimm_am - Pmin_am)/dtd-P_mort_am-P_imm_cut(3);%% B41 phosphorus AM- Mycorrhizal
+dB(42)= (Pimm_em - Pmin_em)/dtd-P_mort_em-P_imm_cut(4);%% B42 phosphorus EM- Mycorrhizal
+dB(43)=  Incoming_P + (1-f_org_lea)*Ip_lea_pho + P_mineral_transfer - P_Uptake- Psec_exch + Ppri_exch  - LEAK_P;  %%% B43 phosphorus Mineral
 dB(44)=  Tup_P-Ppri_exch;%%%  B44 phosphorus primary
 dB(45)= Psec_exch - Pocc_exch  ;  %%% B45 phosphorus secondary
 dB(46)=  Pocc_exch  ;%%%% B46  phosphorus occluded
-dB(47) = f_org_lea*Ip_lea_pho + (lambda_P)*(fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CP_som   -LEAK_DOP - S_DOP;  %%% B47 DOP
+dB(47) = f_org_lea*Ip_lea_pho + lambda_P*P_decomp -LEAK_DOP - S_DOP;  %%% B47 DOP
 %%%%%%
 
 % to do: disable 53 and 54 for 52
 %%%%%%%%%%%%%% Potassium [gK/gsoil d]
 %%%%%%%%% POTASSIUM POOL
-dB(48)=  IS.K_sur_lit - (D1)/CK_met_sur_lit - (D2+D3)/CK_str_sur_lit ; %% B48 Potassium Above-ground Litter
-dB(49)=  IS.K_wod_lit- (D4+D5)/CK_wod_lit;%%%B49 Potassium  Above-ground Woody
-dB(50)=  IS.K_ssr_lit - (D6)/CK_met_ssr_lit -(D7+D8)/CK_str_ssr_lit;%%% B50 Potassium  Below-ground Litter
-dB(51)=  Ip_som_pot -  (fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CK_som ; %%%B51 Potassium SOM
-dB(52)=  Incoming_K + Ip_lea_pot + (fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CK_som  - K_Uptake  + Kmin_rel + Kfix_sol + Kex_sol -LEAK_K;  %%% B52 phosphorus Mineral solution
+dB(48)=  IS.K_sur_lit-sum(K_sur_flux); %% B48 Potassium Above-ground Litter
+dB(49)=  IS.K_wod_lit-K_wod_flux;%%%B49 Potassium  Above-ground Woody
+dB(50)=  IS.K_ssr_lit-sum(K_ssr_flux);%%% B50 Potassium  Below-ground Litter
+dB(51)=  Ip_som_pot-K_decomp ; %%%B51 Potassium SOM
+dB(52)=  Incoming_K+Ip_lea_pot+K_decomp-K_Uptake+Kmin_rel+Kfix_sol+Kex_sol-LEAK_K;  %%% B52 phosphorus Mineral solution
 dB(53)=  -Kex_sol; %%%% B53 the exchangeable K
 dB(54)=  -Kfix_sol ;  %%%% B54  the fixed or non-exchangeble K
 dB(55)= Tup_K -Kmin_rel ;  %%%% B55 K in the lattice of certain primary minerals (Kl).
@@ -989,33 +1187,33 @@ dB(55)= Tup_K -Kmin_rel ;  %%%% B55 K in the lattice of certain primary minerals
 %%%%%%
 %%%%%%%%%%%%%% Calcium [gCa/gsoil d]
 %%%%%%%%% CALCIUM POOL
-dB(56)=  IS.Ca_sur_lit - (D1)/CCa_met_sur_lit - (D2+D3)/CCa_str_sur_lit ; %% B56 Calcium Above-ground Litter
-dB(57)=  IS.Ca_wod_lit- (D4+D5)/CCa_wod_lit;%%%B57 Calcium  Above-ground Woody
-dB(58)=  IS.Ca_ssr_lit - (D6)/CCa_met_ssr_lit -(D7+D8)/CCa_str_ssr_lit;%%% B58 Calcium  Below-ground Litter
-dB(59)=  Ip_som_cal -  (fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CCa_som ; %%%B59 Calcium SOM
-dB(60)=  Incoming_Ca + Ip_lea_cal + (fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CCa_som  - Ca_Uptake  + Camin_rel + Cafix_sol + Caex_sol -LEAK_Ca;  %%% B60 Calcium Mineral solution
+dB(56)=  IS.Ca_sur_lit-sum(Ca_sur_flux); %% B56 Calcium Above-ground Litter
+dB(57)=  IS.Ca_wod_lit-Ca_wod_flux;%%%B57 Calcium  Above-ground Woody
+dB(58)=  IS.Ca_ssr_lit-sum(Ca_ssr_flux);%%% B58 Calcium  Below-ground Litter
+dB(59)=  Ip_som_cal-Ca_decomp ; %%%B59 Calcium SOM
+dB(60)=  Incoming_Ca+Ip_lea_cal+Ca_decomp-Ca_Uptake+Camin_rel+Cafix_sol+Caex_sol-LEAK_Ca;  %%% B60 Calcium Mineral solution
 dB(61)=  -Caex_sol; %%%% B61 the exchangeable Ca
 dB(62)=  -Cafix_sol ;  %%%% B62  the fixed or non-exchangeble Ca
 dB(63)= Tup_Ca -Camin_rel ;  %%%% B63 Ca in the lattice of certain primary minerals.
 
 %%%%%%%%%%%%%% Magnesium [gMg/gsoil d]
 %%%%%%%%% MAGNESIUM POOL
-dB(64)=  IS.Mg_sur_lit - (D1)/CMg_met_sur_lit - (D2+D3)/CMg_str_sur_lit ; %% B64 Magnesium Above-ground Litter
-dB(65)=  IS.Mg_wod_lit- (D4+D5)/CMg_wod_lit;%%%B65 Magnesium  Above-ground Woody
-dB(66)=  IS.Mg_ssr_lit - (D6)/CMg_met_ssr_lit -(D7+D8)/CMg_str_ssr_lit;%%% B66 Magnesium  Below-ground Litter
-dB(67)=  Ip_som_mag -  (fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CMg_som ; %%%B67 Magnesium SOM
-dB(68)=  Incoming_Mg + Ip_lea_mag + (fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CMg_som  - Mg_Uptake  + Mgmin_rel + Mgfix_sol + Mgex_sol -LEAK_Mg;  %%% B68 Magnesium Mineral solution
+dB(64)=  IS.Mg_sur_lit-sum(Mg_sur_flux); %% B64 Magnesium Above-ground Litter
+dB(65)=  IS.Mg_wod_lit-Mg_wod_flux;%%%B65 Magnesium  Above-ground Woody
+dB(66)=  IS.Mg_ssr_lit-sum(Mg_ssr_flux);%%% B66 Magnesium  Below-ground Litter
+dB(67)=  Ip_som_mag-Mg_decomp ; %%%B67 Magnesium SOM
+dB(68)=  Incoming_Mg+Ip_lea_mag+Mg_decomp-Mg_Uptake+Mgmin_rel+Mgfix_sol+Mgex_sol-LEAK_Mg;  %%% B68 Magnesium Mineral solution
 dB(69)=  -Mgex_sol; %%%% B69 the exchangeable Mg
 dB(70)=  -Mgfix_sol ;  %%%% B70  the fixed or non-exchangeble Mg
 dB(71)= Tup_Mg -Mgmin_rel ;  %%%% B71 Mg in the lattice of certain primary minerals.
 
 %%%%%%%%%%%%%% Silicate [gSi/gsoil d]
 %%%%%%%%% SILICATE POOL
-dB(72)=  IS.Si_sur_lit - (D1)/CSi_met_sur_lit - (D2+D3)/CSi_str_sur_lit ; %% B72 Silicate Above-ground Litter
-dB(73)=  IS.Si_wod_lit- (D4+D5)/CSi_wod_lit;%%%B73 Silicate  Above-ground Woody
-dB(74)=  IS.Si_ssr_lit - (D6)/CSi_met_ssr_lit -(D7+D8)/CSi_str_ssr_lit;%%% B74 Silicate  Below-ground Litter
-dB(75)=  Ip_som_sil -  (fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CSi_som ; %%%B75 Silicate SOM
-dB(76)=  Incoming_Si + Ip_lea_sil + (fd*(F2l + F2c_b + F2c_f) + (F3_b + F3_f))/CSi_som  - Si_Uptake  + Simin_rel + Sifix_sol + Siex_sol -LEAK_Si;  %%% B76 Silicate Mineral solution
+dB(72)=  IS.Si_sur_lit-sum(Si_sur_flux); %% B72 Silicate Above-ground Litter
+dB(73)=  IS.Si_wod_lit-Si_wod_flux;%%%B73 Silicate  Above-ground Woody
+dB(74)=  IS.Si_ssr_lit-sum(Si_ssr_flux);%%% B74 Silicate  Below-ground Litter
+dB(75)=  Ip_som_sil-Si_decomp ; %%%B75 Silicate SOM
+dB(76)=  Incoming_Si+Ip_lea_sil+Si_decomp-Si_Uptake+Simin_rel+Sifix_sol+Siex_sol-LEAK_Si;  %%% B76 Silicate Mineral solution
 dB(77)=  0; %%%% B77 the exchangeable Si
 dB(78)=  -Sifix_sol ;  %%%% B78  the fixed or non-exchangeble Si
 dB(79)= Tup_Si -Simin_rel ;  %%%% B79 Si in the lattice of certain primary minerals.
@@ -1032,9 +1230,74 @@ RmycEM = Resp_mycEM*(ZBIOG*rsd) ; %% [gC/ m2 day]
 Prod_B=F1b*(ZBIOG*rsd);  %% [gC/ m2 day]
 Prod_F=F1f*(ZBIOG*rsd);  %% [gC/ m2 day]
 R_ew = RespE*(ZBIOG*rsd); %% %% [gC/ m2 day]
-Min_N = NMIN_IN*(ZBIOG*rsd); %% %% [gN/ m2 day]
-Min_P = PMIN_IN*(ZBIOG*rsd); %% %% [gP/ m2 day]
+Min_N = (NH4_in+NO3_in)*(ZBIOG*rsd); %% %% [gN/ m2 day]
+Min_P = P_mineral_transfer*(ZBIOG*rsd); %% %% [gP/ m2 day]
 VOL=VOL*(ZBIOG*rsd);
 N2flx=N2flx*(ZBIOG*rsd);
 N2Oflx=N2Oflx*(ZBIOG*rsd);
 return
+end
+
+function flux = limit_outgoing_fluxes(pool,source,flux,dtd)
+available = pool/dtd+source;
+if available < 0
+    error('BIOGEOCHEMISTRY_DYNAMIC3:NegativeDonorBase', ...
+        'Daily source terms leave a negative donor inventory.');
+end
+withdrawable = max(0,available-16*eps(max(1,abs(available))));
+total_flux = sum(flux);
+if total_flux > withdrawable
+    flux = flux*(withdrawable/total_flux);
+end
+end
+
+function flux = proportional_flux(carbon_flux,nutrient_pool,carbon_pool)
+if carbon_flux <= 0 || nutrient_pool <= 0 || carbon_pool <= 0
+    flux = 0;
+else
+    carbon_fraction = min(realmax('double'),carbon_flux/carbon_pool);
+    flux = min(realmax('double'),carbon_fraction*nutrient_pool);
+end
+end
+
+function flux = limit_internal_fluxes(pool,base,from,to,flux,dtd)
+available = pool+dtd*base;
+if any(available < 0)
+    error('BIOGEOCHEMISTRY_DYNAMIC3:NegativeBasePool', ...
+        'External daily sinks overdraw a mineral pool before internal exchange.');
+end
+withdrawable = max(0,available-16*eps(max(1,abs(available))));
+outgoing = zeros(size(pool));
+donor = from;
+for k = 1:numel(flux)
+    if flux(k) < 0
+        donor(k) = to(k);
+    end
+    outgoing(donor(k)) = outgoing(donor(k))+abs(flux(k));
+end
+scale = ones(size(pool));
+limited = dtd*outgoing > withdrawable;
+scale(limited) = withdrawable(limited)./(dtd*outgoing(limited));
+for k = 1:numel(flux)
+    flux(k) = flux(k)*scale(donor(k));
+end
+end
+
+function ratio = safe_ratio(numerator,denominator)
+if denominator <= 0
+    ratio = realmax('double');
+elseif numerator <= 0
+    ratio = realmin('double');
+else
+    ratio = min(realmax('double'), ...
+        max(realmin('double'),numerator/denominator));
+end
+end
+
+function fraction = safe_fraction(numerator,denominator)
+if denominator <= 0
+    fraction = 0;
+else
+    fraction = numerator/denominator;
+end
+end

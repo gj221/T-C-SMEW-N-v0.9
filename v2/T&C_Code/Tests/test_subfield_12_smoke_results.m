@@ -16,8 +16,9 @@ geometry_ok = true;
 placement_ok = true;
 state_ok = true;
 lateral_ok = true;
+water_boundary_ok = true;
 min_NO3 = inf;
-max_heat_residual = 0;
+max_heat_residual_relative = 0;
 max_erw_residual = 0;
 
 for k = 1:numel(RM)
@@ -28,7 +29,8 @@ for k = 1:numel(RM)
             'Missing smoke result: %s',file);
     end
     S = load(file,'R','N_col','MOD_PARAM_input','topo','ColCfg', ...
-        'P','O','V','Tdp','PH_d','N2Oflx','LEAK_NO3','lateral_diag');
+        'P','O','Oice','V','Tdp','PH_d','N2Oflx','LEAK_NO3', ...
+        'Rh','Rd','Lk','dth','Domain','lateral_diag');
 
     metadata_ok = metadata_ok && S.R.id == k && ...
         strcmp(S.R.name,RM(k).name) && ...
@@ -56,16 +58,26 @@ for k = 1:numel(RM)
         placement_ok = placement_ok && all(pft == "");
     end
 
-    state_fields = {'P','O','V','Tdp','PH_d','N2Oflx','LEAK_NO3'};
+    state_fields = {'P','O','Oice','V','Tdp','PH_d','N2Oflx','LEAK_NO3'};
     for f = 1:numel(state_fields)
         state_ok = state_ok && all(isfinite(S.(state_fields{f})),'all');
     end
     min_NO3 = min(min_NO3,min(S.P(:,32,:),[],'all'));
     state_ok = state_ok && all(S.O >= 0 & S.O <= 1,'all') && ...
+        all(S.Oice >= 0 & S.O+S.Oice <= 1+1e-12,'all') && ...
         all(S.PH_d > 0 & S.PH_d < 14,'all') && min_NO3 >= -1e-12;
 
-    max_heat_residual = max(max_heat_residual, ...
-        max(abs(S.lateral_diag.heat_residual_J),[],'all'));
+    area = S.topo.cell_area_m2(:);
+    surface_expected = squeeze(sum((S.Rh+S.Rd)/1000,1)).*area;
+    vertical_expected = squeeze(sum((S.Lk/1000)*S.dth,1)).*area;
+    water_boundary_ok = water_boundary_ok && ...
+        max(abs(S.Domain.exit_water_surface_m3(:)-surface_expected(:))) < 1e-9 && ...
+        max(abs(S.Domain.exit_water_vert_m3(:)-vertical_expected(:))) < 1e-9 && ...
+        max(abs(S.Domain.exit_water_total_m3(:)- ...
+        surface_expected(:)-vertical_expected(:))) < 1e-9;
+
+    max_heat_residual_relative = max(max_heat_residual_relative, ...
+        max(S.lateral_diag.heat_residual_relative,[],'all'));
     max_erw_residual = max(max_erw_residual, ...
         max(abs(S.lateral_diag.erw_mass_residual_umol),[],'all'));
     if ~RM(k).use_subdomains
@@ -77,15 +89,17 @@ for k = 1:numel(RM)
     end
 end
 
-lateral_ok = lateral_ok && max_heat_residual < 1e-8 && max_erw_residual < 1e-8;
+lateral_ok = lateral_ok && max_heat_residual_relative < 1e-10 && ...
+    max_erw_residual < 1e-8;
 check(metadata_ok,'all results retain the Kantola setup and 2500 mm active depth');
 check(geometry_ok,'all subdomain and one-column geometries are correct');
 check(placement_ok,'feedstock and prairie placement match the twelve-run matrix');
 check(state_ok,'saved water, heat, chemistry and flux states are finite and physical');
+check(water_boundary_ok,'surface runoff and bottom leakage close the water exit ledger');
 check(lateral_ok,'closed lateral transport conserves heat and ERW mass');
 
 fprintf('  minimum NO3 pool: %.6g gN/m2\n',min_NO3);
-fprintf('  maximum heat residual: %.3e J\n',max_heat_residual);
+fprintf('  maximum scaled heat residual: %.3e\n',max_heat_residual_relative);
 fprintf('  maximum ERW residual: %.3e umol\n',max_erw_residual);
 fprintf('  ---------------------------------------\n');
 fprintf('  %d passed, 0 failed\n',n_pass);
