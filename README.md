@@ -64,6 +64,18 @@ savefig(timeFig1D,fullfile('SIM','Subfield_12','Vertical_1D_time_dynamics.fig'))
 ```
 
 This writes updated six-panel PNG and FIG outputs for runs 10 to 12 only.
+The annual harvest-carbon comparison for the completed control and basalt runs is:
+
+```matlab
+[validation,figValidation] = Plot_Kantola_Validation;
+```
+
+This writes `Kantola_validation_vertical_1d.png`. The two subplots compare
+annual harvested grain carbon with exact block-level Illinois Data Bank
+observations and show the model-minus-observed residual. The calculation
+excludes the initial state row and non-crop margin cells. Grain N is not
+plotted because the supplied article data contain no raw numerical N table.
+
 When runs 1 to 9 finish, the three 2-D groups can be plotted without
 reloading the 1-D results:
 
