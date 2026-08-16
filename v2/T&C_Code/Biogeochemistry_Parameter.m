@@ -32,12 +32,12 @@ BiogeoPar.fd =0.4;% 0.5; % [0.2-0.8]  fraction of decomposed P allocated to D
 %Ecf =0.47;
 BiogeoPar.Vdb = 0.04; %0.120; %0.010;  % [0.0024-0.060] maximum specific uptake rate of DOC for growth of B [gC-D/gC-B day]
 BiogeoPar.Vdf = 0.02; %0.025;% 0.012;  % 
-%% Set to the documented lower bound. At 0.00026 (temperature-scaled to
-%% 0.000359, i.e. 359 mg C/kg) the half-saturation sits 24x above this
-%% site's DOC of 15 mg C/kg, so uptake runs at 4% of capacity while
-%% maintenance and mortality are paid in full and both bacteria and fungi
-%% decay to extinction with a 100-day e-folding time. See the mrb/mrf
-%% note below; the two changes together are what restore persistence.
+%% Documented lower bound. Tested whether initial conditions could rescue
+%% the 0.00026 default instead: with it, bacteria need DOC of 294 gC/m2
+%% (91 mg C/kg) to break even against 78 gC/m2 present, a 6.1x increase
+%% that would put DOC at 5.2% of total soil carbon when typical values
+%% are under 1%. The starvation is therefore a parameter problem, not an
+%% initial-condition one, and cannot be tweaked away.
 BiogeoPar.Kdb = 0.00014; % [0.00014 - 0.00038] half-saturation constant of uptake of DOC for growth of B [ g C/g soil]
 BiogeoPar.Kdf = 0.00014;
 %% Set to the documented lower bound, with mrf keeping its original 0.5
