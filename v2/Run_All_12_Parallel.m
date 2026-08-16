@@ -115,8 +115,12 @@ failed = zeros(0,1);
 process = cell(size(plan));
 process_guard = cell(size(plan));
 
-while ~isempty(queue) || ~isempty(running)
-    while ~isempty(queue) && numel(running) < opt.MaxConcurrent
+%% A failure is almost always systemic rather than run-specific, so the
+%% remaining scenarios would hit the same wall hours later. Stop the
+%% whole campaign on the first failure instead of burning the queue.
+abort = false;
+while (~isempty(queue) || ~isempty(running)) && ~abort
+    while ~isempty(queue) && numel(running) < opt.MaxConcurrent && ~abort
         q = queue(1); queue(1) = [];
         if isfile(plan(q).status_file); delete(plan(q).status_file); end
         if opt.Overwrite && isfile(plan(q).result_file); delete(plan(q).result_file); end
@@ -142,6 +146,7 @@ while ~isempty(queue) || ~isempty(running)
                 plan(q).name,plan(q).log_file);
             failed(end+1,1) = q; %#ok<AGROW>
             finished(r) = true;
+            abort = true;
         elseif ~process_is_alive(process{q})
             fprintf(2,'  [%s] FAILED run %d  %s (child exit %d); see %s\n', ...
                 datestr(now,'HH:MM:SS'),plan(q).run_id,plan(q).name, ...
@@ -158,6 +163,19 @@ while ~isempty(queue) || ~isempty(running)
         end
     end
     running(finished) = [];
+end
+
+if abort
+    if ~isempty(running)
+        fprintf(2,'  [%s] aborting: terminating %d run(s) still active\n', ...
+            datestr(now,'HH:MM:SS'),numel(running));
+        for r = 1:numel(running)
+            Terminate_Process_Tree(process{running(r)});
+        end
+    end
+    if ~isempty(queue)
+        fprintf(2,'  not launched: %s\n',mat2str([plan(queue).run_id]));
+    end
 end
 
 if ~isempty(failed)

@@ -258,11 +258,15 @@ NH4_tot= NH4_tot(j_only)+dNH4_tot(1)*dtw;
 
 %% explicit mass balances
 % Biogeo Leak and plant uptake
-Al_dissolved = Al(j_only)+AlOH(j_only)+AlOH2(j_only)+ ...
-    AlOH3(j_only)+AlOH4(j_only);
+%% Legacy Al leaching mechanism, retained deliberately: only Al and
+%% AlOH4 are treated as leachable, and the 1e-3 factor is kept. Widening
+%% this to the full hydroxide ladder and dropping the factor changes Al
+%% export by three orders of magnitude, which moves base saturation and
+%% pH buffering, so it is not a like-for-like substitution.
+Al_dissolved = Al(j_only)+AlOH4(j_only);
 if keyword_add == 0
     Leak_Na = max(0,min([Na_tot(j_only)*f_Lk_biogeo, Na_tot(j_only), Lw(j_only)*1000*Na(j_only)]));
-    Leak_Al = max(0,min([Al_dissolved*n*Zrw*s*1000*f_Lk_biogeo, ...
+    Leak_Al = max(0,min([Al_dissolved*n*Zrw*s*1000*f_Lk_biogeo*1e-3, ...
         Al_tot(j_only), Lw(j_only)*1000*Al_dissolved]));
     Leak_An = max(0,min([An_tot(j_only)*f_Lk_biogeo, An_tot(j_only), Lw(j_only)*1000*An(j_only)]));
     Leak_DIC = max(0,min([IC_tot(j_only)*f_Lk_biogeo, IC_tot(j_only), Lw(j_only)*1000*DIC(j_only)]));
@@ -271,7 +275,7 @@ if keyword_add == 0
     An_uptake = max(0,min([An_tot(j_only)*f_T_biogeo, An_tot(j_only), Tw(j_only)*1000*An(j_only)]));
 else
     Leak_Na = max(0,min([Na_tot(j_only)*f_Lk_biogeo, Na_tot(j_only)]));
-    Leak_Al = max(0,min([Al_dissolved*n*Zrw*s*1000*f_Lk_biogeo, ...
+    Leak_Al = max(0,min([Al_dissolved*n*Zrw*s*1000*f_Lk_biogeo*1e-3, ...
         Al_tot(j_only)]));
     Leak_An = max(0,min([An_tot(j_only)*f_Lk_biogeo, An_tot(j_only)]));
     Leak_DIC = max(0,min([IC_tot(j_only)*f_Lk_biogeo, IC_tot(j_only)]));
