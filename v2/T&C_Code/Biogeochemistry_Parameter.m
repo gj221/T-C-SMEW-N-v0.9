@@ -102,31 +102,14 @@ BiogeoPar.kv = 8.6*1e-5; %% [1/d]
 %%%%%%% Nitrification (Aerobic)
 BiogeoPar.KNmaxn = 0.086; %% [1/d] % Dickinson et al., 2002
 %%%%%%% Denitrification (Anaerobic)
-BiogeoPar.Kc = 17.5; %% [gC/ gsoil] %% Li et al., 1992 (not used)
+BiogeoPar.Kc = 17.5; %% [gC/ gsoil] %% Li et al., 1992
 BiogeoPar.Kn = 82.5; %% [gN/ gsoil] % Li et al., 1992 (not used)
-%% Calibrated, not a literature value. Dickinson et al. 2002 give 0.217,
-%% but that is a maximum rate for a different rate law. Here DENITflx is
-%% first order in the NO3 pool, and so is leaching, so their ratio is set
-%% by rate constants alone and is independent of pool size. At 0.217 the
-%% implied k_den is about 0.047/d against k_leach of roughly 0.0019/d,
-%% giving denitrification 24x leaching: 75 kgN/ha/yr denitrified against
-%% 3 kgN/ha/yr leached, when Illinois maize should leach 20-50. Bringing
-%% k_den alongside k_leach requires this value. REQUIRES VALIDATION
-%% against the Kantola observations before publication.
-%% Rescaled by the mean DOC limitation factor (0.838) now carried in the
-%% rate, so the effective k_den is unchanged from the 0.009 calibration.
-BiogeoPar.KNmaxd= 0.0107; %% [1/d] calibrated; was 0.217 (Dickinson 2002)
+BiogeoPar.KNmaxd= 0.217; %% [1/d] % Dickinson et al., 2002
 %%%%%% N2O pathway - pH effects
 BiogeoPar.f_N2O_nit = 0.002; %% [-] N2O yield of nitrification
 %% Goodroad and Keeney 1984, Soil Biol Biochem 16:39-43; Khalil et al 2004, Soil Biol Biochem 36:687-699
 BiogeoPar.k_rN2O = 1.5;   %% [1/pH] steepness of denitrification N2O/(N2O+N2) partition
-%% Moved from 6.2 to 5.0. At 6.2 the crossover sat essentially on the
-%% site pH of 6.10, putting the run on the steepest part of the logistic
-%% and yielding rN2O = 0.54, i.e. over half of denitrified N emitted as
-%% N2O. The cited work places the 50% crossover in acidic soil, with
-%% near-neutral soils emitting N2O at 0.1-0.3 of denitrification; 5.0
-%% gives rN2O = 0.16 at this site.
-BiogeoPar.pH0_rN2O = 5.0; %% [-] pH at which N2O/(N2O+N2) = 0.5
+BiogeoPar.pH0_rN2O = 6.2; %% [-] pH at which N2O/(N2O+N2) = 0.5
 %% Simek and Cooper 2002, Eur J Soil Sci 53:345; Cuhel et al 2010, Appl Environ Microbiol 76:1870;
 %% Liu et al 2010, FEMS Microbiol Ecol 72:407
 %%%%%% Parton et al 1997
