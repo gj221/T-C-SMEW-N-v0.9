@@ -32,10 +32,23 @@ BiogeoPar.fd =0.4;% 0.5; % [0.2-0.8]  fraction of decomposed P allocated to D
 %Ecf =0.47;
 BiogeoPar.Vdb = 0.04; %0.120; %0.010;  % [0.0024-0.060] maximum specific uptake rate of DOC for growth of B [gC-D/gC-B day]
 BiogeoPar.Vdf = 0.02; %0.025;% 0.012;  % 
-BiogeoPar.Kdb = 0.00026; % [0.00014 - 0.00038] half-saturation constant of uptake of DOC for growth of B [ g C/g soil]
-BiogeoPar.Kdf = 0.00026;
-BiogeoPar.mrb =  10.0*1e-3; % 15.0*1e-3; % [ 1.20*1e-3 - 30*1e-3] specific maintenance factor or rate of B [ g C /g C day]
-BiogeoPar.mrf =  5.0*1e-3; % 5.0*1e-3;
+%% Set to the documented lower bound. At 0.00026 (temperature-scaled to
+%% 0.000359, i.e. 359 mg C/kg) the half-saturation sits 24x above this
+%% site's DOC of 15 mg C/kg, so uptake runs at 4% of capacity while
+%% maintenance and mortality are paid in full and both bacteria and fungi
+%% decay to extinction with a 100-day e-folding time. See the mrb/mrf
+%% note below; the two changes together are what restore persistence.
+BiogeoPar.Kdb = 0.00014; % [0.00014 - 0.00038] half-saturation constant of uptake of DOC for growth of B [ g C/g soil]
+BiogeoPar.Kdf = 0.00014;
+%% Set to the documented lower bound, with mrf keeping its original 0.5
+%% ratio to mrb. Growth requires M > mrb/(Vdb+mrb); at 10.0e-3 that
+%% threshold is 0.20 against an achievable M of 0.07, so the microbial
+%% pools cannot cover their own turnover at this site's DOC. At 1.20e-3
+%% the threshold falls to 0.029 and both pools grow slowly to a stable
+%% equilibrium, since growth draws DOC down until the net rate reaches
+%% zero. Was 10.0e-3 and 5.0e-3.
+BiogeoPar.mrb =  1.20*1e-3; % [ 1.20*1e-3 - 30*1e-3] specific maintenance factor or rate of B [ g C /g C day]
+BiogeoPar.mrf =  0.60*1e-3; % 0.5 x mrb, as before
 BiogeoPar.mram = 1.5*1e-3; % 1.5*1e-3; specific maintenance factor of AM 
 BiogeoPar.mrem = 1.5*1e-3; % 1.5*1e-3; specific maintenance factor of EM 
 
