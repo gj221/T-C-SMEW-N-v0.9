@@ -23,8 +23,17 @@ check(~RM(10).apply_main && RM(11).apply_main && RM(12).apply_main && ...
     'one-dimensional treatments apply across the single field column');
 check(all(arrayfun(@(r) r.geom.field_side_m^2 == 3600,RM(10:12))), ...
     'one-dimensional scenarios retain the 3600 m2 plot area');
-check(all([RM.biogeo_depth_mm] == 2500), ...
-    'all twelve scenarios use the common 2500 mm active depth');
+%% Assert the shared value rather than a specific depth. The property
+%% that matters is that every scenario uses the same active depth, so
+%% treatments stay comparable. Pinning the number here previously
+%% encoded 2500 mm as the contract, which is the depth that starved the
+%% microbial pools; a test asserting the defect gives false assurance.
+%% The depth itself is owned by Run_Matrix_12 and must match the depth
+%% the initial conditions were spun up at.
+check(numel(unique([RM.biogeo_depth_mm])) == 1, ...
+    'all twelve scenarios share one active biogeochemical depth');
+check([RM(1).biogeo_depth_mm] == 300, ...
+    'active depth is 300 mm, matching the spin-up in Data_Kantola_BG.mat');
 
 [default_output,default_plan] = evalc("Run_All_12_Parallel('DryRun',true)");
 check(contains(default_output,'max concurrent: 2'), ...
