@@ -40,7 +40,17 @@ geom.field_side_m    = 60;
 geom.margin_width_m  = 5;
 geom.main_grid_nx    = 2;
 geom.main_grid_ny    = 2;
-COMMON_BIOGEO_DEPTH_MM = 2500;
+%% 300 mm, matching the workbook value and the published spin-up that
+%% produced Data_Kantola_BG.mat. This must not be changed in isolation:
+%% ZBIOG*rsd is the gsoil/m2 conversion, so raising the depth dilutes
+%% every per-area pool by the same factor when expressed per gram of
+%% soil. At 2500 mm the DOC concentration entering the microbial
+%% Michaelis-Menten term fell 8.3x, taking M from about 0.25 to 0.03,
+%% below the mrb/(Vdb+mrb) growth threshold of 0.20. Maintenance does not
+%% scale with concentration, so bacteria and fungi decayed to extinction
+%% with a 100-day e-folding time while DOC accumulated unused. Running
+%% deeper requires regenerating the initial conditions at that depth.
+COMMON_BIOGEO_DEPTH_MM = 300;
 
 RM = struct('id',{},'name',{},'treatment',{},'layout',{}, ...
     'case_number',{},'apply_main',{},'apply_margin',{}, ...
