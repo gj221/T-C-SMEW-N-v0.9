@@ -127,7 +127,10 @@ while (~isempty(queue) || ~isempty(running)) && ~abort
         process{q} = launch_process(matlab_exe,plan(q).batch,plan(q).log_file);
         process_guard{q} = onCleanup(@() Terminate_Process_Tree(process{q}));
         started(q) = now;
-        running(end+1,1) = q; %#ok<AGROW>
+        %% Index from numel rather than end: deleting the last entry from a
+        %% 1x1 leaves a 1x0, so end+1 would resolve to row 2 and leave a
+        %% zero in slot 1. Only reachable at MaxConcurrent = 1.
+        running(numel(running)+1,1) = q; %#ok<AGROW>
         fprintf('  [%s] launch run %d  %s\n',datestr(now,'HH:MM:SS'), ...
             plan(q).run_id,plan(q).name);
     end
@@ -163,6 +166,7 @@ while (~isempty(queue) || ~isempty(running)) && ~abort
         end
     end
     running(finished) = [];
+    running = running(:);   %% keep column orientation when it empties
 end
 
 if abort
