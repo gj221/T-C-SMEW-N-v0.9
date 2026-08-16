@@ -212,10 +212,18 @@ B(68)=B(68)-Mg_Uptake;%% Magnesium  Mineral  solution
 B(76)=B(76)-Si_Uptake;%% Silicate  Mineral  solution
 
 %%% Retain physical inventory after plant uptake
-if any(~isfinite(B)) || any(B < 0)
+%% Pools arrive as P = Ptm1 + dP from the previous step. The donor
+%% limiters keep them nonnegative, but a pool driven to exactly zero can
+%% land a rounding step below it. Tolerate that and clamp; a meaningful
+%% negative still aborts, and reports how negative it was.
+pool_tol = 1e-12*max(1,max(abs(B)));
+if any(~isfinite(B)) || any(B < -pool_tol)
     error('BIOGEOCHEMISTRY_DYNAMIC3:InvalidPoolState', ...
-        'Biogeochemistry pools must be finite and nonnegative after uptake.');
+        ['Biogeochemistry pools must be finite and nonnegative after ' ...
+         'uptake; most negative is %.6g against a %.3g tolerance.'], ...
+        min(B),pool_tol);
 end
+B = max(0,B);
 B_physical = B;
 %%%% Decay Constant on a 40�C basis (Kirschbaum 2002)
 k_met_sur = BiogeoPar.k_met_sur; %%[1/day]
