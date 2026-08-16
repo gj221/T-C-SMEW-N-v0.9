@@ -14,13 +14,20 @@ if ~(isnumeric(P_in) && ismatrix(P_in) && size(P_in,2) >= 76)
         'P_in must have one row per cell and at least 76 pool columns.');
 end
 
-P_out = P_in;
 source_idx = unique([pool_idx{:}]);
 source = P_in(:,source_idx);
-if any(~isfinite(source(:))) || any(source(:) < 0)
+%% A pool driven to exactly zero by the donor limiters can land a
+%% rounding step below it. Tolerate and clamp rather than aborting a
+%% multi-hour run; a meaningful negative still errors, with its size.
+pool_tol = 1e-12*max(1,max(abs(source(:))));
+if any(~isfinite(source(:))) || any(source(:) < -pool_tol)
     error('Biogeo_Lateral_Pools:BadPools', ...
-        'Laterally mobile pools must be finite and nonnegative.');
+        ['Laterally mobile pools must be finite and nonnegative; most ' ...
+         'negative is %.6g against a %.3g tolerance.'], ...
+        min(source(:)),pool_tol);
 end
+P_in(:,source_idx) = max(0,source);
+P_out = P_in;
 mobile = zeros(size(P_in,1),numel(pool_idx));
 for s = 1:numel(pool_idx)
     mobile(:,s) = sum(P_in(:,pool_idx{s}),2);

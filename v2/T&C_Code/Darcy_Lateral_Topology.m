@@ -75,11 +75,17 @@ end
 if nargin < 6 || isempty(Oice_cell)
     Oice_cell = zeros(N_cells,ms);
 end
+%% Ice arrives from T&C's freezing solver and can land a rounding step
+%% below zero when a layer has just thawed completely. Tolerate and
+%% clamp, consistent with the theta bound checked below.
+ice_tol = 1e-10;
 if ~isequal(size(Oice_cell),size(theta_cell)) || ...
-        any(~isfinite(Oice_cell(:))) || any(Oice_cell(:) < 0)
+        any(~isfinite(Oice_cell(:))) || any(Oice_cell(:) < -ice_tol)
     error('Darcy_Lateral_Topology:BadIce', ...
-        'Oice_cell must match theta_cell and be finite and nonnegative.');
+        ['Oice_cell must match theta_cell and be finite and ' ...
+         'nonnegative; most negative is %.6g.'],min(Oice_cell(:)));
 end
+Oice_cell = max(0,Oice_cell);
 if N_edges == 0
     Q_edge = zeros(0,ms);
     dtheta_lat = zeros(N_cells,ms);
