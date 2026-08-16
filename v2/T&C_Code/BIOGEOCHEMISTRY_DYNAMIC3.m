@@ -743,7 +743,7 @@ end
 %%% N2O yield of nitrification - Goodroad and Keeney 1984; Khalil et al 2004
 N2Oflx_nit = BiogeoPar.f_N2O_nit*NO3flx; %% [gN/gsoil d]
 %%%%%%% Denitrification (Anaerobic)
-%Kc = BiogeoPar.Kc/(ZBIOG*rsd); %% [gC/ gsoil] %% Li et al., 1992
+Kc = BiogeoPar.Kc/(ZBIOG*rsd); %% [gC/ gsoil] %% Li et al., 1992
 %Kn = BiogeoPar.Kn/(ZBIOG*rsd); %% [gN/ gsoil] % Li et al., 1992
 ftemp=exp(308.56*(1/68.02-1/(Ts+46.02))); % Xu-Ri and Prentice 2008
 %fmoist=Se^(1/L); %% % Dickinson et al., 2002
@@ -753,7 +753,16 @@ KNmax= BiogeoPar.KNmaxd; %% [1/d] % Dickinson et al., 2002
 %%% pH response of denitrification rate - Heinen 2006, Geoderma 133:444 (ANIMO/SWAT-family)
 fpH_den = (PH-3.5)/3.0;
 fpH_den(fpH_den>1)=1; fpH_den(fpH_den<0)=0;
-DENITflx = KNmax*ftemp*fmoist*fpH_den*B(32); %% [gN/gsoil d] total denitrification (N2+N2O)
+%%% Denitrifiers need NO3 as electron acceptor AND labile C as donor, so
+%%% the rate carries a Michaelis-Menten term on dissolved organic carbon
+%%% (Li et al. 1992). Without it denitrification and leaching are both
+%%% strictly first order in B(32), their ratio is independent of pool
+%%% size, and the split between them can only be set by rate constants.
+%%% At this site DOC averages 91 gC/m2 against Kc = 17.5, so the term
+%%% sits near saturation (0.84) and modulates weakly; it matters most
+%%% when labile C is drawn down.
+f_DOC_den = safe_fraction(B(12)+B(13),(B(12)+B(13))+Kc); %% [-]
+DENITflx = KNmax*ftemp*fmoist*fpH_den*f_DOC_den*B(32); %% [gN/gsoil d] total denitrification (N2+N2O)
 NO3_reaction_avail = max(0,B(32)/dtd + NO3flx - ...
     N2Oflx_nit - LEAK_NO3);
 DENITflx = min(DENITflx,NO3_reaction_avail);
