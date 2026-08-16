@@ -113,7 +113,9 @@ BiogeoPar.Kn = 82.5; %% [gN/ gsoil] % Li et al., 1992 (not used)
 %% 3 kgN/ha/yr leached, when Illinois maize should leach 20-50. Bringing
 %% k_den alongside k_leach requires this value. REQUIRES VALIDATION
 %% against the Kantola observations before publication.
-BiogeoPar.KNmaxd= 0.009; %% [1/d] calibrated; was 0.217 (Dickinson 2002)
+%% Rescaled by the mean DOC limitation factor (0.838) now carried in the
+%% rate, so the effective k_den is unchanged from the 0.009 calibration.
+BiogeoPar.KNmaxd= 0.0107; %% [1/d] calibrated; was 0.217 (Dickinson 2002)
 %%%%%% N2O pathway - pH effects
 BiogeoPar.f_N2O_nit = 0.002; %% [-] N2O yield of nitrification
 %% Goodroad and Keeney 1984, Soil Biol Biochem 16:39-43; Khalil et al 2004, Soil Biol Biochem 36:687-699
