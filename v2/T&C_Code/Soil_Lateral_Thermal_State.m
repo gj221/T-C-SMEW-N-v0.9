@@ -27,10 +27,20 @@ Ohy = sp.Ohy;
 Osat = sp.Osat;
 if ~isscalar(Ohy); Ohy = reshape(Ohy,size(Otot)); end
 if ~isscalar(Osat); Osat = reshape(Osat,size(Otot)); end
-if any(Otot(:) < Ohy(:)) || any(Otot(:) > Osat(:))
+%% T&C reconstructs theta from V several times per step (Richards, then
+%% Cryosuction_stabilizer, which clamps O to exactly Osat-Oice), so Otot
+%% routinely lands a rounding step outside [Ohy, Osat]. That is not a
+%% physical excursion. Darcy_Lateral_Topology already tolerates 1e-10 on
+%% the identical bound; match it here rather than aborting the run. A
+%% genuine excursion still errors, and now reports its size.
+water_tol = 1e-10*max(1,max(Osat(:)));
+excursion = max([0; Ohy(:)-Otot(:); Otot(:)-Osat(:)]);
+if excursion > water_tol
     error('Soil_Lateral_Thermal_State:BadWaterContent', ...
-        'Total water must lie between residual content and porosity.');
+        ['Total water lies %.6g outside [Ohy, Osat], beyond the %.3g ' ...
+         'rounding tolerance.'],excursion,water_tol);
 end
+Otot = min(Osat,max(Ohy,Otot));
 [lambda,cv,~,Oice,Oliq,Cw] = Soil_Thermal_properties_FT( ...
     T,Pre,sp.rsd,sp.lan_dry,sp.lan_s,sp.cv_s,p.SPAR,sp.L,sp.Pe, ...
     sp.O33,sp.alpVG,sp.nVG,p.Phy,sp.s_SVG,sp.bVG,sp.Osat,sp.Ohy, ...
