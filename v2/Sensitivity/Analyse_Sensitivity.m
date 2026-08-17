@@ -39,6 +39,7 @@ if ~isempty(opt.NDays); suffix = sprintf('__%dd',opt.NDays); end
 row = 0; T = table();
 keep = false(numel(sets),1);
 store = cell(numel(sets),1);
+set_labels = {};
 for s = 1:numel(sets)
     sdir = fullfile(opt.Directory,sets{s}.tag);
     ok = true; D = struct();
@@ -65,6 +66,7 @@ for s = 1:numel(sets)
     end
     keep(s) = true; store{s} = D;
     row = row+1;
+    set_labels{row} = set_label(sets{s});
     T(row,:) = table(string(sets{s}.tag), ...
         D(1).leach, D(1).n2o, D(1).den, D(1).up, D(1).pH, ...
         D(2).leach-D(1).leach, D(2).n2o-D(1).n2o, ...
@@ -119,20 +121,54 @@ for p = 1:4
     ax = nexttile(tl);
     y = T.(bars{p,1});
     barh(ax,y,'FaceColor',[0 0.25 0.60],'EdgeColor','none');
-    set(ax,'YTick',1:height(T),'YTickLabel',T.set,'YDir','reverse', ...
+    set(ax,'YTick',1:height(T),'YTickLabel',set_labels,'YDir','reverse', ...
         'Color','w','XColor','k','YColor','k','TickLabelInterpreter','none');
     grid(ax,'off'); box(ax,'on');
     xlabel(ax,bars{p,3},'Color','k');
     text(ax,0.98,0.04,bars{p,2},'Units','normalized', ...
         'HorizontalAlignment','right','FontWeight','bold','Color','k');
 end
-title(tl,'Nitrogen parameter sensitivity, equilibrium years','Color','k');
+title(tl,{'Nitrogen pH-response sensitivity, equilibrium years'; ...
+    factorial_note(sets)},'Color','k');
 out = fullfile(opt.Directory,'sensitivity_summary.png');
 exportgraphics(fig,out,'Resolution',200);
 writetable(T,fullfile(opt.Directory,'sensitivity_summary.csv'));
 fprintf('\nSaved: %s\n',out);
 fprintf('Saved: %s\n',fullfile(opt.Directory,'sensitivity_summary.csv'));
 
+end
+
+%% =======================================================================
+function lab = set_label(s)
+%% Human-readable row label: the changed parameter values, so the figure
+%% reads as the factorial corners rather than internal tags.
+f = setdiff(fieldnames(s),{'tag','note'});
+if isempty(f); lab = 'model defaults'; return; end
+parts = cell(1,numel(f));
+for k = 1:numel(f)
+    parts{k} = sprintf('%s %.1f',f{k},s.(f{k}));
+end
+lab = strjoin(parts,', ');
+end
+
+%% =======================================================================
+function note = factorial_note(sets)
+%% One-line summary of the sweep structure, derived from the sets so it
+%% stays correct if Sensitivity_Parameters changes.
+fn = {};
+for s = 1:numel(sets); fn = union(fn,fieldnames(sets{s})); end
+fn = setdiff(fn,{'tag','note'});
+parts = cell(1,numel(fn));
+for k = 1:numel(fn)
+    v = [];
+    for s = 1:numel(sets)
+        if isfield(sets{s},fn{k}); v(end+1) = sets{s}.(fn{k}); end
+    end
+    lv = arrayfun(@(x) sprintf('%.1f',x),sort(unique(v)), ...
+        'UniformOutput',false);
+    parts{k} = sprintf('%s {%s}',fn{k},strjoin(lv,', '));
+end
+note = ['factorial: ' strjoin(parts,', ') '; rates at stock'];
 end
 
 %% =======================================================================
