@@ -41,6 +41,17 @@ sets{end+1,1} = mk('baseline','model defaults, anchor for the batch');
 %% the same N cycle, so the full factorial belongs in the batch, the
 %% interaction is the point. A third lever would double the set count, so
 %% the factorial is kept at the minimum that answers the question.
+%% Known infeasible corner: this set crossed with basalt (run 11) drives
+%% lsqnonlin in ERW_function past convergence from roughly iteration 37000
+%% onward, thousands of consecutive failures with no successes. The N
+%% levers here change nitrification H+ production, which moves soil pH,
+%% which is an input to the geochemical equilibrium solve, so they can push
+%% the chemistry into a region with no attainable solution. It fails
+%% quietly: ERW_function only disp()s a warning and then clamps the
+%% unconverged answer, so the run continues on unreliable pH, alkalinity
+%% and Ca and slows about 16x. Treat the cell as not simulable rather than
+%% re-running it; res_threshold or the x0 restart needs revisiting first.
+%% The same set with calcite, and basalt at stock parameters, are clean.
 sets{end+1,1} = mk('den_sharp_nit_ph5','pH_den_rng 2.0 with pH_nit_0 5.0', ...
     'pH_den_rng',2.0,'pH_nit_0',5.0);
 sets{end+1,1} = mk('den_sharp_nit_ph6','pH_den_rng 2.0 with pH_nit_0 6.0', ...
@@ -49,6 +60,23 @@ sets{end+1,1} = mk('den_flat_nit_ph5','pH_den_rng 4.0 with pH_nit_0 5.0', ...
     'pH_den_rng',4.0,'pH_nit_0',5.0);
 sets{end+1,1} = mk('den_flat_nit_ph6','pH_den_rng 4.0 with pH_nit_0 6.0', ...
     'pH_den_rng',4.0,'pH_nit_0',6.0);
+
+%% Centre and off-diagonal corners that complete the 3x3 level grid over
+%% the two levers. Two levels can only show slope and interaction, so the
+%% optimum for the longer 2D run needs the third level: a quadratic fit
+%% over the nine corners estimates curvature and locates the best corner
+%% instead of guessing at an edge. The four sets below are the only
+%% corners missing from the grid; the other five already run in the first
+%% wave. Pairs with the sharp span keep the known solver risk on basalt
+%% documented above.
+sets{end+1,1} = mk('den_sharp_nit_ph55','pH_den_rng 2.0 with pH_nit_0 5.5', ...
+    'pH_den_rng',2.0,'pH_nit_0',5.5);
+sets{end+1,1} = mk('den_mid_nit_ph55','pH_den_rng 3.0 with pH_nit_0 5.5', ...
+    'pH_den_rng',3.0,'pH_nit_0',5.5);
+sets{end+1,1} = mk('den_mid_nit_ph6','pH_den_rng 3.0 with pH_nit_0 6.0', ...
+    'pH_den_rng',3.0,'pH_nit_0',6.0);
+sets{end+1,1} = mk('den_flat_nit_ph55','pH_den_rng 4.0 with pH_nit_0 5.5', ...
+    'pH_den_rng',4.0,'pH_nit_0',5.5);
 
 end
 
