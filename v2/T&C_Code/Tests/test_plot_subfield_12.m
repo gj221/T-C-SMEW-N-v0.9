@@ -5,6 +5,10 @@ function test_plot_subfield_12
 
 fprintf('\n=== test_plot_subfield_12 ===\n');
 n_pass = 0;
+%% Run_Matrix_12 and Plot_Subfield_12 live in v2, not in T&C_Code; without
+%% this the test only passes when the caller already has v2 on the path.
+v2 = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+addpath(v2,fullfile(v2,'T&C_Code'));
 out_dir = tempname;
 mkdir(out_dir);
 subset_dir = tempname;

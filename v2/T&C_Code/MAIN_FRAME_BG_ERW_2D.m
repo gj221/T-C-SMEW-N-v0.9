@@ -423,8 +423,8 @@ for i = 2:NN
                 B_IO_c{c} = B_IO_c_now;
             end
 
-            [Se_bio,Se_fc,Psi_bio,Tdp_bio,VSUM,VTSUM] = Biogeo_environment( ...
-                Tdp(pdind,:,c),O(pdind,:,c),V(pdind,:,c),p.Soil_Param,p.Phy,p.SPAR,p.Bio_Zs);
+            [Se_bio,Se_fc,Psi_bio,Tdp_bio,VSUM,VTSUM,L_bio] = Biogeo_environment( ...
+                Tdp(pdind,:,c),O(pdind,:,c),V(pdind,:,c),p.Soil_Param,p.Phy,p.SPAR,p.Bio_Zs,p.Zbio);
             Tdp_bio_c(c) = Tdp_bio; VSUM_c(c) = VSUM; VTSUM_c(c) = VTSUM;
 
             if OPT_SoilBiogeochemistry == 1
@@ -463,7 +463,7 @@ for i = 2:NN
                     SupCa_L(j-1,:,c),SupMg_L(j-1,:,c),SupSi_L(j-1,:,c), ...
                     REXMY,RexmyI(j-1,:,c),p.ExEM,NavlI(j-1,:,c),p.Pcla,p.Psan, ...
                     B_IO_c_now,Datam(i,:),FireA,0, ...
-                    OPT_ERW,OPT_BfixN);
+                    OPT_ERW,OPT_BfixN,L_bio);
 
                 BLit(j,:,c) = 0.002*sum(P(j,1:5,c))*Ccrown';
                 Bam_c(c) = P(j,20,c);

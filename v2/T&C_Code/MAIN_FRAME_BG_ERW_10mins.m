@@ -323,7 +323,7 @@ for i=2:NN
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %%% Biogeochemistry Unit
-        [Se_bio,Se_fc,Psi_bio,Tdp_bio,VSUM,VTSUM]=Biogeo_environment(Tdp(pdind,:),O(pdind,:),V(pdind,:),Soil_Param,Phy,SPAR,Bio_Zs);
+        [Se_bio,Se_fc,Psi_bio,Tdp_bio,VSUM,VTSUM,L_bio]=Biogeo_environment(Tdp(pdind,:),O(pdind,:),V(pdind,:),Soil_Param,Phy,SPAR,Bio_Zs,Zbio);
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         if OPT_SoilBiogeochemistry == 1
             IS= Ccrown*squeeze(ISOIL_L(j-1,:,:)) + Ccrown*squeeze(ISOIL_H(j-1,:,:));
@@ -350,7 +350,7 @@ for i=2:NN
                 SupCa_H(j-1,:),SupMg_H(j-1,:),SupSi_H(j-1,:),SupCa_L(j-1,:),SupMg_L(j-1,:),SupSi_L(j-1,:),...
                 REXMY,RexmyI(j-1,:),ExEM,NavlI(j-1,:),Pcla,Psan,...
                 B_IO,Datam(i,:),FireA,0,...
-                OPT_ERW,OPT_BfixN);
+                OPT_ERW,OPT_BfixN,L_bio);
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -789,11 +789,20 @@ for i=2:NN
                 ERW_TC_const.M_rock_add_CaCO3 = zeros(length(t),1);
                 ERW_TC_const.M_rock_add(1) = ERW_PARAM_input.M_rock_in;  
                 
+                %% Keep only applications that fall inside this run. MATLAB
+                %% grows an array on assignment past its end, so an
+                %% out-of-range application date silently extended
+                %% M_rock_add to ~45000 elements on a six-day run and made
+                %% num_rock_app nonzero for rock that is never applied. The
+                %% 2-D driver already filters this way; on a full-length run
+                %% every date is in range and the two agree.
+                idx_app = time_application/dtw;
+                idx_app = idx_app(idx_app >= 1 & idx_app <= length(t));
                 if contains(ERW_PARAM_input.ExperimentalDescription,"Beerling")
-                    ERW_TC_const.M_rock_add(time_application/dtw) = 5000*(1-0.026);
-                    ERW_TC_const.M_rock_add_CaCO3(time_application/dtw) = 5000*0.026/100.087*1e6; % umol
+                    ERW_TC_const.M_rock_add(idx_app) = 5000*(1-0.026);
+                    ERW_TC_const.M_rock_add_CaCO3(idx_app) = 5000*0.026/100.087*1e6; % umol
                 else
-                    ERW_TC_const.M_rock_add(time_application/dtw) = 5000;
+                    ERW_TC_const.M_rock_add(idx_app) = 5000;
                 end
                 ERW_PARAM_input.num_rock_app = sum(ERW_TC_const.M_rock_add>0);
             else

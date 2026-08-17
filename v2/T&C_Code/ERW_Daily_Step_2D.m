@@ -95,7 +95,21 @@ cfTH = (sum((ones(length(Ccrown),1)*(p.Bio_Zs>0)).*p.RfH_Zs,2))';
 E.TC.Tw = sum(cfTH.*T_H_c + cfTL.*T_L_c, 2)/1000;   %% [m/h]
 E.TC.Iw = f_c/1000;                                  %% [m/h]
 E.TC.Lw = Lk_c/1000;                                 %% [m/h]
-E.TC.Lw(1) = Lk_c(2)/1000;
+%% The single-column frame carries the same two statements in the opposite
+%% order (MAIN_FRAME_BG_ERW_10mins ~700):
+%%     ERW_TC.Lw(1) = Lk(2)/1000;   <- overwritten on the next line
+%%     ERW_TC.Lw    = Lk/1000;
+%% so there the override is dead and Lw(1) keeps Lk(1). Here it used to
+%% run, which shifted the first daily drainage bin: the first ERW call saw
+%% Lk(2)+Lk(3)+Lk(4) against the frame's Lk(2). ERW state is cumulative, so
+%% that day-0 difference never washed out; it biased Al by 3%, H by 1.4%
+%% and Ca and Mg by 0.6% across every subsequent call.
+%% Matching the frame, because the frame produced the reference results and
+%% the 2-D driver is required to reproduce it at N_col = 1.
+%% Both are papering over Lk(1), which is structurally 0 because the
+%% hydrology loop starts at i = 2. That is worth fixing on its own terms,
+%% in both drivers together, rather than silently here.
+
 
 pdind = max(1,i-24):i-1;
 
@@ -246,8 +260,25 @@ if ~E.init_done_j2
     TT_init.s         = interp1(E.td, E.TC.s,     E.tm, 'linear');
     TT_init.r_het     = interp1(E.td, E.TC.r_het, E.tm, 'linear');
     TT_init.r_aut     = interp1(E.td, E.TC.r_aut, E.tm, 'linear');
-    TT_init.Tw        = zeros(E.n_t,1);
-    TT_init.Lw        = zeros(E.n_t,1);
+    %% Daily water sums, built exactly as the window block below builds
+    %% W.Tw and W.Lw. These used to be passed as zeros on the assumption
+    %% that the seed only reads the first element of each series plus
+    %% max(r_het+r_aut). It also reads Lw, and that feeds the initial
+    %% chemistry, so the 2-D driver seeded itself with no drainage at all:
+    %% sum(Lw) was 0 against the frame's 0.00647, which set the ERW state
+    %% off from the first solve and never recovered.
+    Twv_a = [E.TC.Tw(1); E.TC.Tw];
+    Lwv_a = [E.TC.Lw(1); E.TC.Lw];
+    day_a = floor(E.tm/24);
+    TT_init.Tw = zeros(E.n_t,1);
+    TT_init.Lw = zeros(E.n_t,1);
+    for d_a = unique(day_a)'
+        ka0 = 24*d_a + 1;
+        ka1 = min(24*d_a + 24, numel(Lwv_a));
+        sel_a = (day_a == d_a);
+        TT_init.Tw(sel_a) = sum(Twv_a(ka0:ka1));
+        TT_init.Lw(sel_a) = sum(Lwv_a(ka0:ka1));
+    end
     [E.bg, E.plant, E.weath, E.const, E.var, ...
      E.bg_names, E.weath_names, ~, ~, ~] = ...
         ERW_MOD_PARAM_excel(t, TT_init, E.TC_const, E.bg_seed, ERW_PARAM_input, 1);

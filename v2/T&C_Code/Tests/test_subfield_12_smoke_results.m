@@ -8,6 +8,9 @@ if nargin < 1 || isempty(n_days); n_days = 1; end
 fprintf('\n=== test_subfield_12_smoke_results (%d day) ===\n',n_days);
 n_pass = 0;
 v2 = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+%% Run_Matrix_12 lives in v2, not in T&C_Code; without this the test only
+%% passes when the caller happens to have v2 on the path already.
+addpath(v2,fullfile(v2,'T&C_Code'));
 result_dir = fullfile(v2,'SIM','Subfield_12');
 RM = Run_Matrix_12();
 
@@ -32,10 +35,15 @@ for k = 1:numel(RM)
         'P','O','Oice','V','Tdp','PH_d','N2Oflx','LEAK_NO3', ...
         'Rh','Rd','Lk','dth','Domain','lateral_diag');
 
+    %% Assert the depth the matrix configured, not a literal. Pinning 2500
+    %% here encoded the depth that diluted DOC per gram of soil and starved
+    %% the microbial pools, so the test asserted the defect and would have
+    %% failed the corrected runs. What matters is that every scenario uses
+    %% the matrix depth, so treatments stay comparable.
     metadata_ok = metadata_ok && S.R.id == k && ...
         strcmp(S.R.name,RM(k).name) && ...
         strcmp(char(S.MOD_PARAM_input.Location),'Kantola') && ...
-        S.MOD_PARAM_input.Zbio == 2500;
+        S.MOD_PARAM_input.Zbio == RM(k).biogeo_depth_mm;
 
     if RM(k).use_subdomains
         geometry_ok = geometry_ok && S.N_col == 12 && ...
@@ -91,7 +99,7 @@ end
 
 lateral_ok = lateral_ok && max_heat_residual_relative < 1e-10 && ...
     max_erw_residual < 1e-8;
-check(metadata_ok,'all results retain the Kantola setup and 2500 mm active depth');
+check(metadata_ok,'all results retain the Kantola setup and the matrix active depth');
 check(geometry_ok,'all subdomain and one-column geometries are correct');
 check(placement_ok,'feedstock and prairie placement match the twelve-run matrix');
 check(state_ok,'saved water, heat, chemistry and flux states are finite and physical');

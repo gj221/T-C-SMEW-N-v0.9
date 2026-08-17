@@ -66,9 +66,27 @@ ZR95_L  = [1200 0];
 ZR50_L  = [NaN  NaN];
 ZRmax_L = [NaN  NaN];
 
-%% The prairie biogeochemical zone follows the deepest configured root.
-[Zbio,Bio_Zs] = Biogeochemical_Depth_From_Roots( ...
-    Zs,ZR95_H,ZR95_L);
+%% Honour the active depth the caller injected, exactly as the crop
+%% parameter file does. Run_One_Subfield sets MOD_PARAM_input.Zbio so every
+%% column in the domain shares one depth; MAIN_FRAME_BG_ERW_2D requires
+%% that, because lateral exchange is undefined across differing depths.
+%% Deriving the depth from the deepest root here returned 2500 mm for big
+%% bluestem while the crop columns stayed at 300 mm, which aborted runs 7-9
+%% with ActiveDepthMismatch. 2500 mm is also the depth that diluted DOC per
+%% gram of soil and starved the microbial pools, so it must not come back
+%% in through the margin. Roots still reach 2500 mm; only the
+%% biogeochemically active zone is held at the common depth.
+%% MOD_PARAM_input is a table, so read the column the same way the crop
+%% parameter file does. isfield() is always false on a table and would
+%% silently send us down a fallback path.
+Zbio = MOD_PARAM_input.Zbio;
+if ~(isscalar(Zbio) && isfinite(Zbio) && Zbio > 0)
+    error('PFT_Prairie_Margin:NoActiveDepth', ...
+        ['The caller must supply a single positive MOD_PARAM_input.Zbio. ' ...
+         'Deriving it from the deepest root here is what made the margin ' ...
+         'columns disagree with the crop columns.']);
+end
+Bio_Zs = Evaporation_layers(Zs,Zbio);
 
 %% Recompute root fraction profiles for the new depths
 [RfH_Zs,RfL_Zs] = Root_Fraction_General(Zs,CASE_ROOT, ...

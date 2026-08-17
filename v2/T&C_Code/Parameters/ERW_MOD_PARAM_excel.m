@@ -463,7 +463,30 @@ else
     Z_CO2 = 0.15;
 end
 
-CO2_air(1) = max(TT_m_input.r_het+TT_m_input.r_aut)/(D(1)*1000/Z_CO2)+CO2_atm(1); 
+CO2_air(1) = max(TT_m_input.r_het+TT_m_input.r_aut)/(D(1)*1000/Z_CO2)+CO2_atm(1);
+%% ---- init seed capture (diagnostic; inert unless TC_ERW_CAPTURE is set)
+global ERW_CAPI %#ok<GVMIS>
+if ~isempty(getenv('TC_ERW_CAPTURE'))
+    if isempty(ERW_CAPI); ERW_CAPI = struct('n',0); end
+    ERW_CAPI.n = ERW_CAPI.n+1;
+    q = ERW_CAPI.n;
+    ERW_CAPI.max_rhet_raut(q,1) = max(TT_m_input.r_het+TT_m_input.r_aut);
+    ERW_CAPI.CO2_air_1(q,1)     = CO2_air(1);
+    ERW_CAPI.CO2_atm_1(q,1)     = CO2_atm(1);
+    ERW_CAPI.D_1(q,1)           = D(1);
+    ERW_CAPI.temp_soil_1(q,1)   = temp_soil(1);
+    ERW_CAPI.s_1(q,1)           = s(1);
+    ERW_CAPI.Tw_1(q,1)          = Tw(1);
+    ERW_CAPI.Lw_1(q,1)          = Lw(1);
+    ERW_CAPI.sum_Tw(q,1)        = sum(Tw);
+    ERW_CAPI.sum_Lw(q,1)        = sum(Lw);
+    ERW_CAPI.n_rhet(q,1)        = numel(TT_m_input.r_het);
+    ERW_CAPI.sum_rhet(q,1)      = sum(TT_m_input.r_het);
+    ERW_CAPI.sum_raut(q,1)      = sum(TT_m_input.r_aut);
+    ERW_CAPI.sum_temp(q,1)      = sum(temp_soil);
+    ERW_CAPI.sum_s(q,1)         = sum(s);
+end
+%% ----------------------------------------------------------------------- 
 
 Fs(1)= D(1)/Z_CO2*(CO2_air(1)-CO2_atm(1))*1000; %[umol-conv/d]
 CO2_w(1)= k_H(1)*CO2_air(1); %[umol-conv/l] Henry's law
@@ -568,6 +591,20 @@ else
 end
 
 
+%% A feedstock row with no applied rock must still define these five. The
+%% branch above skips the no-rock defaults whenever rock_f_in is set, and
+%% everything below is guarded by num_rock_app > 0, so if a caller supplies
+%% a feedstock row while apply_rock is false, nothing assigns them and the
+%% ERW_const assembly dies on "Unrecognized variable" far from the cause.
+%% Zero is what the no-rock branch itself uses: no rock applied, no inert
+%% mass and no particle size distribution. Run_One_Subfield avoids the
+%% combination by swapping in the control chemistry row, so this guards
+%% callers that do not rather than changing campaign behaviour.
+if ~exist('M_iner','var');      M_iner = 0;      end
+if ~exist('psd_perc_in','var'); psd_perc_in = 0; end
+if ~exist('rock_f_in','var');   rock_f_in = 0;   end
+if ~exist('d_in','var');        d_in = 0;        end
+if ~exist('SSA_in','var');      SSA_in = 0;      end
 if num_rock_app > 0
 
     k_diss_H_t(1,:) = k_diss_H.*exp(-E_H.*1000/R*(1/T_K(1,1)-1/T_ref(1))); % temperature-dependent dissociation constant with respect to hydrogen [umol/m²/d]

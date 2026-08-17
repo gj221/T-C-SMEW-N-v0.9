@@ -16,7 +16,7 @@ function[dB,R_litter,R_microbe,R_litter_sur,R_ew,VOL,N2flx,Min_N,Min_P,...
     LEAK_Ca,LEAK_Mg,LEAK_Si,...
     Tup_P,Tup_K,...
     Tup_Ca,Tup_Mg,Tup_Si, ...
-    ExEM,Pcla,Psan,BiogeoPar,SC_par,IMAN,opt_cons_CUE,opt_ERW)
+    ExEM,Pcla,Psan,BiogeoPar,SC_par,IMAN,opt_cons_CUE,opt_ERW,L_pore)
 %%% OUTPUT
 %VOL ;
 %N2flx ;
@@ -746,8 +746,16 @@ N2Oflx_nit = BiogeoPar.f_N2O_nit*NO3flx; %% [gN/gsoil d]
 Kc = BiogeoPar.Kc/(ZBIOG*rsd); %% [gC/ gsoil] %% Li et al., 1992
 %Kn = BiogeoPar.Kn/(ZBIOG*rsd); %% [gN/ gsoil] % Li et al., 1992
 ftemp=exp(308.56*(1/68.02-1/(Ts+46.02))); % Xu-Ri and Prentice 2008
-%fmoist=Se^(1/L); %% % Dickinson et al., 2002
-fmoist=Se^(1/0.5); %% % Dickinson et al., 2002
+%%% Anaerobic fraction. Under Brooks-Corey Se = (Pe/|Psi|)^L, so Se^(1/L)
+%%% is Pe/|Psi|: the air-entry suction over the current suction, which is 1
+%%% at saturation and falls as the profile drains. L is the pore size
+%%% distribution index of the same retention curve that produces Se, so the
+%%% two stay consistent. The literal 0.5 that stood here was a placeholder
+%%% for L, which was never passed in; at this site L = 0.150, so it applied
+%%% an exponent of 2 where the soil calls for 6.7. Se^2 returns 0.53 at
+%%% field capacity, running denitrification at half rate in an aerobic
+%%% soil on 99% of days; Se^(1/L) returns 0.12.
+fmoist=Se^(1/L_pore); %% % Dickinson et al., 2002
 %N2flx = (B(13)/(B(13) + Kc))*ftemp*fmoist*(B(28)/(B(28) + Kn));% [gN/gsoil d]
 KNmax= BiogeoPar.KNmaxd; %% [1/d] % Dickinson et al., 2002
 %%% pH response of denitrification rate - Heinen 2006, Geoderma 133:444 (ANIMO/SWAT-family)

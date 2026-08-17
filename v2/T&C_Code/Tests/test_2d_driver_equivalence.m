@@ -163,8 +163,14 @@ topo = Build_Single_Cell_Topology(3600);                       %#ok<NASGU>
 ColCfg = struct( ...
     'PARAM_IC', fullfile(Parameter_Directory, [char(MOD_PARAM_input.MOD_PARAM) '.m']), ...
     'PFT_OVERRIDE', '', ...
-    'apply_rock', logical(R1.OPT_ERW && isfinite(ERW_PARAM_input.M_rock_in) ...
-                          && ERW_PARAM_input.M_rock_in > 0));   %#ok<NASGU>
+    ... %% Mirror the single-column frame's own predicate, which applies rock
+    ... %% when diss_f > 0. M_rock_in is the mesocosm's initial rock mass and
+    ... %% is 0 for the Kantola field setup, which adds 5000 g/m2 on the
+    ... %% time_application schedule instead, so M_rock_in > 0 reported no
+    ... %% rock for basalt and calcite. That left cfg.apply_rock false while
+    ... %% the chemistry row still carried a feedstock, which is the one
+    ... %% combination the 2-D parameter assembly cannot handle.
+    'apply_rock', logical(R1.OPT_ERW && ERW_PARAM_input.diss_f > 0)); %#ok<NASGU>
 
 old = cd(code);
 cleanup = onCleanup(@() cd(old));

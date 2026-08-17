@@ -109,7 +109,14 @@ BiogeoPar.KNmaxd= 0.217; %% [1/d] % Dickinson et al., 2002
 BiogeoPar.f_N2O_nit = 0.002; %% [-] N2O yield of nitrification
 %% Goodroad and Keeney 1984, Soil Biol Biochem 16:39-43; Khalil et al 2004, Soil Biol Biochem 36:687-699
 BiogeoPar.k_rN2O = 1.5;   %% [1/pH] steepness of denitrification N2O/(N2O+N2) partition
-BiogeoPar.pH0_rN2O = 6.2; %% [-] pH at which N2O/(N2O+N2) = 0.5
+%% Moved from 6.2 to 5.0. At 6.2 the 50%% crossover sits essentially on
+%% this site's pH of 6.06, giving rN2O = 0.55: over half of all
+%% denitrified nitrogen leaving as N2O rather than N2. The cited work
+%% places the crossover in acidic soil, with near-neutral soils emitting
+%% N2O at 0.1-0.3 of denitrification. 5.0 gives rN2O = 0.17 here.
+%% This changes only the N2O/N2 split, not total denitrification, so it
+%% does not affect the nitrate budget. Default is 6.2.
+BiogeoPar.pH0_rN2O = 5.0; %% [-] pH at which N2O/(N2O+N2) = 0.5
 %% Simek and Cooper 2002, Eur J Soil Sci 53:345; Cuhel et al 2010, Appl Environ Microbiol 76:1870;
 %% Liu et al 2010, FEMS Microbiol Ecol 72:407
 %%%%%% Parton et al 1997

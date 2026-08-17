@@ -1,6 +1,11 @@
 function test_prairie_active_depth
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Prairie biogeochemical depth follows the deepest active root profile.
+%% Biogeochemical_Depth_From_Roots helper contract.
+%%
+%% Note: PFT_Prairie_Margin no longer calls this. Every column in a domain
+%% must share one active depth or MAIN_FRAME_BG_ERW_2D rejects the run, so
+%% the prairie margin now takes MOD_PARAM_input.Zbio like the crop file.
+%% These cases pin the helper's own behaviour, not the prairie contract.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 fprintf('\n=== test_prairie_active_depth ===\n');

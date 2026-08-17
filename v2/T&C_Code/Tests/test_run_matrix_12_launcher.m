@@ -6,6 +6,12 @@ function test_run_matrix_12_launcher
 fprintf('\n=== test_run_matrix_12_launcher ===\n');
 n_pass = 0;
 
+%% Run_Matrix_12 and the launcher live in v2, not in T&C_Code, so put both
+%% on the path. Without this the test only passes when the caller happens
+%% to have v2 on the path already.
+v2 = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+addpath(v2,fullfile(v2,'T&C_Code'));
+
 RM = Run_Matrix_12();
 check(numel(RM) == 12, 'matrix contains twelve entries');
 check(isequal({RM.treatment},repmat({'control','basalt','calcite'},1,4)), ...

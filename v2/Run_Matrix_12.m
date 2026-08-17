@@ -14,8 +14,9 @@ function RM = Run_Matrix_12()
 %% margin. The vertical_1d group uses one 3600 m2 column. It has no
 %% subdomains or lateral transport.
 %%
-%% All entries use the same control T&C setup and 2500 mm active
-%% biogeochemical depth. Only geometry, amendment placement, feedstock
+%% All entries use the same control T&C setup and the active
+%% biogeochemical depth set in COMMON_BIOGEO_DEPTH_MM below. Only
+%% geometry, amendment placement, feedstock
 %% properties and the prairie PFT switch vary. The bounded negative-NO3
 %% immobilization logic is shared by all entries.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
