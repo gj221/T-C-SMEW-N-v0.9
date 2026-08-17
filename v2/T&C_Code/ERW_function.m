@@ -28,61 +28,6 @@ function [ERW_data, ERW_TC, ERW_biogeochem, ERW_weathering, ERW_plant,ERW_var, E
         keyword_add,...
         CaCO3_rock)
 
-%% ---- 1D/2D forcing capture -------------------------------------------
-%% Diagnostic only, and completely inert unless a caller sets ERW_CAP.on.
-%% Records every scalar numeric argument on every call so the single-column
-%% frame and the 2-D driver can be diffed call by call to locate the
-%% persistent offset that appears once weathering is active. This sits
-%% before any local is created, so whos() returns exactly the argument list.
-global ERW_CAP %#ok<GVMIS>
-if isempty(ERW_CAP)
-    %% Bootstrap from the environment, because ERW_run opens with clear all
-    %% and that discards globals set by a wrapper. Environment variables
-    %% survive it, so TC_ERW_CAPTURE is what arms this.
-    if isempty(getenv('TC_ERW_CAPTURE'))
-        ERW_CAP = struct('on',false,'k',0,'max',0);
-        ERW_CAP.names = {}; ERW_CAP.vals = [];
-    else
-        ERW_CAP = struct('on',true,'k',0,'max',200000);
-        ERW_CAP.names = {}; ERW_CAP.vals = [];
-    end
-end
-if ERW_CAP.on
-    if isempty(ERW_CAP.names)
-        wv = whos;
-        nm = {};
-        for ii = 1:numel(wv)
-            if strcmp(wv(ii).name,'ERW_CAP'); continue; end
-            vv = eval(wv(ii).name);
-            if isnumeric(vv) && isreal(vv) && ~isempty(vv)
-                %% Arrays are fingerprinted by sum(abs(.)) and tagged '#',
-                %% so a difference in psd, d, SSA, M_min or f_CEC shows up
-                %% too. Scalars alone cannot explain a state divergence.
-                if isscalar(vv)
-                    nm{end+1} = wv(ii).name; %#ok<AGROW>
-                else
-                    nm{end+1} = [wv(ii).name '#']; %#ok<AGROW>
-                end
-            end
-        end
-        ERW_CAP.names = nm;
-        ERW_CAP.vals = nan(ERW_CAP.max,numel(nm));
-    end
-    ERW_CAP.k = ERW_CAP.k+1;
-    if ERW_CAP.k <= ERW_CAP.max
-        for ii = 1:numel(ERW_CAP.names)
-            nmi = ERW_CAP.names{ii};
-            if nmi(end) == '#'
-                vv = eval(nmi(1:end-1));
-                ERW_CAP.vals(ERW_CAP.k,ii) = sum(abs(vv(:)));
-            else
-                ERW_CAP.vals(ERW_CAP.k,ii) = eval(nmi);
-            end
-        end
-    end
-end
-%% -----------------------------------------------------------------------
-
 %%%% INPUT
 
 %     pH: pH value of the solution (unitless)

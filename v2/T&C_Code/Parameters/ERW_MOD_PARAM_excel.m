@@ -464,29 +464,6 @@ else
 end
 
 CO2_air(1) = max(TT_m_input.r_het+TT_m_input.r_aut)/(D(1)*1000/Z_CO2)+CO2_atm(1);
-%% ---- init seed capture (diagnostic; inert unless TC_ERW_CAPTURE is set)
-global ERW_CAPI %#ok<GVMIS>
-if ~isempty(getenv('TC_ERW_CAPTURE'))
-    if isempty(ERW_CAPI); ERW_CAPI = struct('n',0); end
-    ERW_CAPI.n = ERW_CAPI.n+1;
-    q = ERW_CAPI.n;
-    ERW_CAPI.max_rhet_raut(q,1) = max(TT_m_input.r_het+TT_m_input.r_aut);
-    ERW_CAPI.CO2_air_1(q,1)     = CO2_air(1);
-    ERW_CAPI.CO2_atm_1(q,1)     = CO2_atm(1);
-    ERW_CAPI.D_1(q,1)           = D(1);
-    ERW_CAPI.temp_soil_1(q,1)   = temp_soil(1);
-    ERW_CAPI.s_1(q,1)           = s(1);
-    ERW_CAPI.Tw_1(q,1)          = Tw(1);
-    ERW_CAPI.Lw_1(q,1)          = Lw(1);
-    ERW_CAPI.sum_Tw(q,1)        = sum(Tw);
-    ERW_CAPI.sum_Lw(q,1)        = sum(Lw);
-    ERW_CAPI.n_rhet(q,1)        = numel(TT_m_input.r_het);
-    ERW_CAPI.sum_rhet(q,1)      = sum(TT_m_input.r_het);
-    ERW_CAPI.sum_raut(q,1)      = sum(TT_m_input.r_aut);
-    ERW_CAPI.sum_temp(q,1)      = sum(temp_soil);
-    ERW_CAPI.sum_s(q,1)         = sum(s);
-end
-%% ----------------------------------------------------------------------- 
 
 Fs(1)= D(1)/Z_CO2*(CO2_air(1)-CO2_atm(1))*1000; %[umol-conv/d]
 CO2_w(1)= k_H(1)*CO2_air(1); %[umol-conv/l] Henry's law
