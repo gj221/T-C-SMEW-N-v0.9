@@ -30,28 +30,25 @@ sets = {};
 
 sets{end+1,1} = mk('baseline','model defaults, anchor for the batch');
 
-%% Denitrification pH sensitivity. Heinen 2006 reviews linear forms with
-%% differing thresholds and spans; a narrower span makes denitrification
-%% respond more sharply to the feedstock pH rise, which is the mechanism
-%% that converts nitrate to gas rather than leachate.
-sets{end+1,1} = mk('den_pH_sharp','denitrification pH span 3.0 -> 2.0', ...
-    'pH_den_rng',2.0);
-sets{end+1,1} = mk('den_pH_flat','denitrification pH span 3.0 -> 4.0', ...
-    'pH_den_rng',4.0);
-
-%% Denitrification rate constant. Dickinson et al 2002 give 0.217 /d.
-sets{end+1,1} = mk('den_fast','KNmaxd 0.217 -> 0.325 /d','KNmaxd',0.325);
-sets{end+1,1} = mk('den_slow','KNmaxd 0.217 -> 0.145 /d','KNmaxd',0.145);
-
-%% Nitrification. Slower nitrification leaves N as NH4, which neither
-%% leaches nor denitrifies appreciably, so it cuts both loss terms at once.
-sets{end+1,1} = mk('nit_slow','KNmaxn 0.086 -> 0.057 /d','KNmaxn',0.057);
-sets{end+1,1} = mk('nit_pH_sharp','nitrification inflection 5.0 -> 6.0', ...
-    'pH_nit_0',6.0);
-
-%% One combination, to test whether the two mechanisms compose or cancel.
-sets{end+1,1} = mk('den_sharp_nit_slow','pH_den_rng 2.0 with KNmaxn 0.057', ...
-    'pH_den_rng',2.0,'KNmaxn',0.057);
+%% Full factorial over the two pH-response shape levers, at two bracketing
+%% levels each, with the rate constants at stock. Denitrification responds
+%% to the feedstock pH rise through the span of its linear pH response
+%% (Heinen 2006 reviews linear forms with differing thresholds and spans),
+%% and the nitrification arctan response (Parton et al 1996) is governed by
+%% where its inflection sits: at 5.0 it is nearly saturated across the
+%% working pH of a fertilised midwest maize soil, at 6.0 it is mid-ramp
+%% where the feedstock raises pH. The two levers act on opposite ends of
+%% the same N cycle, so the full factorial belongs in the batch, the
+%% interaction is the point. A third lever would double the set count, so
+%% the factorial is kept at the minimum that answers the question.
+sets{end+1,1} = mk('den_sharp_nit_ph5','pH_den_rng 2.0 with pH_nit_0 5.0', ...
+    'pH_den_rng',2.0,'pH_nit_0',5.0);
+sets{end+1,1} = mk('den_sharp_nit_ph6','pH_den_rng 2.0 with pH_nit_0 6.0', ...
+    'pH_den_rng',2.0,'pH_nit_0',6.0);
+sets{end+1,1} = mk('den_flat_nit_ph5','pH_den_rng 4.0 with pH_nit_0 5.0', ...
+    'pH_den_rng',4.0,'pH_nit_0',5.0);
+sets{end+1,1} = mk('den_flat_nit_ph6','pH_den_rng 4.0 with pH_nit_0 6.0', ...
+    'pH_den_rng',4.0,'pH_nit_0',6.0);
 
 end
 
