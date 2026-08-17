@@ -27,7 +27,11 @@ function result_file = Run_One_Subfield(run_id, varargin)
 %% Returns the path of the saved result file.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-opt = struct('NDays',[],'GridNx',[],'GridNy',[],'SaveResults',true);
+%% ResultDirectory defaults to the usual SIM/Subfield_12, so behaviour is
+%% unchanged when it is not given. It exists because two runs of the same
+%% run_id launched concurrently would otherwise race on one output path.
+opt = struct('NDays',[],'GridNx',[],'GridNy',[],'SaveResults',true, ...
+    'ResultDirectory','');
 if mod(numel(varargin),2) ~= 0
     error('Run_One_Subfield:BadOptions','Options must be name/value pairs.');
 end
@@ -215,7 +219,10 @@ cd(old);
 %% ---------------------------------------------------------------------
 result_file = '';
 if opt.SaveResults
-    fl_save = fullfile(current_directory,'SIM','Subfield_12');
+    fl_save = char(opt.ResultDirectory);
+    if isempty(fl_save)
+        fl_save = fullfile(current_directory,'SIM','Subfield_12');
+    end
     if ~exist(fl_save,'dir'); mkdir(fl_save); end
     tag = R.name;
     if R.use_subdomains && (~isempty(opt.GridNx) || ~isempty(opt.GridNy))

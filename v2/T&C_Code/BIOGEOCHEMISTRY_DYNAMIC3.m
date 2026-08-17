@@ -729,7 +729,7 @@ KNmax = BiogeoPar.KNmaxn; %% [1/d] % Dickinson et al., 2002
 ftemp=power((70-Ts)/(70-38),12)*exp(12*(Ts-38)/(70-38)); %%% Xu-Ri and Prentice 2008
 fmoist = Se*(1-Se)/(0.25);  %% Dickinson et al., 2002
 %%% pH response of nitrification rate - Parton et al 1996, Global Biogeochem Cycles 10:401
-fpH_nit = 0.56 + atan(pi*0.45*(-5+PH))/pi;
+fpH_nit = 0.56 + atan(pi*BiogeoPar.pH_nit_s*(PH-BiogeoPar.pH_nit_0))/pi;
 fpH_nit(fpH_nit>1)=1; fpH_nit(fpH_nit<0)=0;
 NO3flx = KNmax*ftemp*fmoist*fpH_nit*B(31); %% [gN/gsoil d]
 NH4_reaction_avail = max(0,B(31)/dtd + Incoming_N + ...
@@ -759,7 +759,7 @@ fmoist=Se^(1/L_pore); %% % Dickinson et al., 2002
 %N2flx = (B(13)/(B(13) + Kc))*ftemp*fmoist*(B(28)/(B(28) + Kn));% [gN/gsoil d]
 KNmax= BiogeoPar.KNmaxd; %% [1/d] % Dickinson et al., 2002
 %%% pH response of denitrification rate - Heinen 2006, Geoderma 133:444 (ANIMO/SWAT-family)
-fpH_den = (PH-3.5)/3.0;
+fpH_den = (PH-BiogeoPar.pH_den_min)/BiogeoPar.pH_den_rng;
 fpH_den(fpH_den>1)=1; fpH_den(fpH_den<0)=0;
 %%% Denitrifiers need NO3 as electron acceptor AND labile C as donor, so
 %%% the rate carries a Michaelis-Menten term on dissolved organic carbon

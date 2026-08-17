@@ -210,7 +210,33 @@ BiogeoPar.vam =  2.3e-7; %BiogeoPar.g_am*BiogeoPar.mrm/kn3 ; %% [m^2/day]
 %BiogeoPar.KnNH4 = 0.5; %% [0.83-1.0]  [gN/m2] 
 %BiogeoPar.KnNO3 = 0.2; 
 %BiogeoPar.KnP=0.05;
-%BiogeoPar.KnK=0.1; 
-return 
+%BiogeoPar.KnK=0.1;
+
+%%%%%% Shape of the pH response functions used in BIOGEOCHEMISTRY_DYNAMIC3.
+%% These were literals inside the rate expressions. Named here so a sweep
+%% can move them without editing the rate code; the defaults reproduce the
+%% published forms exactly.
+%% Nitrification, Parton et al 1996: 0.56 + atan(pi*s*(PH-p0))/pi
+BiogeoPar.pH_nit_0 = 5.0;   %% [-] inflection
+BiogeoPar.pH_nit_s = 0.45;  %% [1/pH] steepness
+%% Denitrification, Heinen 2006: (PH-pmin)/prng, clamped to [0 1]
+BiogeoPar.pH_den_min = 3.5; %% [-] pH of zero denitrification
+BiogeoPar.pH_den_rng = 3.0; %% [pH] span from zero to unlimited
+
+%%%%%% Optional sensitivity hook.
+%% Sensitivity_Overrides is not part of the model. It ships with the
+%% sensitivity tooling in v2/Sensitivity, and is only reachable when that
+%% folder has been put on the path deliberately. With the folder off the
+%% path, or deleted, this is inert and the parameters above are what the
+%% model runs. The lookup is cached in a persistent so the check costs one
+%% call per session rather than one per timestep.
+persistent sens_hook
+if isempty(sens_hook)
+    sens_hook = exist('Sensitivity_Overrides','file') == 2;
+end
+if sens_hook
+    BiogeoPar = Sensitivity_Overrides(BiogeoPar);
+end
+return
 
 
