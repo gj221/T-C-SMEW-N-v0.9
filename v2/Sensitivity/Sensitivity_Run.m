@@ -14,10 +14,24 @@ function results = Sensitivity_Run(varargin)
 %%   NDays           shortened run for a smoke test        []
 %%   MaxConcurrent   simultaneous MATLAB processes         [4]
 %%   OutputDirectory root for per-set result folders       [SIM/Sensitivity]
+%%   Resume          skip jobs whose result is complete    [true]
+%%   MinFreeGB       hold launching below this much free   [3]
 %%
-%% Concurrency: each child holds about 2 GB. Four is the safe default on a
-%% 16-thread box with roughly 9 GB free; raise it only after checking free
-%% memory, because a swapping run is slower than a serial one.
+%% Concurrency: each child holds about 2 GB at peak. MaxConcurrent is a
+%% ceiling, not a target. MinFreeGB is the real limit: before each launch
+%% the queue checks physical memory actually available and waits rather
+%% than starting a job that would push the machine into swap, because a
+%% swapping batch is slower than a smaller one. So asking for 6 on a box
+%% that can only hold 4 gives 4, not thrashing.
+%%
+%% Checkpointing: results are atomic, since Run_One_Subfield saves to a
+%% tempname and movefiles it into place. Resume therefore only has to ask
+%% which results are already present and readable, and a batch that dies
+%% loses just the runs that were in flight. Progress is written to
+%% progress.csv in the output root after every state change, so a running
+%% batch can be inspected from outside and a dead one can be audited. A
+%% batch run with NDays writes progress__<n>d.csv instead, so a smoke test
+%% and a full batch sharing an output root do not overwrite each other.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 sens_dir = fileparts(mfilename('fullpath'));
@@ -67,6 +81,11 @@ if ~isfolder(opt.OutputDirectory); mkdir(opt.OutputDirectory); end
 matlab_exe = fullfile(matlabroot,'bin','matlab.exe');
 
 %% Build the full job list: every set crossed with every run in the group.
+%% NDays tags every artefact the batch writes, the manifest included, so a
+%% smoke test can share an output root with a full batch without the two
+%% overwriting each other's bookkeeping.
+batch_suffix = '';
+if ~isempty(opt.NDays); batch_suffix = sprintf('__%dd',opt.NDays); end
 job = struct('set',{},'tag',{},'run_id',{},'name',{},'dir',{}, ...
     'env',{},'result',{},'log',{});
 for s = 1:numel(sets)
@@ -78,8 +97,7 @@ for s = 1:numel(sets)
         env{j} = sprintf('TC_BGP_%s=%.17g',f{j},sets{s}.(f{j}));
     end
     for r = run_ids
-        suffix = '';
-        if ~isempty(opt.NDays); suffix = sprintf('__%dd',opt.NDays); end
+        suffix = batch_suffix;
         job(end+1) = struct('set',s,'tag',sets{s}.tag,'run_id',r, ...
             'name',RM(r).name,'dir',sdir,'env',{env}, ...
             'result',fullfile(sdir,sprintf('TC_2D_run%02d_%s%s.mat', ...
@@ -128,7 +146,7 @@ running = zeros(0,1);
 proc = cell(numel(job),1);
 started = zeros(numel(job),1);
 failed = zeros(0,1);
-manifest = fullfile(opt.OutputDirectory,'progress.csv');
+manifest = fullfile(opt.OutputDirectory,sprintf('progress%s.csv',batch_suffix));
 write_manifest(manifest,job,queue,failed);
 while ~isempty(queue) || ~isempty(running)
     while ~isempty(queue) && numel(running) < opt.MaxConcurrent
@@ -242,15 +260,46 @@ end
 function sweep_orphans(d)
 %% Remove tempname leftovers from runs killed mid-save. Every result is
 %% named TC_2D_run*, so any other .mat in the set directory is an orphan.
+%%
+%% Orphan has to mean abandoned, not merely unfinished. Run_One_Subfield
+%% saves to a tempname and movefiles it into place, so for the seconds or
+%% minutes it takes to write a multi-hundred-megabyte v7.3 file, a live
+%% save is indistinguishable by name from a leftover. A batch starting in
+%% that window used to delete the temp file of a run belonging to another
+%% batch sharing this root, destroying it at its final step with all of its
+%% compute already spent. Two guards, because the cost of a wrong delete is
+%% hours and the cost of a missed one is a stray file: age, since a genuine
+%% leftover comes from a process that is already gone while a live temp
+%% file was created moments ago; and an open-handle test, which catches a
+%% slow save that has outlived the age guard.
 if ~isfolder(d); return; end
+min_age_minutes = 60;
 names = dir(fullfile(d,'*.mat'));
 for k = 1:numel(names)
-    if ~names(k).isdir && ~startsWith(names(k).name,'TC_2D_run')
-        try
-            delete(fullfile(d,names(k).name));
-        catch
-        end
+    if names(k).isdir || startsWith(names(k).name,'TC_2D_run'); continue; end
+    f = fullfile(d,names(k).name);
+    if (now - names(k).datenum)*24*60 < min_age_minutes; continue; end
+    if file_is_open(f); continue; end
+    try
+        delete(f);
+    catch
     end
+end
+end
+
+%% =======================================================================
+function busy = file_is_open(f)
+%% A file another process is writing cannot be opened for append. Windows
+%% enforces that sharing mode, which is where concurrent batches actually
+%% run; on POSIX the open succeeds and the age guard in sweep_orphans is
+%% what protects a live save. Append is used rather than write because it
+%% neither creates nor truncates, so the test cannot damage what it probes.
+busy = false;
+fid = fopen(f,'a');
+if fid < 0
+    busy = true;
+else
+    fclose(fid);
 end
 end
 
