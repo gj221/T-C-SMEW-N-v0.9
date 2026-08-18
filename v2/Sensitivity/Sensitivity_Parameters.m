@@ -56,19 +56,41 @@ sets{end+1,1} = mk('den_sharp_nit_ph5','pH_den_rng 2.0 with pH_nit_0 5.0', ...
     'pH_den_rng',2.0,'pH_nit_0',5.0);
 sets{end+1,1} = mk('den_sharp_nit_ph6','pH_den_rng 2.0 with pH_nit_0 6.0', ...
     'pH_den_rng',2.0,'pH_nit_0',6.0);
+%% Infeasible corner, second occurrence: this set crossed with basalt
+%% (run 11) fails the same way as den_sharp_nit_ph5 x basalt, in the
+%% warning-and-clamp mode documented there. It ran clean through ~64%
+%%
+%% (step ~150000) before the ERW_function solver left convergence from
+%% roughly step 212419 onward with thousands of consecutive failures and
+%% no successes; audited 2026-08-17, killed and recorded failed rather
+%% than left to crawl at ~16x on clamped pH/alkalinity/Ca. The common
+%% trigger with the sharp corner is pH_nit_0 = 5.0 crossed with basalt:
+%% the pH 6.0 corners of the same span are clean. Treat as not simulable
+%% unless res_threshold or the x0 restart is revisited.
 sets{end+1,1} = mk('den_flat_nit_ph5','pH_den_rng 4.0 with pH_nit_0 5.0', ...
     'pH_den_rng',4.0,'pH_nit_0',5.0);
 sets{end+1,1} = mk('den_flat_nit_ph6','pH_den_rng 4.0 with pH_nit_0 6.0', ...
     'pH_den_rng',4.0,'pH_nit_0',6.0);
 
-%% Centre and off-diagonal corners that complete the 3x3 level grid over
-%% the two levers. Two levels can only show slope and interaction, so the
-%% optimum for the longer 2D run needs the third level: a quadratic fit
-%% over the nine corners estimates curvature and locates the best corner
-%% instead of guessing at an edge. The four sets below are the only
-%% corners missing from the grid; the other five already run in the first
-%% wave. Pairs with the sharp span keep the known solver risk on basalt
-%% documented above.
+%% Third level on both levers, completing the 3x3 grid. These were added to
+%% support a quadratic fit locating an optimum for the 2D runs, and that
+%% purpose does not hold: the optimum is not identifiable here. Choosing
+%% these parameters needs N2O or nitrate-leaching observations to fit
+%% against and the repository has none, the measured data being GPP, NEE
+%% and Re for Kantola and CEC, Ca, Mg and pH from Beerling. The chemistry
+%% observations cannot discriminate either, because these levers move the
+%% response to pH rather than pH itself: control mean pH came out at 6.049,
+%% 6.060 and 6.057 across sets. Absolute N2O is additionally degenerate
+%% with the rN2O partition, which is not swept. The 2D runs therefore use
+%% the published defaults, pH_nit_0 5.0 with pH_den_rng 3.0, which is the
+%% baseline set above.
+%%
+%% They are kept because they ran, and because they widen the spread the
+%% sweep exists to measure. They also settle where the solver fails: every
+%% one of these completed clean, basalt included, so the infeasibility
+%% documented above belongs to pH_nit_0 5.0 crossed with a perturbed span,
+%% not to the 5.5 level and not to basalt generally. Seven of the nine
+%% basalt cells are simulable; control and calcite complete the full grid.
 sets{end+1,1} = mk('den_sharp_nit_ph55','pH_den_rng 2.0 with pH_nit_0 5.5', ...
     'pH_den_rng',2.0,'pH_nit_0',5.5);
 sets{end+1,1} = mk('den_mid_nit_ph55','pH_den_rng 3.0 with pH_nit_0 5.5', ...
@@ -77,7 +99,6 @@ sets{end+1,1} = mk('den_mid_nit_ph6','pH_den_rng 3.0 with pH_nit_0 6.0', ...
     'pH_den_rng',3.0,'pH_nit_0',6.0);
 sets{end+1,1} = mk('den_flat_nit_ph55','pH_den_rng 4.0 with pH_nit_0 5.5', ...
     'pH_den_rng',4.0,'pH_nit_0',5.5);
-
 end
 
 %% =======================================================================

@@ -107,27 +107,54 @@ if true
     end
 end
 
-%% Spread across sets: the point of the exercise is the range, so plot the
-%% control value and the feedstock effect side by side rather than ranking.
+%% Spread across sets: the point of the exercise is the range, so show a
+%% shaded band spanning the three treatments at every set, with the
+%% control/basalt/calcite trajectories drawn through it.
+rows = find(keep);
 fig = figure('Color','w','Visible',char(opt.Visible), ...
     'Name','Nitrogen sensitivity');
 fig.Position(3:4) = [1150 620];
 tl = tiledlayout(fig,2,2,'TileSpacing','compact','Padding','compact');
-bars = {'ctl_leach','NO_3 leaching, control','kg N ha^{-1} yr^{-1}'; ...
-        'ctl_N2O','N_2O, control','kg N ha^{-1} yr^{-1}'; ...
-        'leach_cut_pct','NO_3 leaching cut by feedstock','%'; ...
-        'N2O_cut_pct','N_2O cut by feedstock','%'};
+
+treat_colors = {[0.00 0.25 0.60], [0.72 0.27 0.10], [0.00 0.55 0.35]};
+panels = { ...
+    'N_2O emission',       'kg N ha^{-1} yr^{-1}', @(D) D.n2o; ...
+    'NO_3 leaching',       'kg N ha^{-1} yr^{-1}', @(D) D.leach; ...
+    'Denitrification',     'kg N ha^{-1} yr^{-1}', @(D) D.den; ...
+    'Vegetation N uptake', 'kg N ha^{-1} yr^{-1}', @(D) D.up};
+
 for p = 1:4
     ax = nexttile(tl);
-    y = T.(bars{p,1});
-    barh(ax,y,'FaceColor',[0 0.25 0.60],'EdgeColor','none');
-    set(ax,'YTick',1:height(T),'YTickLabel',set_labels,'YDir','reverse', ...
-        'Color','w','XColor','k','YColor','k','TickLabelInterpreter','none');
-    grid(ax,'off'); box(ax,'on');
-    xlabel(ax,bars{p,3},'Color','k');
-    text(ax,0.98,0.04,bars{p,2},'Units','normalized', ...
-        'HorizontalAlignment','right','FontWeight','bold','Color','k');
+    X = 1:numel(rows);
+    lo = zeros(1,numel(X)); hi = zeros(1,numel(X));
+    traj = zeros(numel(X),3);
+    for s = 1:numel(X)
+        D = store{rows(s)};
+        v = [panels{p,3}(D(1)) panels{p,3}(D(2)) panels{p,3}(D(3))];
+        lo(s) = min(v); hi(s) = max(v); traj(s,:) = v;
+    end
+    patch(ax,[X fliplr(X)],[hi fliplr(lo)],[0.55 0.65 0.75], ...
+        'EdgeColor','none','FaceAlpha',0.35);
+    hold(ax,'on');
+    h = gobjects(1,3);
+    for i = 1:3
+        h(i) = plot(ax,X,traj(:,i),'-o','Color',treat_colors{i}, ...
+            'LineWidth',1.4,'MarkerFaceColor',treat_colors{i}, ...
+            'MarkerSize',4);
+    end
+    hold(ax,'off');
+    set(ax,'XTick',X,'XTickLabel',arrayfun(@(s) sets{rows(s)}.tag,X, ...
+        'UniformOutput',false),'XTickLabelRotation',30, ...
+        'Color','w','XColor','k','YColor','k', ...
+        'TickLabelInterpreter','none','FontSize',8);
+    ylabel(ax,panels{p,2},'Color','k');
+    text(ax,0.03,0.97,panels{p,1},'Units','normalized', ...
+        'VerticalAlignment','top','FontWeight','bold','Color','k');
+    grid(ax,'on'); box(ax,'on');
 end
+lgd = legend(h,{'control','basalt','calcite'},'Interpreter','none', ...
+    'Box','off');
+lgd.Layout.Tile = 'south';
 title(tl,{'Nitrogen pH-response sensitivity, equilibrium years'; ...
     factorial_note(sets)},'Color','k');
 out = fullfile(opt.Directory,'sensitivity_summary.png');
