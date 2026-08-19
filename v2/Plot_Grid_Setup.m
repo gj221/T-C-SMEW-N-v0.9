@@ -8,8 +8,8 @@
 %%   (a)  1-D top-down:    a single 60 m x 60 m column (3600 m2)
 %%   (b)  2-D top-down:    60 m x 60 m field, 5 m margin ring, 12 cells
 %%                         (4 dark-blue main cells + 8 light-blue buffer
-%%                         cells); orange arrows show the lateral
-%%                         coupling across every shared face
+%%                         cells); red arrows show the lateral coupling
+%%                         across every shared face
 %%   (c)  1-D horizontal:  the 20-layer, 5 m soil column - light brown
 %%                         active zone (0-300 mm) over darker brown
 %%                         deeper soil, layer lines kept visible; a
@@ -56,13 +56,13 @@ kw_bg  = {'BackgroundColor','w','EdgeColor','none'};  % text on white box
 
 %% figure
 fig = figure('Color','w','Name','T&C-SMEW-N 1-D and 2-D grid setup');
-fig.Position(3:4) = [1400 1400];
-tl = tiledlayout(fig,4,2,'TileSpacing','tight','Padding','compact');
+fig.Position(3:4) = [1300 1400];
+tl = tiledlayout(fig,5,2,'TileSpacing','tight','Padding','compact');
 title(tl,'T&C-SMEW-N grid setup: 1-D and 2-D domains', ...
     'Color','k','FontWeight','bold','FontSize',13);
 
 %% ================= (a) 1-D top-down =================
-ax = nexttile(tl);
+ax = nexttile(tl,[2 1]);
 hold(ax,'on'); axis(ax,'equal'); ax.Color = 'w';
 rectangle(ax,'Position',[0 0 L L],'FaceColor',main_c, ...
     'EdgeColor',edge_c,'LineWidth',1.5);
@@ -85,7 +85,7 @@ ax.Box = 'on';
 title(ax,'(a) 1-D top-down: single column','FontSize',11,'Color','k');
 
 %% ================= (b) 2-D top-down =================
-ax = nexttile(tl);
+ax = nexttile(tl,[2 1]);
 hold(ax,'on'); axis(ax,'equal'); ax.Color = 'w';
 
 for c = 1:topo.N_cells
@@ -184,17 +184,29 @@ plot(ax,[0 1],[-0.3 -0.3],'--','Color',soil_line_c,'LineWidth',1);
 plot(ax,[0 1],[0 0],'Color',edge_c,'LineWidth',2);
 text(ax,0.03,0.12,'soil surface','FontSize',8, ...
     'HorizontalAlignment','left',kw_txt{:},kw_bg{:});
-text(ax,0.5,-0.15,{'active zone','0-300 mm'},'FontSize',8, ...
+plot(ax,[1.10 1.10],[0 -0.3],'Color','k','LineWidth',1.2);
+plot(ax,[1.05 1.15],[0 0],'Color','k','LineWidth',1.2);
+plot(ax,[1.05 1.15],[-0.3 -0.3],'Color','k','LineWidth',1.2);
+text(ax,1.18,-0.15,{'active zone','0-300 mm'},'FontSize',8, ...
+    'HorizontalAlignment','left','VerticalAlignment','middle', ...
+    kw_txt{:},kw_bg{:});
+x_red = [0.06 0.14];
+y_red = [-0.10 -0.20];
+plot(ax,x_red,y_red,'Color',[0.78 0.15 0.15],'LineWidth',2);
+plot(ax,[x_red(2) x_red(1)],y_red,'Color',[0.78 0.15 0.15],'LineWidth',2);
+text(ax,0.46,-0.15,'no lateral transport','FontSize',7.5, ...
     'HorizontalAlignment','center','VerticalAlignment','middle', ...
+    'FontWeight','bold',kw_txt{:},kw_bg{:});
+text(ax,0.5,1.0,'single soil column (60 m x 60 m)', ...
+    'FontSize',10,'HorizontalAlignment','center','FontWeight','bold', ...
     kw_txt{:},kw_bg{:});
-text(ax,0.5,-2.4,{'20 soil layers','5 m deep'}, ...
-    'FontSize',9.5,'HorizontalAlignment','center','FontWeight','bold', ...
-    kw_txt{:},kw_bg{:});
-plot(ax,[0.45 0.55],[-4.2 -4.6],'Color',[0.78 0.15 0.15],'LineWidth',2);
-plot(ax,[0.55 0.45],[-4.2 -4.6],'Color',[0.78 0.15 0.15],'LineWidth',2);
-text(ax,0.5,-4.85,'no lateral transport','FontSize',8.5, ...
-    'HorizontalAlignment','center','FontWeight','bold',kw_txt{:},kw_bg{:});
-ax.XLim = [-0.05 1.25]; ax.YLim = [-5.15 0.5];
+text(ax,0.5,0.5,'vertical-only exchange of water, heat and solutes', ...
+    'FontSize',8.5,'HorizontalAlignment','center',kw_txt{:},kw_bg{:});
+text(ax,0.5,-5.6,'Main cell (whole field)','FontSize',8.5, ...
+    'HorizontalAlignment','center',kw_txt{:},kw_bg{:});
+text(ax,0.5,-6.15,'20-layer soil column, 5 m deep','FontSize',8, ...
+    'HorizontalAlignment','center',kw_txt{:},kw_bg{:});
+ax.XLim = [-0.05 1.8]; ax.YLim = [-6.3 1.5];
 ax.XTick = []; ax.YTick = -5:0;
 ax.YTickLabel = {'0','1','2','3','4','5'};
 ax.XColor = 'k'; ax.YColor = 'k';
