@@ -71,11 +71,11 @@ text(ax,L/2,L/2,{'1-D single column','60 m x 60 m (3600 m^{2})'}, ...
 plot(ax,[0 L],[-4.5 -4.5],'Color','k','LineWidth',1);
 plot(ax,[0 0],[-5.3 -3.7],'Color','k','LineWidth',1);
 plot(ax,[L L],[-5.3 -3.7],'Color','k','LineWidth',1);
-text(ax,L/2,-5.6,'60 m','FontSize',9,'HorizontalAlignment','center',kw_txt{:});
+text(ax,L/2,-6.1,'60 m','FontSize',9,'HorizontalAlignment','center',kw_txt{:});
 plot(ax,[-4.5 -4.5],[0 L],'Color','k','LineWidth',1);
 plot(ax,[-5.3 -3.7],[0 0],'Color','k','LineWidth',1);
 plot(ax,[-5.3 -3.7],[L L],'Color','k','LineWidth',1);
-text(ax,-6.5,L/2,'60 m','FontSize',9,'Rotation',90, ...
+text(ax,-7.0,L/2,'60 m','FontSize',9,'Rotation',90, ...
     'HorizontalAlignment','center',kw_txt{:});
 ax.XLim = [-8.8 68.8]; ax.YLim = [-8.8 68.8];
 ax.XTick = []; ax.YTick = [];
@@ -130,16 +130,16 @@ end
 plot(ax,[L-w L],[-4.5 -4.5],'Color','k','LineWidth',1);
 plot(ax,[L-w L-w],[-5.3 -3.7],'Color','k','LineWidth',1);
 plot(ax,[L L],[-5.3 -3.7],'Color','k','LineWidth',1);
-text(ax,59.8,-5.8,'5 m margin','FontSize',8.5, ...
+text(ax,58.0,-6.2,'5 m margin','FontSize',8.5, ...
     'HorizontalAlignment','right',kw_txt{:});
-plot(ax,[0 L],[-6.7 -6.7],'Color','k','LineWidth',1);
-plot(ax,[0 0],[-7.5 -5.9],'Color','k','LineWidth',1);
-plot(ax,[L L],[-7.5 -5.9],'Color','k','LineWidth',1);
-text(ax,L/2,-7.8,'60 m','FontSize',9,'HorizontalAlignment','center',kw_txt{:});
+plot(ax,[0 L],[-7.1 -7.1],'Color','k','LineWidth',1);
+plot(ax,[0 0],[-7.9 -6.3],'Color','k','LineWidth',1);
+plot(ax,[L L],[-7.9 -6.3],'Color','k','LineWidth',1);
+text(ax,L/2,-8.1,'60 m','FontSize',9,'HorizontalAlignment','center',kw_txt{:});
 plot(ax,[-4.5 -4.5],[0 L],'Color','k','LineWidth',1);
 plot(ax,[-5.3 -3.7],[0 0],'Color','k','LineWidth',1);
 plot(ax,[-5.3 -3.7],[L L],'Color','k','LineWidth',1);
-text(ax,-6.5,L/2,'60 m','FontSize',9,'Rotation',90, ...
+text(ax,-7.0,L/2,'60 m','FontSize',9,'Rotation',90, ...
     'HorizontalAlignment','center',kw_txt{:});
 plot(ax,[w w+(L-2*w)/nx],[w+7.0 w+7.0],'Color','w','LineWidth',1);
 plot(ax,[w w],[w+6.2 w+7.8],'Color','w','LineWidth',1);
@@ -195,11 +195,7 @@ text(ax,0.5,1.0,'single soil column (60 m x 60 m)', ...
     kw_txt{:});
 text(ax,0.5,0.5,'vertical-only exchange of water, heat and solutes', ...
     'FontSize',8.5,'HorizontalAlignment','center',kw_txt{:});
-text(ax,0.5,-5.6,'Main cell (whole field)','FontSize',8.5, ...
-    'HorizontalAlignment','center',kw_txt{:});
-text(ax,0.5,-6.15,'20-layer soil column, 5 m deep','FontSize',8, ...
-    'HorizontalAlignment','center',kw_txt{:});
-ax.XLim = [-0.05 1.05]; ax.YLim = [-6.3 1.5];
+ax.XLim = [-0.05 1.05]; ax.YLim = [-5.4 1.5];
 ax.XTick = []; ax.YTick = -5:0;
 ax.YTickLabel = {'0','1','2','3','4','5'};
 ax.XColor = 'k'; ax.YColor = 'k';
@@ -212,7 +208,6 @@ ax = nexttile(tl,[3 1]);
 hold(ax,'on'); ax.Color = 'w';
 col_x = 0:3;
 col_cap = {buff_c,main_c,main_c,buff_c};
-col_name = {'W margin','Main 1','Main 2','E margin'};
 for k = 1:4
     for i = 1:nL
         if Zd(i+1) <= 0.3
@@ -224,8 +219,6 @@ for k = 1:4
         rectangle(ax,'Position',[col_x(k) -Zd(i) 1 Zd(i+1)-Zd(i)], ...
             'FaceColor',fill_c,'EdgeColor',soil_line_c,'LineWidth',0.6);
     end
-    text(ax,col_x(k)+0.5,-5.6,col_name{k},'FontSize',8.5, ...
-        'HorizontalAlignment','center',kw_txt{:});
 end
 plot(ax,[0 4],[-0.3 -0.3],'--','Color',soil_line_c,'LineWidth',1);
 for k = 1:4
@@ -247,9 +240,7 @@ text(ax,2,1.0,'lateral transport between adjacent cells', ...
     kw_txt{:});
 text(ax,2,0.5,'water, heat and solutes','FontSize',8.5, ...
     'HorizontalAlignment','center',kw_txt{:});
-text(ax,2,-6.15,'every cell carries the same 20-layer soil column', ...
-    'FontSize',8,'HorizontalAlignment','center',kw_txt{:});
-ax.XLim = [-0.3 4.3]; ax.YLim = [-6.3 1.5];
+ax.XLim = [-0.3 4.3]; ax.YLim = [-5.4 1.5];
 ax.XTick = []; ax.YTick = -5:0;
 ax.YTickLabel = {'0','1','2','3','4','5'};
 ax.XColor = 'k'; ax.YColor = 'k';
