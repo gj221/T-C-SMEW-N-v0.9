@@ -197,7 +197,7 @@ text(ax,0.5,0.5,'vertical-only exchange of water, heat and solutes', ...
     'FontSize',8.5,'HorizontalAlignment','center',kw_txt{:});
 ax.XLim = [-0.05 1.05]; ax.YLim = [-5.4 1.5];
 ax.XTick = []; ax.YTick = -5:0;
-ax.YTickLabel = {'0','1','2','3','4','5'};
+ax.YTickLabel = {'5','4','3','2','1','0'};
 ax.XColor = 'k'; ax.YColor = 'k';
 ax.Box = 'on';
 ylabel(ax,'Depth [m]','FontSize',10,'Color','k');
@@ -242,7 +242,7 @@ text(ax,2,0.5,'water, heat and solutes','FontSize',8.5, ...
     'HorizontalAlignment','center',kw_txt{:});
 ax.XLim = [-0.3 4.3]; ax.YLim = [-5.4 1.5];
 ax.XTick = []; ax.YTick = -5:0;
-ax.YTickLabel = {'0','1','2','3','4','5'};
+ax.YTickLabel = {'5','4','3','2','1','0'};
 ax.XColor = 'k'; ax.YColor = 'k';
 ax.Box = 'on';
 ylabel(ax,'Depth [m]','FontSize',10,'Color','k');
