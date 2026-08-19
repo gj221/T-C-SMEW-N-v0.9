@@ -36,11 +36,15 @@ Zd = Zs_mm/1000;         % layer boundaries [m]
 nL = numel(Zs_mm)-1;     % number of soil layers
 
 %% colours
-main_c  = [0.10 0.35 0.65];   % dark blue: main cells
-buff_c  = [0.78 0.89 0.98];   % light blue: buffer (margin) cells
-edge_c  = [0.15 0.15 0.15];
-layer_c = [0.60 0.63 0.65];
-arrow_c = [0.85 0.33 0.10];
+main_c      = [0.10 0.35 0.65];   % dark blue: main cells
+buff_c      = [0.78 0.89 0.98];   % light blue: buffer (margin) cells
+edge_c      = [0.15 0.15 0.15];
+soil_c      = [0.84 0.73 0.55];   % light brown: soil column
+soil_alt_c  = [0.78 0.66 0.48];   % darker brown: alternating layers
+soil_line_c = [0.50 0.38 0.25];   % brown layer lines
+active_c    = [0.98 0.92 0.65];   % pale yellow: active soil zone
+active_edge = [0.70 0.55 0.20];
+arrow_c     = [0.85 0.33 0.10];
 
 %% figure
 fig = figure('Color','w','Name','T&C-SMEW-N 1-D and 2-D grid setup');
@@ -102,28 +106,35 @@ title(ax,'(b) 2-D top-down: 12 cells (4 main + 8 buffer)', ...
 %% legend
 h_main  = patch(ax,NaN,NaN,main_c,'EdgeColor','none');
 h_buff  = patch(ax,NaN,NaN,buff_c,'EdgeColor','none');
+h_zone  = patch(ax,NaN,NaN,active_c,'EdgeColor',active_edge);
 h_arrow = plot(ax,NaN,NaN,'Color',arrow_c,'LineWidth',1.8);
-lgd = legend([h_main h_buff h_arrow], ...
-    {'Main cells','Buffer (margin) cells','Lateral coupling'}, ...
+lgd = legend([h_main h_buff h_zone h_arrow], ...
+    {'Main cells','Buffer (margin) cells','Active soil zone (0-300 mm)','Lateral coupling'}, ...
     'Orientation','horizontal','Box','off','FontSize',10);
 lgd.Layout.Tile = 'south';
 
 %% ================= (c) 1-D horizontal =================
 ax = nexttile(tl);
 hold(ax,'on');
-rectangle(ax,'Position',[0 -5 1 5],'FaceColor',[0.93 0.95 0.97], ...
-    'EdgeColor',edge_c,'LineWidth',1.5);
-for i = 2:nL+1
-    plot(ax,[0 1],[-Zd(i) -Zd(i)],'Color',layer_c,'LineWidth',0.5);
+for i = 1:nL
+    fill_c = soil_c;
+    if mod(i,2)==0; fill_c = soil_alt_c; end
+    rectangle(ax,'Position',[0 -Zd(i) 1 Zd(i+1)-Zd(i)], ...
+        'FaceColor',fill_c,'EdgeColor',soil_line_c,'LineWidth',0.5);
 end
+rectangle(ax,'Position',[0 -0.3 1 0.3],'FaceColor',active_c, ...
+    'FaceAlpha',0.35,'EdgeColor',active_edge,'LineWidth',1, ...
+    'LineStyle','--');
 plot(ax,[0 1],[0 0],'Color',edge_c,'LineWidth',2);
-text(ax,0.05,-0.25,'soil surface','FontSize',8,'Color',edge_c);
+text(ax,0.05,-0.12,'soil surface','FontSize',8,'Color',edge_c);
+text(ax,0.78,-0.15,{'active zone','(0-300 mm)'},'FontSize',6.5, ...
+    'Color',[0.55 0.42 0.10],'HorizontalAlignment','center');
 text(ax,0.5,-2.4,sprintf('%d soil layers\n5 m deep',nL), ...
-    'FontSize',9.5,'HorizontalAlignment','center', ...
-    'Color',[0.1 0.1 0.1]);
+    'FontSize',9.5,'HorizontalAlignment','center','FontWeight','bold', ...
+    'Color',[0.25 0.18 0.08]);
 plot(ax,[0.45 0.55],[-4.1 -4.5],'Color',[0.78 0.15 0.15],'LineWidth',2);
 plot(ax,[0.55 0.45],[-4.1 -4.5],'Color',[0.78 0.15 0.15],'LineWidth',2);
-text(ax,0.5,-4.75,'no lateral coupling','FontSize',8.5, ...
+text(ax,0.5,-4.75,'no lateral coupling (single column)','FontSize',8.5, ...
     'HorizontalAlignment','center','Color',[0.78 0.15 0.15], ...
     'FontWeight','bold');
 ax.XLim = [-0.15 1.25]; ax.YLim = [-5.9 0.6];
@@ -131,43 +142,51 @@ ax.XTick = []; ax.YTick = -5:0;
 ax.YTickLabel = {'0','1','2','3','4','5'};
 ax.Box = 'on';
 ylabel(ax,'Depth [m]','FontSize',10);
-title(ax,'(c) 1-D horizontal: single column','FontSize',11);
+title(ax,'(c) 1-D horizontal: single soil column','FontSize',11);
 
 %% ================= (d) 2-D horizontal =================
 ax = nexttile(tl);
 hold(ax,'on');
 col_x = 0:3;
-col_fill = {buff_c,main_c,main_c,buff_c};
+col_cap = {buff_c,main_c,main_c,buff_c};
 col_name = {'W margin','Main 1','Main 2','E margin'};
 for k = 1:4
-    rectangle(ax,'Position',[col_x(k) -5 1 5],'FaceColor',col_fill{k}, ...
-        'EdgeColor',edge_c,'LineWidth',1.2);
-    for i = 2:nL+1
-        plot(ax,col_x(k)+[0 1],[-Zd(i) -Zd(i)],'Color',layer_c, ...
-            'LineWidth',0.5);
+    for i = 1:nL
+        fill_c = soil_c;
+        if mod(i,2)==0; fill_c = soil_alt_c; end
+        rectangle(ax,'Position',[col_x(k) -Zd(i) 1 Zd(i+1)-Zd(i)], ...
+            'FaceColor',fill_c,'EdgeColor',soil_line_c,'LineWidth',0.5);
     end
     text(ax,col_x(k)+0.5,-5.7,col_name{k},'FontSize',8.5, ...
-        'HorizontalAlignment','center');
+        'HorizontalAlignment','center','Color',[0.25 0.18 0.08]);
+end
+rectangle(ax,'Position',[0 -0.3 4 0.3],'FaceColor',active_c, ...
+    'FaceAlpha',0.35,'EdgeColor',active_edge,'LineWidth',1, ...
+    'LineStyle','--');
+for k = 1:4
+    rectangle(ax,'Position',[col_x(k) -0.12 1 0.12], ...
+        'FaceColor',col_cap{k},'EdgeColor',edge_c,'LineWidth',1);
 end
 plot(ax,[0 4],[0 0],'Color',edge_c,'LineWidth',2);
+text(ax,0.05,-0.12,'soil surface','FontSize',8,'Color',edge_c);
 for k = 1:3
     gx = col_x(k)+1;
-    quiver(ax,gx-0.40,-0.25,0.22,0,'Color',arrow_c,'LineWidth',1.6, ...
-        'MaxHeadSize',1.2,'AutoScale','off');
-    quiver(ax,gx+0.40,-0.25,-0.22,0,'Color',arrow_c,'LineWidth',1.6, ...
-        'MaxHeadSize',1.2,'AutoScale','off');
+    quiver(ax,gx-0.42,-0.18,0.24,0,'Color',arrow_c,'LineWidth',2, ...
+        'MaxHeadSize',1.5,'AutoScale','off');
+    quiver(ax,gx+0.42,-0.18,-0.24,0,'Color',arrow_c,'LineWidth',2, ...
+        'MaxHeadSize',1.5,'AutoScale','off');
 end
-text(ax,2,0.75,'lateral coupling (water, heat, solutes)', ...
-    'FontSize',9,'HorizontalAlignment','center','Color',arrow_c, ...
-    'FontWeight','bold');
-text(ax,2,-6.7,'every cell carries the same 20-layer column', ...
+text(ax,2,0.75,{'lateral coupling: water, heat and solutes', ...
+    'through the 0-300 mm active zone'},'FontSize',9, ...
+    'HorizontalAlignment','center','Color',arrow_c,'FontWeight','bold');
+text(ax,2,-6.7,'every cell carries the same 20-layer soil column', ...
     'FontSize',8,'HorizontalAlignment','center','Color',[0.4 0.4 0.4]);
 ax.XLim = [-0.35 4.35]; ax.YLim = [-7.4 1.3];
 ax.XTick = []; ax.YTick = -5:0;
 ax.YTickLabel = {'0','1','2','3','4','5'};
 ax.Box = 'on';
 ylabel(ax,'Depth [m]','FontSize',10);
-title(ax,'(d) 2-D horizontal: lateral exchange between cells', ...
+title(ax,'(d) 2-D horizontal: lateral exchange between columns', ...
     'FontSize',11);
 
 %% ================= save =================
