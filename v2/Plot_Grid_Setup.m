@@ -1,5 +1,5 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Plot_Grid_Setup — simple schematic of the T&C-SMEW-N v0.9 grid
+﻿%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Plot_Grid_Setup â€” simple schematic of the T&C-SMEW-N v0.9 grid
 %%
 %% Standalone script; run it directly (e.g.  run Plot_Grid_Setup).
 %%
@@ -56,8 +56,8 @@ kw_bg  = {'BackgroundColor','w','EdgeColor','none'};  % text on white box
 
 %% figure
 fig = figure('Color','w','Name','T&C-SMEW-N 1-D and 2-D grid setup');
-fig.Position(3:4) = [1400 1180];
-tl = tiledlayout(fig,3,2,'TileSpacing','compact','Padding','compact');
+fig.Position(3:4) = [1400 1400];
+tl = tiledlayout(fig,4,2,'TileSpacing','tight','Padding','compact');
 title(tl,'T&C-SMEW-N grid setup: 1-D and 2-D domains', ...
     'Color','k','FontWeight','bold','FontSize',13);
 
@@ -168,7 +168,7 @@ lgd = legend([h_main h_buff h_soil h_zone h_arrow], ...
 lgd.Layout.Tile = 'south';
 
 %% ================= (c) 1-D horizontal =================
-ax = nexttile(tl,[2 1]);
+ax = nexttile(tl,[3 1]);
 hold(ax,'on'); ax.Color = 'w';
 for i = 1:nL
     if Zd(i+1) <= 0.3
@@ -182,22 +182,19 @@ for i = 1:nL
 end
 plot(ax,[0 1],[-0.3 -0.3],'--','Color',soil_line_c,'LineWidth',1);
 plot(ax,[0 1],[0 0],'Color',edge_c,'LineWidth',2);
-text(ax,0.03,0.10,'soil surface','FontSize',8, ...
+text(ax,0.03,0.12,'soil surface','FontSize',8, ...
     'HorizontalAlignment','left',kw_txt{:},kw_bg{:});
-plot(ax,[1.10 1.10],[0 -0.3],'Color','k','LineWidth',1.2);
-plot(ax,[1.05 1.15],[0 0],'Color','k','LineWidth',1.2);
-plot(ax,[1.05 1.15],[-0.3 -0.3],'Color','k','LineWidth',1.2);
-text(ax,1.18,-0.15,{'active zone','0-300 mm'},'FontSize',8, ...
-    'HorizontalAlignment','left','VerticalAlignment','middle', ...
+text(ax,0.5,-0.15,{'active zone','0-300 mm'},'FontSize',8, ...
+    'HorizontalAlignment','center','VerticalAlignment','middle', ...
     kw_txt{:},kw_bg{:});
-text(ax,0.55,-2.4,{'20 soil layers','5 m deep'}, ...
+text(ax,0.5,-2.4,{'20 soil layers','5 m deep'}, ...
     'FontSize',9.5,'HorizontalAlignment','center','FontWeight','bold', ...
     kw_txt{:},kw_bg{:});
-plot(ax,[0.45 0.55],[-4.3 -4.7],'Color',[0.78 0.15 0.15],'LineWidth',2);
-plot(ax,[0.55 0.45],[-4.3 -4.7],'Color',[0.78 0.15 0.15],'LineWidth',2);
-text(ax,0.5,-5.45,'no lateral transport','FontSize',8.5, ...
+plot(ax,[0.45 0.55],[-4.2 -4.6],'Color',[0.78 0.15 0.15],'LineWidth',2);
+plot(ax,[0.55 0.45],[-4.2 -4.6],'Color',[0.78 0.15 0.15],'LineWidth',2);
+text(ax,0.5,-4.85,'no lateral transport','FontSize',8.5, ...
     'HorizontalAlignment','center','FontWeight','bold',kw_txt{:},kw_bg{:});
-ax.XLim = [-0.15 1.75]; ax.YLim = [-5.9 0.6];
+ax.XLim = [-0.05 1.25]; ax.YLim = [-5.15 0.5];
 ax.XTick = []; ax.YTick = -5:0;
 ax.YTickLabel = {'0','1','2','3','4','5'};
 ax.XColor = 'k'; ax.YColor = 'k';
@@ -206,7 +203,7 @@ ylabel(ax,'Depth [m]','FontSize',10,'Color','k');
 title(ax,'(c) 1-D horizontal: single soil column','FontSize',11,'Color','k');
 
 %% ================= (d) 2-D horizontal =================
-ax = nexttile(tl,[2 1]);
+ax = nexttile(tl,[3 1]);
 hold(ax,'on'); ax.Color = 'w';
 col_x = 0:3;
 col_cap = {buff_c,main_c,main_c,buff_c};
@@ -222,7 +219,7 @@ for k = 1:4
         rectangle(ax,'Position',[col_x(k) -Zd(i) 1 Zd(i+1)-Zd(i)], ...
             'FaceColor',fill_c,'EdgeColor',soil_line_c,'LineWidth',0.6);
     end
-    text(ax,col_x(k)+0.5,-5.7,col_name{k},'FontSize',8.5, ...
+    text(ax,col_x(k)+0.5,-5.6,col_name{k},'FontSize',8.5, ...
         'HorizontalAlignment','center',kw_txt{:},kw_bg{:});
 end
 plot(ax,[0 4],[-0.3 -0.3],'--','Color',soil_line_c,'LineWidth',1);
@@ -231,7 +228,7 @@ for k = 1:4
         'FaceColor',col_cap{k},'EdgeColor',edge_c,'LineWidth',1);
 end
 plot(ax,[0 4],[0 0],'Color',edge_c,'LineWidth',2);
-text(ax,0.03,0.10,'soil surface','FontSize',8, ...
+text(ax,0.03,0.12,'soil surface','FontSize',8, ...
     'HorizontalAlignment','left',kw_txt{:},kw_bg{:});
 for k = 1:3
     gx = col_x(k)+1;
@@ -240,20 +237,20 @@ for k = 1:3
     quiver(ax,gx+0.42,-0.18,-0.24,0,'Color',arrow_c,'LineWidth',2.5, ...
         'MaxHeadSize',0.8,'AutoScale','off');
 end
-text(ax,2,1.05,'lateral transport between adjacent cells', ...
+text(ax,2,1.0,'lateral transport between adjacent cells', ...
     'FontSize',10,'HorizontalAlignment','center','FontWeight','bold', ...
     kw_txt{:},kw_bg{:});
-text(ax,2,0.55,'water, heat and solutes','FontSize',8.5, ...
+text(ax,2,0.5,'water, heat and solutes','FontSize',8.5, ...
     'HorizontalAlignment','center',kw_txt{:},kw_bg{:});
-plot(ax,[4.12 4.12],[0 -0.3],'Color','k','LineWidth',1.2);
-plot(ax,[4.07 4.17],[0 0],'Color','k','LineWidth',1.2);
-plot(ax,[4.07 4.17],[-0.3 -0.3],'Color','k','LineWidth',1.2);
-text(ax,4.20,-0.15,{'active zone','0-300 mm'},'FontSize',8, ...
+plot(ax,[4.16 4.16],[0 -0.3],'Color','k','LineWidth',1.2);
+plot(ax,[4.11 4.21],[0 0],'Color','k','LineWidth',1.2);
+plot(ax,[4.11 4.21],[-0.3 -0.3],'Color','k','LineWidth',1.2);
+text(ax,4.24,-0.15,{'active zone','0-300 mm'},'FontSize',8, ...
     'HorizontalAlignment','left','VerticalAlignment','middle', ...
     kw_txt{:},kw_bg{:});
-text(ax,2,-6.7,'every cell carries the same 20-layer soil column', ...
+text(ax,2,-6.15,'every cell carries the same 20-layer soil column', ...
     'FontSize',8,'HorizontalAlignment','center',kw_txt{:},kw_bg{:});
-ax.XLim = [-0.35 5.35]; ax.YLim = [-7.6 1.7];
+ax.XLim = [-0.3 5.15]; ax.YLim = [-6.3 1.5];
 ax.XTick = []; ax.YTick = -5:0;
 ax.YTickLabel = {'0','1','2','3','4','5'};
 ax.XColor = 'k'; ax.YColor = 'k';
