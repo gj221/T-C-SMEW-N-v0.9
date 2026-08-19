@@ -2,6 +2,22 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% adapted from previous case study: Zea mays  Glycine max 
 
+if ~exist('bulk_pH_params','var') || ~isstruct(bulk_pH_params)
+    bulk_pH_params = struct();
+end
+bulk_pH_params.scheme = 'appelo';
+% Al solubility pin OFF.  The pin (aqueous Al fixed by amorphous Al(OH)3,
+% SCEPTER 'amal' semantics, plus the Na re-baseline and background-pump
+% shutdown it drags along) was scaffolding for an Al-saturated exchange
+% corner that only existed under the inverted Appelo constants
+% (Resolve_Appelo_Constants used 10^(+Z*(logKH-alpha)) instead of the
+% scepter.f90 form 10^(-logKH), overstating Al selectivity by ~10^56).
+% With the source-verified constants the Kantola equilibrium at pH ~6 is
+% base-saturated (f_Al ~ 1e-5), the legacy Al_tot conservation and Na/An
+% seed are hostable, and the pin is not needed.  The machinery stays
+% available for genuinely acid scenarios.
+bulk_pH_params.Al_solubility_pin = false;
+
 %%% Maize–soybean rotations
 %%%%%%%%%
 %%

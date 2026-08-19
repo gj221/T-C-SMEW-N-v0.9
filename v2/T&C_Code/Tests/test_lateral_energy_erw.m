@@ -4,6 +4,9 @@ function test_lateral_energy_erw()
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 fprintf('\n=== test_lateral_energy_erw ===\n');
+here = fileparts(mfilename('fullpath'));
+code = fileparts(here);
+addpath(code,fullfile(code,'Inputs'),fullfile(code,'Parameters'));
 n_pass = 0; n_fail = 0;
 
     function check(name, cond, detail)

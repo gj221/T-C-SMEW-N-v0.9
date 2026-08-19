@@ -237,7 +237,8 @@ SupCa_L=z2(NNd,cc); SupMg_L=z2(NNd,cc); SupSi_L=z2(NNd,cc);
 ISOIL_H=z3(NNd,cc,27); ISOIL_L=z3(NNd,cc,27);
 P=z2(NNd,79);
 R_litter=z2(NNd,1); R_microbe=z2(NNd,1); R_litter_sur=z2(NNd,1); R_ew=z2(NNd,1);
-VOL=z2(NNd,1); N2flx=z2(NNd,1); N2Oflx=z2(NNd,1); PH_d=z2(NNd,1);
+VOL=z2(NNd,1); N2flx=z2(NNd,1); N2Oflx=z2(NNd,1); PH_d=z2(NNd,1); ...
+    PH_pore_d=z2(NNd,1); PH_bulk_d=z2(NNd,1);
 Min_N=z2(NNd,1); Min_P=z2(NNd,1); R_bacteria=z2(NNd,1);
 RmycAM=z2(NNd,1); RmycEM=z2(NNd,1); Prod_B=z2(NNd,1); Prod_F=z2(NNd,1);
 BfixN=z2(NNd,1); LitFirEmi=z2(NNd,2);
@@ -312,6 +313,8 @@ for c = 1:N_col
     if OPT_SoilBiogeochemistry == 1
         P(1,:,c) = p.P(1,:);
         PH_d(1,c) = p.PH(1);
+        PH_pore_d(1,c) = p.PH(1);
+        PH_bulk_d(1,c) = p.PH(1);
     end
     Check_Land_Cover_Fractions(p.Crock,p.Curb,p.Cwat,p.Cbare,p.Ccrown);
 end
@@ -437,6 +440,8 @@ for i = 2:NN
                     OPT_BfixN = 0;
                 end
                 PH_d(j,c) = PH_c(c);
+                PH_pore_d(j,c) = PH_c(c);
+                PH_bulk_d(j,c) = PH_c(c);
 
                 [P(j,:,c),LEAK_NH4(j,c),LEAK_NO3(j,c),LEAK_P(j,c),LEAK_K(j,c), ...
                  LEAK_DOC(j,c),LEAK_DON(j,c),LEAK_DOP(j,c), ...
@@ -837,7 +842,10 @@ for i = 2:NN
                 P(:,:,c), MOD_PARAM_input, ERW_PARAM_cell, ...
                 conv_mol, conv_Al);
             if ERW{c}.has_update
-                PH_c(c)   = ERW{c}.PH;
+                PH_c(c)   = ERW{c}.PH;    %% bulk-extract pH (air-dried 1:n); pore pH in ERW{c}.PH_pore
+                if isfield(ERW{c},'PH_pore') && ~isempty(ERW{c}.PH_pore)
+                    PH_pore_d(j,c) = ERW{c}.PH_pore;
+                end
                 P(j,60,c) = ERW{c}.P60;  P(j,68,c) = ERW{c}.P68;
                 P(j,52,c) = ERW{c}.P52;  P(j,76,c) = ERW{c}.P76;
                 P(j,43,c) = ERW{c}.P43;
@@ -873,7 +881,9 @@ Domain.area_buffer_m2= sum(A_cell(~strcmp(topo.cell_region,'main')));
 Domain.N2Oflx        = squeeze(N2Oflx)  * w_col.';
 Domain.LEAK_NO3      = squeeze(LEAK_NO3)* w_col.';
 Domain.LEAK_NH4      = squeeze(LEAK_NH4)* w_col.';
-Domain.PH_d          = squeeze(PH_d)    * w_col.';
+Domain.PH_bulk_d      = squeeze(PH_bulk_d) * w_col.';
+Domain.PH_pore_d      = squeeze(PH_pore_d) * w_col.';
+Domain.PH_d          = Domain.PH_bulk_d;
 Domain.NO3_pool      = squeeze(P(:,32,:))* w_col.';
 Domain.lateral       = lateral_diag;
 Domain.exit_water_vert_m3 = exit_water_vert_m3;

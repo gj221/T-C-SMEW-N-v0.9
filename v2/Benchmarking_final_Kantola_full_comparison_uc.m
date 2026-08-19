@@ -99,7 +99,26 @@ data4{1} = Lewis_Mg_diss(:,2:5);
 data4{2} = Beerling_Mg_diss(:,2:5);
 
 %% load exp data
-fl_path = dir(fullfile('Experimental observations','Web plot digitizer','*.mat'));
+script_dir = fileparts(mfilename('fullpath'));
+if isempty(script_dir)
+    script_dir = current_directory;
+end
+
+data_root_candidates = {
+    fullfile(script_dir,'Experimental observations','Web plot digitizer')
+    fullfile(current_directory,'Experimental observations','Web plot digitizer')
+};
+fl_path = [];
+for c = 1:numel(data_root_candidates)
+    candidate_dir = data_root_candidates{c};
+    if isfolder(candidate_dir)
+        fl_path = dir(fullfile(candidate_dir,'*.mat'));
+        if ~isempty(fl_path)
+            break;
+        end
+    end
+end
+assert(~isempty(fl_path), 'No Beerling reference .mat files found in expected data directories.');
 
 % check which data you need
 aTable = struct2table(fl_path);
@@ -119,6 +138,8 @@ data_maize = load(file_name);
 cell_row = contains(aTable.name,'Beerling','IgnoreCase',true);
 file_name = fullfile(fl_path(cell_row).folder,fl_path(cell_row).name);
 data_exp = load(file_name);
+assert(isfield(data_exp,'pH_Exp') && isfield(data_exp,'CEC_Exp'), ...
+    'Loaded Beerling file "%s" is missing required pH_Exp/CEC_Exp fields.', file_name);
 
 
 %% pretreatment: 2009-2016
@@ -893,10 +914,10 @@ fig_colors = {color_TC_basalt_Lewis,...
             color_exp_0,...
             color_exp_10};
 
-pH_exp_0 = data_exp.pH_Exp.basalt_0;
-pH_exp_untr_0 = data_exp.pH_Exp.control_0;
-pH_exp_10 = data_exp.pH_Exp.basalt_10;
-pH_exp_untr_10 = data_exp.pH_Exp.control_10;
+pH_exp_0 = squeeze(data_exp.pH_Exp.basalt_0);
+pH_exp_untr_0 = squeeze(data_exp.pH_Exp.control_0);
+pH_exp_10 = squeeze(data_exp.pH_Exp.basalt_10);
+pH_exp_untr_10 = squeeze(data_exp.pH_Exp.control_10);
 
 % SME
 pH_exp_0_std = [0.0772	0.0551	0.04	0	0];
@@ -962,10 +983,10 @@ title('With Basalt')
 set(gca,'xcolor','w','ycolor','w','xtick',[],'ytick',[])
 set(gca,'box','off')
 
-CEC_exp_0 = data_exp.CEC_Exp.basalt_0;
-CEC_exp_untr_0 = data_exp.CEC_Exp.control_0;
-CEC_exp_10 = data_exp.CEC_Exp.basalt_10;
-CEC_exp_untr_10 = data_exp.CEC_Exp.control_10;
+CEC_exp_0 = squeeze(data_exp.CEC_Exp.basalt_0);
+CEC_exp_untr_0 = squeeze(data_exp.CEC_Exp.control_0);
+CEC_exp_10 = squeeze(data_exp.CEC_Exp.basalt_10);
+CEC_exp_untr_10 = squeeze(data_exp.CEC_Exp.control_10);
 
 % SME
 CEC_exp_0_std = [1	0	1.4	0	0];

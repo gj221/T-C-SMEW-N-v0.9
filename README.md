@@ -41,12 +41,15 @@ From PowerShell at the repository root:
 ```powershell
 matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',10:12,'MaxConcurrent',3,'MaxRuntimeHours',168)"
 matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRuntimeHours',168)"
-matlab -batch "cd('v2'); Plot_Subfield_12"
+matlab -batch "cd('v2'); Plot_1D_Then_All_12"
 ```
 
-The plotting command writes `Subfield_12_summary.png`,
-`Subfield_12_summary.fig`, `Subfield_12_time_dynamics.png` and
-`Subfield_12_time_dynamics.fig` to `v2/SIM/Subfield_12`. The time plot
+The plotting command first draws the vertical 1-D weathering and nitrogen
+figure (`vertical_1d_weathering_nitrogen.png` and `.fig`) and then writes
+`Subfield_12_summary.png`, `Subfield_12_summary.fig`,
+`Subfield_12_time_dynamics.png` and `Subfield_12_time_dynamics.fig` to
+`v2/SIM/Subfield_12`. The all-12 stage is skipped with a warning listing
+the missing runs until the 2-D results finish. The time plot
 uses two columns per scenario group and no more than three stacked rows.
 It shows control, basalt and calcite through time for cumulative N2O,
 cumulative nitrate leaching, the soil nitrate pool, pore-water pH, NEE
@@ -59,7 +62,7 @@ denominator.
 The completed 1-D runs can be plotted before the 2-D runs finish:
 
 ```matlab
-Plot_Subfield_12('Runs',10:12)
+Runs = 10:12; Plot_1D_Then_All_12
 ```
 
 This writes updated six-panel PNG and FIG outputs for runs 10 to 12 only.
@@ -67,12 +70,12 @@ When runs 1 to 9 finish, the three 2-D groups can be plotted without
 reloading the 1-D results:
 
 ```matlab
-Plot_Subfield_12('Runs',1:9)
+Runs = 1:9; Plot_1D_Then_All_12
 ```
 
 This writes PNG and FIG copies of `Subfield_2D_summary` and
-`Subfield_2D_time_dynamics`. Calling `Plot_Subfield_12` without a `Runs`
-option still plots all 12 scenarios together.
+`Subfield_2D_time_dynamics`. Running the script without setting `Runs`
+plots the 1-D group first and then all 12 scenarios together.
 
 From an open MATLAB session in `v2`:
 
@@ -80,7 +83,7 @@ From an open MATLAB session in `v2`:
 Run_All_12_Parallel('DryRun',true)
 Run_All_12_Parallel('Runs',10:12,'MaxConcurrent',3,'MaxRuntimeHours',168)
 Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRuntimeHours',168)
-Plot_Subfield_12
+Plot_1D_Then_All_12
 ```
 
 The first command completes the three vertical 1-D comparisons before the
@@ -99,7 +102,7 @@ comparisons use the same code. A one-day check uses:
 ```matlab
 Run_All_12_Parallel('MaxConcurrent',2,'NDays',1,'Overwrite',true)
 addpath(fullfile('T&C_Code','Tests')); test_subfield_12_smoke_results(1)
-Plot_Subfield_12('NDays',1)
+NDays = 1; Plot_1D_Then_All_12
 ```
 
 The September 2019 mineral-N regression uses a small saved fixture:

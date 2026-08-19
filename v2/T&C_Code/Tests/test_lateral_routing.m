@@ -19,6 +19,9 @@ function test_lateral_routing()
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 fprintf('\n=== test_lateral_routing ===\n');
+here = fileparts(mfilename('fullpath'));
+code = fileparts(here);
+addpath(code,fullfile(code,'Inputs'),fullfile(code,'Parameters'));
 n_pass = 0; n_fail = 0;
 
     function check(name, cond, detail)

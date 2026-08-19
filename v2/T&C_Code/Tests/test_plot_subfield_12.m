@@ -4,9 +4,10 @@ function test_plot_subfield_12
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 fprintf('\n=== test_plot_subfield_12 ===\n');
-n_pass = 0;
-%% Run_Matrix_12 and Plot_Subfield_12 live in v2, not in T&C_Code; without
-%% this the test only passes when the caller already has v2 on the path.
+check_reset;
+%% Run_Matrix_12 and the Plot_1D_Then_All_12 script live in v2, not in
+%% T&C_Code; without this the test only passes when the caller already
+%% has v2 on the path.
 v2 = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(v2,fullfile(v2,'T&C_Code'));
 out_dir = tempname;
@@ -34,8 +35,15 @@ for k = 1:numel(RM)
         'Ccrown_t','R_litter','R_microbe','R_ew','RB_L','topo','ColCfg');
 end
 
-[summary,fig,plot_file,time_fig,time_plot_file] = Plot_Subfield_12( ...
-    'ResultDirectory',out_dir,'NDays',1,'Visible','off');
+%% Pre-declare the script outputs.  MATLAB's parser compiles a name that
+%% matches a known function as a call when the function file never assigns
+%% it, and script-driven assignments are invisible to the parser, so
+%% 'summary' would silently stay the built-in summary without this.
+summary = []; fig = []; plot_file = []; time_fig = []; time_plot_file = [];
+fig1d = []; plot_file_1d = []; stats_1d = [];
+
+Runs = 1:12; ResultDirectory = out_dir; NDays = 1; Visible = 'off';
+Plot_1D_Then_All_12;
 check(height(summary) == 12, 'plot summary contains all twelve scenarios');
 check(isequal(summary.RunID.',1:12), 'plot summary preserves matrix order');
 check(isequal(summary.CumulativeN2O_gN_m2.',6*(1:12)), ...
@@ -116,8 +124,8 @@ for run_id = 1:9
     tag = sprintf('TC_2D_run%02d_%s__1d.mat',run_id,RM(run_id).name);
     copyfile(fullfile(out_dir,tag),fullfile(two_d_dir,tag));
 end
-[summary,fig,plot_file,time_fig,time_plot_file] = Plot_Subfield_12( ...
-    'ResultDirectory',two_d_dir,'Runs',1:9,'NDays',1,'Visible','off');
+Runs = 1:9; ResultDirectory = two_d_dir; NDays = 1; Visible = 'off';
+Plot_1D_Then_All_12;
 check(isequal(summary.RunID.',1:9), ...
     'two-dimensional plot loads runs 1 to 9 without the 1-D results');
 check(endsWith(plot_file,'Subfield_2D_summary__1d.png') && isfile(plot_file), ...
@@ -138,8 +146,8 @@ for run_id = 10:12
     tag = sprintf('TC_2D_run%02d_%s__1d.mat',run_id,RM(run_id).name);
     copyfile(fullfile(out_dir,tag),fullfile(subset_dir,tag));
 end
-[summary,fig,plot_file,time_fig,time_plot_file] = Plot_Subfield_12( ...
-    'ResultDirectory',subset_dir,'Runs',10:12,'NDays',1,'Visible','off');
+Runs = 10:12; ResultDirectory = subset_dir; NDays = 1; Visible = 'off';
+Plot_1D_Then_All_12;
 check(isequal(summary.RunID.',10:12), ...
     'one-dimensional plot loads runs 10 to 12 without the 2-D results');
 check(endsWith(plot_file,'Vertical_1D_summary__1d.png') && isfile(plot_file), ...
@@ -169,60 +177,83 @@ check(clean_axes_and_bottom_legend(time_fig,true,1), ...
     'one-dimensional dynamics use three rows and two columns');
 close([fig time_fig]);
 
-check(raises_error(@() Plot_Subfield_12( ...
-    'ResultDirectory',subset_dir,'Runs',[10 11],'NDays',1,'Visible','off'), ...
-    'Plot_Subfield_12:BadRuns'), ...
+check(strcmp(script_error_id(struct( ...
+    'ResultDirectory',subset_dir,'Runs',[10 11],'NDays',1,'Visible','off')), ...
+    'Plot_1D_Then_All_12:BadRuns'), ...
     'plot rejects an incomplete scenario treatment group');
 
 bad_file = fullfile(out_dir,sprintf('TC_2D_run%02d_%s__1d.mat',12,RM(12).name));
 S = load(bad_file);
 S_missing = rmfield(S,'R_ew');
 save(bad_file,'-struct','S_missing');
-check(raises_error(@() Plot_Subfield_12( ...
-    'ResultDirectory',out_dir,'NDays',1,'Visible','off'), ...
-    'Plot_Subfield_12:IncompleteCarbonResult'), ...
+check(strcmp(script_error_id(struct( ...
+    'ResultDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
+    'Plot_1D_Then_All_12:IncompleteCarbonResult'), ...
     'plot rejects a result missing an NEE respiration component');
 save(bad_file,'-struct','S');
 
 S.Domain.PH_d(end) = NaN;
 save(bad_file,'-struct','S');
-check(raises_error(@() Plot_Subfield_12( ...
-    'ResultDirectory',out_dir,'NDays',1,'Visible','off'), ...
-    'Plot_Subfield_12:NonfiniteMeasurement'), ...
+check(strcmp(script_error_id(struct( ...
+    'ResultDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
+    'Plot_1D_Then_All_12:NonfiniteMeasurement'), ...
     'plot rejects a scenario with a nonfinite final measurement');
 S.Domain.PH_d(end) = 6.36;
 S.Domain.N2Oflx(:) = NaN;
 save(bad_file,'-struct','S');
-check(raises_error(@() Plot_Subfield_12( ...
-    'ResultDirectory',out_dir,'NDays',1,'Visible','off'), ...
-    'Plot_Subfield_12:NonfiniteMeasurement'), ...
+check(strcmp(script_error_id(struct( ...
+    'ResultDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
+    'Plot_1D_Then_All_12:NonfiniteMeasurement'), ...
     'plot rejects a scenario with no finite cumulative measurement');
 
 S.Domain.N2Oflx = 12*[0; 1; 2; 3];
 S.Domain.PH_d = S.Domain.PH_d(1:3);
 save(bad_file,'-struct','S');
-check(raises_error(@() Plot_Subfield_12( ...
-    'ResultDirectory',out_dir,'NDays',1,'Visible','off'), ...
-    'Plot_Subfield_12:TimeLengthMismatch'), ...
+check(strcmp(script_error_id(struct( ...
+    'ResultDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
+    'Plot_1D_Then_All_12:TimeLengthMismatch'), ...
     'plot rejects measurements with mismatched daily lengths');
 
 S.Domain.PH_d = 6+0.12*[0; 1; 2; 3];
 S.RB_L = S.RB_L(1:3,:,:,:);
 save(bad_file,'-struct','S');
-check(raises_error(@() Plot_Subfield_12( ...
-    'ResultDirectory',out_dir,'NDays',1,'Visible','off'), ...
-    'Plot_Subfield_12:CropTimeLengthMismatch'), ...
+check(strcmp(script_error_id(struct( ...
+    'ResultDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
+    'Plot_1D_Then_All_12:CropTimeLengthMismatch'), ...
     'plot rejects crop arrays with mismatched daily lengths');
 
 fprintf('  ---------------------------------------\n');
-fprintf('  %d passed, 0 failed\n',n_pass);
+fprintf('  %d passed, 0 failed\n',pass_count);
+end
 
-    function check(ok,label)
-        assert(ok,'test_plot_subfield_12:Failed','%s',label);
-        n_pass = n_pass + 1;
-        fprintf('  PASS  %s\n',label);
-    end
+function check(ok,label)
+%% Local checker. Kept as a local (not nested) function so the main
+%% function keeps a dynamic workspace and can still run the
+%% Plot_1D_Then_All_12 script (scripts cannot add variables to a static
+%% workspace, i.e. one that contains nested functions).
+assert(ok,'test_plot_subfield_12:Failed','%s',label);
+tally('inc');
+fprintf('  PASS  %s\n',label);
+end
 
+function n = pass_count()
+n = tally('count');
+end
+
+function check_reset()
+tally('reset');
+end
+
+function n = tally(mode)
+%% Single persistent pass counter shared by check, pass_count and
+%% check_reset; separate persistent variables would each start at zero.
+persistent n_pass
+if isempty(n_pass); n_pass = 0; end
+switch mode
+    case 'reset'; n_pass = 0;
+    case 'inc'; n_pass = n_pass + 1;
+    case 'count'; n = n_pass;
+end
 end
 
 function ok = time_lines_match(fig,line_tag,expected)
@@ -383,12 +414,18 @@ ok = numel(value) == numel(expected) && ...
     max(abs(sort(value)-sort(expected(:)))) < 1e-12;
 end
 
-function ok = raises_error(f,expected_id)
-ok = false;
+function id = script_error_id(settings)
+%% Run the Plot_1D_Then_All_12 script with workspace settings and return
+%% the captured error identifier ('' on success).
+n = fieldnames(settings);
+for k = 1:numel(n)
+    eval([n{k} ' = settings.(n{k});']);
+end
+id = '';
 try
-    f();
+    Plot_1D_Then_All_12;
 catch ME
-    ok = strcmp(ME.identifier,expected_id);
+    id = ME.identifier;
 end
 fig = findall(0,'Type','figure', ...
     '-regexp','Name','T&C-SMEW-N twelve-scenario');
