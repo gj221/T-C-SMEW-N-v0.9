@@ -10,12 +10,14 @@
 %%                         (4 dark-blue main cells + 8 light-blue buffer
 %%                         cells); orange arrows show the lateral
 %%                         coupling across every shared face
-%%   (c)  1-D horizontal:  the 20-layer, 5 m soil column in light brown;
-%%                         the 0-300 mm active zone is bracketed; a
+%%   (c)  1-D horizontal:  the 20-layer, 5 m soil column - light brown
+%%                         active zone (0-300 mm) over darker brown
+%%                         deeper soil, layer lines kept visible; a
 %%                         single column has no lateral transport
 %%   (d)  2-D horizontal:  an east-west section of the field - light
-%%                         brown soil columns with blue caps (dark blue
-%%                         main, light blue margin); lateral transport
+%%                         brown active zone over darker brown soil in
+%%                         every column, blue caps (dark blue main,
+%%                         light blue margin); red lateral transport
 %%                         arrows run through the 0-300 mm active zone
 %%
 %% Buffer (margin) cells are light blue and main cells dark blue in every
@@ -44,18 +46,18 @@ topo = Build_Cell_Topology(L,w,nx,ny);
 main_c  = [0.10 0.35 0.65];   % dark blue: main cells
 buff_c  = [0.82 0.91 0.98];   % light blue: buffer (margin) cells
 edge_c  = [0.15 0.15 0.15];
-soil_c  = [0.84 0.73 0.55];   % light brown: soil column
-soil_alt_c = [0.78 0.66 0.48];% darker brown: alternating layers
-soil_line_c = [0.50 0.38 0.25];% brown layer lines
-active_c = [0.98 0.92 0.65];  % pale yellow: active soil zone
-active_edge = [0.70 0.55 0.20];
-arrow_c = [0.90 0.40 0.05];   % orange: lateral coupling
-kw_txt = {'Color','k'};       % black text
+soil_light_c = [0.86 0.75 0.58];  % light brown: active zone (0-300 mm)
+soil_deep_c  = [0.70 0.56 0.38];  % darker brown: soil below the active zone
+soil_alt_c   = [0.75 0.62 0.44];  % alternating shade in the deep zone
+soil_line_c  = [0.42 0.30 0.18];  % brown layer lines
+arrow_c      = [0.85 0.10 0.10];  % red: lateral coupling
+kw_txt = {'Color','k'};           % black text
+kw_bg  = {'BackgroundColor','w','EdgeColor','none'};  % text on white box
 
 %% figure
 fig = figure('Color','w','Name','T&C-SMEW-N 1-D and 2-D grid setup');
-fig.Position(3:4) = [1400 950];
-tl = tiledlayout(fig,2,2,'TileSpacing','compact','Padding','compact');
+fig.Position(3:4) = [1400 1180];
+tl = tiledlayout(fig,3,2,'TileSpacing','compact','Padding','compact');
 title(tl,'T&C-SMEW-N grid setup: 1-D and 2-D domains', ...
     'Color','k','FontWeight','bold','FontSize',13);
 
@@ -74,10 +76,12 @@ text(ax,L/2,-5.6,'60 m','FontSize',9,'HorizontalAlignment','center',kw_txt{:});
 plot(ax,[-4.5 -4.5],[0 L],'Color','k','LineWidth',1);
 plot(ax,[-5.3 -3.7],[0 0],'Color','k','LineWidth',1);
 plot(ax,[-5.3 -3.7],[L L],'Color','k','LineWidth',1);
-text(ax,-5.8,L/2,'60 m','FontSize',9,'Rotation',90, ...
+text(ax,-6.5,L/2,'60 m','FontSize',9,'Rotation',90, ...
     'HorizontalAlignment','center',kw_txt{:});
 ax.XLim = [-9.5 69.5]; ax.YLim = [-9.5 69.5];
-ax.XTick = []; ax.YTick = []; ax.Box = 'on';
+ax.XTick = []; ax.YTick = [];
+ax.XColor = 'k'; ax.YColor = 'k';
+ax.Box = 'on';
 title(ax,'(a) 1-D top-down: single column','FontSize',11,'Color','k');
 
 %% ================= (b) 2-D top-down =================
@@ -102,17 +106,17 @@ for e = 1:topo.N_edges
         mx = min(topo.cell_x_hi(a),topo.cell_x_hi(b));
         my = 0.5*(max(topo.cell_y_lo(a),topo.cell_y_lo(b)) + ...
             min(topo.cell_y_hi(a),topo.cell_y_hi(b)));
-        quiver(ax,mx-0.45,my,0.45,0,'Color',arrow_c,'LineWidth',1.2, ...
+        quiver(ax,mx-1.6,my,1.6,0,'Color',arrow_c,'LineWidth',2.5, ...
             'MaxHeadSize',0.5,'AutoScale','off');
-        quiver(ax,mx+0.45,my,-0.45,0,'Color',arrow_c,'LineWidth',1.2, ...
+        quiver(ax,mx+1.6,my,-1.6,0,'Color',arrow_c,'LineWidth',2.5, ...
             'MaxHeadSize',0.5,'AutoScale','off');
     else
         my = min(topo.cell_y_hi(a),topo.cell_y_hi(b));
         mx = 0.5*(max(topo.cell_x_lo(a),topo.cell_x_lo(b)) + ...
             min(topo.cell_x_hi(a),topo.cell_x_hi(b)));
-        quiver(ax,mx,my-0.45,0,0.45,'Color',arrow_c,'LineWidth',1.2, ...
+        quiver(ax,mx,my-1.6,0,1.6,'Color',arrow_c,'LineWidth',2.5, ...
             'MaxHeadSize',0.5,'AutoScale','off');
-        quiver(ax,mx,my+0.45,0,-0.45,'Color',arrow_c,'LineWidth',1.2, ...
+        quiver(ax,mx,my+1.6,0,-1.6,'Color',arrow_c,'LineWidth',2.5, ...
             'MaxHeadSize',0.5,'AutoScale','off');
     end
 end
@@ -136,7 +140,7 @@ text(ax,L/2,-7.8,'60 m','FontSize',9,'HorizontalAlignment','center',kw_txt{:});
 plot(ax,[-4.5 -4.5],[0 L],'Color','k','LineWidth',1);
 plot(ax,[-5.3 -3.7],[0 0],'Color','k','LineWidth',1);
 plot(ax,[-5.3 -3.7],[L L],'Color','k','LineWidth',1);
-text(ax,-6,L/2,'60 m','FontSize',9,'Rotation',90, ...
+text(ax,-6.5,L/2,'60 m','FontSize',9,'Rotation',90, ...
     'HorizontalAlignment','center',kw_txt{:});
 plot(ax,[w w+(L-2*w)/nx],[w+7.0 w+7.0],'Color','w','LineWidth',1);
 plot(ax,[w w],[w+6.2 w+7.8],'Color','w','LineWidth',1);
@@ -145,103 +149,114 @@ text(ax,w+(L-2*w)/(2*nx),w+6.2,'25 m','FontSize',8.5,'Color','w', ...
     'HorizontalAlignment','center');
 
 ax.XLim = [-9.5 69.5]; ax.YLim = [-9.5 69.5];
-ax.XTick = []; ax.YTick = []; ax.Box = 'on';
+ax.XTick = []; ax.YTick = [];
+ax.XColor = 'k'; ax.YColor = 'k';
+ax.Box = 'on';
 title(ax,'(b) 2-D top-down: 12 cells, coupling across shared faces', ...
     'FontSize',11,'Color','k');
 
 %% legend
 h_main  = patch(ax,NaN,NaN,main_c,'EdgeColor','none');
 h_buff  = patch(ax,NaN,NaN,buff_c,'EdgeColor','none');
-h_soil  = patch(ax,NaN,NaN,soil_c,'EdgeColor',soil_line_c);
-h_zone  = patch(ax,NaN,NaN,active_c,'EdgeColor',active_edge);
-h_arrow = plot(ax,NaN,NaN,'Color',arrow_c,'LineWidth',1.8);
+h_soil  = patch(ax,NaN,NaN,soil_deep_c,'EdgeColor',soil_line_c);
+h_zone  = patch(ax,NaN,NaN,soil_light_c,'EdgeColor',soil_line_c);
+h_arrow = plot(ax,NaN,NaN,'Color',arrow_c,'LineWidth',2);
 lgd = legend([h_main h_buff h_soil h_zone h_arrow], ...
-    {'Main cell','Buffer (margin) cell','Soil column (20 layers)','Active zone (0-300 mm)','Lateral coupling'}, ...
+    {'Main cell','Margin cell','Soil column (20 layers)','Active zone (0-300 mm)','Lateral coupling'}, ...
     'Orientation','horizontal','Box','off','FontSize',9, ...
     'TextColor','k','Color','w','EdgeColor','none');
 lgd.Layout.Tile = 'south';
 
 %% ================= (c) 1-D horizontal =================
-ax = nexttile(tl);
+ax = nexttile(tl,[2 1]);
 hold(ax,'on'); ax.Color = 'w';
 for i = 1:nL
-    fill_c = soil_c;
-    if mod(i,2)==0; fill_c = soil_alt_c; end
+    if Zd(i+1) <= 0.3
+        fill_c = soil_light_c;
+    else
+        fill_c = soil_deep_c;
+        if mod(i,2)==0; fill_c = soil_alt_c; end
+    end
     rectangle(ax,'Position',[0 -Zd(i) 1 Zd(i+1)-Zd(i)], ...
-        'FaceColor',fill_c,'EdgeColor',soil_line_c,'LineWidth',0.5);
+        'FaceColor',fill_c,'EdgeColor',soil_line_c,'LineWidth',0.6);
 end
-rectangle(ax,'Position',[0 -0.3 1 0.3],'FaceColor',active_c, ...
-    'FaceAlpha',0.35,'EdgeColor',active_edge,'LineWidth',1, ...
-    'LineStyle','--');
+plot(ax,[0 1],[-0.3 -0.3],'--','Color',soil_line_c,'LineWidth',1);
 plot(ax,[0 1],[0 0],'Color',edge_c,'LineWidth',2);
 text(ax,0.03,0.10,'soil surface','FontSize',8, ...
-    'HorizontalAlignment','left',kw_txt{:});
+    'HorizontalAlignment','left',kw_txt{:},kw_bg{:});
 plot(ax,[1.10 1.10],[0 -0.3],'Color','k','LineWidth',1.2);
 plot(ax,[1.05 1.15],[0 0],'Color','k','LineWidth',1.2);
 plot(ax,[1.05 1.15],[-0.3 -0.3],'Color','k','LineWidth',1.2);
 text(ax,1.18,-0.15,{'active zone','0-300 mm'},'FontSize',8, ...
-    'HorizontalAlignment','left','VerticalAlignment','middle',kw_txt{:});
+    'HorizontalAlignment','left','VerticalAlignment','middle', ...
+    kw_txt{:},kw_bg{:});
 text(ax,0.55,-2.4,{'20 soil layers','5 m deep'}, ...
     'FontSize',9.5,'HorizontalAlignment','center','FontWeight','bold', ...
-    kw_txt{:});
+    kw_txt{:},kw_bg{:});
 plot(ax,[0.45 0.55],[-4.3 -4.7],'Color',[0.78 0.15 0.15],'LineWidth',2);
 plot(ax,[0.55 0.45],[-4.3 -4.7],'Color',[0.78 0.15 0.15],'LineWidth',2);
 text(ax,0.5,-5.45,'no lateral transport','FontSize',8.5, ...
-    'HorizontalAlignment','center','FontWeight','bold',kw_txt{:});
+    'HorizontalAlignment','center','FontWeight','bold',kw_txt{:},kw_bg{:});
 ax.XLim = [-0.15 1.75]; ax.YLim = [-5.9 0.6];
 ax.XTick = []; ax.YTick = -5:0;
 ax.YTickLabel = {'0','1','2','3','4','5'};
+ax.XColor = 'k'; ax.YColor = 'k';
 ax.Box = 'on';
 ylabel(ax,'Depth [m]','FontSize',10,'Color','k');
 title(ax,'(c) 1-D horizontal: single soil column','FontSize',11,'Color','k');
 
 %% ================= (d) 2-D horizontal =================
-ax = nexttile(tl);
+ax = nexttile(tl,[2 1]);
 hold(ax,'on'); ax.Color = 'w';
 col_x = 0:3;
 col_cap = {buff_c,main_c,main_c,buff_c};
 col_name = {'W margin','Main 1','Main 2','E margin'};
 for k = 1:4
     for i = 1:nL
-        fill_c = soil_c;
-        if mod(i,2)==0; fill_c = soil_alt_c; end
+        if Zd(i+1) <= 0.3
+            fill_c = soil_light_c;
+        else
+            fill_c = soil_deep_c;
+            if mod(i,2)==0; fill_c = soil_alt_c; end
+        end
         rectangle(ax,'Position',[col_x(k) -Zd(i) 1 Zd(i+1)-Zd(i)], ...
-            'FaceColor',fill_c,'EdgeColor',soil_line_c,'LineWidth',0.5);
+            'FaceColor',fill_c,'EdgeColor',soil_line_c,'LineWidth',0.6);
     end
     text(ax,col_x(k)+0.5,-5.7,col_name{k},'FontSize',8.5, ...
-        'HorizontalAlignment','center',kw_txt{:});
+        'HorizontalAlignment','center',kw_txt{:},kw_bg{:});
 end
-rectangle(ax,'Position',[0 -0.3 4 0.3],'FaceColor',active_c, ...
-    'FaceAlpha',0.35,'EdgeColor',active_edge,'LineWidth',1, ...
-    'LineStyle','--');
+plot(ax,[0 4],[-0.3 -0.3],'--','Color',soil_line_c,'LineWidth',1);
 for k = 1:4
     rectangle(ax,'Position',[col_x(k) -0.12 1 0.12], ...
         'FaceColor',col_cap{k},'EdgeColor',edge_c,'LineWidth',1);
 end
 plot(ax,[0 4],[0 0],'Color',edge_c,'LineWidth',2);
 text(ax,0.03,0.10,'soil surface','FontSize',8, ...
-    'HorizontalAlignment','left',kw_txt{:});
+    'HorizontalAlignment','left',kw_txt{:},kw_bg{:});
 for k = 1:3
     gx = col_x(k)+1;
-    quiver(ax,gx-0.42,-0.18,0.24,0,'Color',arrow_c,'LineWidth',2.2, ...
-        'MaxHeadSize',0.9,'AutoScale','off');
-    quiver(ax,gx+0.42,-0.18,-0.24,0,'Color',arrow_c,'LineWidth',2.2, ...
-        'MaxHeadSize',0.9,'AutoScale','off');
+    quiver(ax,gx-0.42,-0.18,0.24,0,'Color',arrow_c,'LineWidth',2.5, ...
+        'MaxHeadSize',0.8,'AutoScale','off');
+    quiver(ax,gx+0.42,-0.18,-0.24,0,'Color',arrow_c,'LineWidth',2.5, ...
+        'MaxHeadSize',0.8,'AutoScale','off');
 end
 text(ax,2,1.05,'lateral transport between adjacent cells', ...
-    'FontSize',10,'HorizontalAlignment','center','FontWeight','bold',kw_txt{:});
+    'FontSize',10,'HorizontalAlignment','center','FontWeight','bold', ...
+    kw_txt{:},kw_bg{:});
 text(ax,2,0.55,'water, heat and solutes','FontSize',8.5, ...
-    'HorizontalAlignment','center',kw_txt{:});
+    'HorizontalAlignment','center',kw_txt{:},kw_bg{:});
 plot(ax,[4.12 4.12],[0 -0.3],'Color','k','LineWidth',1.2);
 plot(ax,[4.07 4.17],[0 0],'Color','k','LineWidth',1.2);
 plot(ax,[4.07 4.17],[-0.3 -0.3],'Color','k','LineWidth',1.2);
 text(ax,4.20,-0.15,{'active zone','0-300 mm'},'FontSize',8, ...
-    'HorizontalAlignment','left','VerticalAlignment','middle',kw_txt{:});
+    'HorizontalAlignment','left','VerticalAlignment','middle', ...
+    kw_txt{:},kw_bg{:});
 text(ax,2,-6.7,'every cell carries the same 20-layer soil column', ...
-    'FontSize',8,'HorizontalAlignment','center',kw_txt{:});
+    'FontSize',8,'HorizontalAlignment','center',kw_txt{:},kw_bg{:});
 ax.XLim = [-0.35 5.35]; ax.YLim = [-7.6 1.7];
 ax.XTick = []; ax.YTick = -5:0;
 ax.YTickLabel = {'0','1','2','3','4','5'};
+ax.XColor = 'k'; ax.YColor = 'k';
 ax.Box = 'on';
 ylabel(ax,'Depth [m]','FontSize',10,'Color','k');
 title(ax,'(d) 2-D horizontal: lateral transport through the active zone', ...
