@@ -5,11 +5,11 @@ function test_plot_subfield_12
 
 fprintf('\n=== test_plot_subfield_12 ===\n');
 check_reset;
-%% Run_Matrix_12 and the Plot_1D_Then_All_12 script live in v2, not in
-%% T&C_Code; without this the test only passes when the caller already
-%% has v2 on the path.
+%% Run_Matrix_12 lives in v2/run and the Plot_1D_Then_All_12 script in
+%% v2/plotting, not in T&C_Code; without this the test only passes when
+%% the caller already has both on the path.
 v2 = fileparts(fileparts(fileparts(mfilename('fullpath'))));
-addpath(v2,fullfile(v2,'T&C_Code'));
+addpath(fullfile(v2,'run'),fullfile(v2,'plotting'),fullfile(v2,'T&C_Code'));
 out_dir = tempname;
 mkdir(out_dir);
 subset_dir = tempname;
@@ -42,7 +42,8 @@ end
 summary = []; fig = []; plot_file = []; time_fig = []; time_plot_file = [];
 fig1d = []; plot_file_1d = []; stats_1d = [];
 
-Runs = 1:12; ResultDirectory = out_dir; NDays = 1; Visible = 'off';
+Runs = 1:12; ResultDirectory = out_dir; FigureDirectory = out_dir;
+NDays = 1; Visible = 'off';
 Plot_1D_Then_All_12;
 check(height(summary) == 12, 'plot summary contains all twelve scenarios');
 check(isequal(summary.RunID.',1:12), 'plot summary preserves matrix order');
@@ -124,7 +125,8 @@ for run_id = 1:9
     tag = sprintf('TC_2D_run%02d_%s__1d.mat',run_id,RM(run_id).name);
     copyfile(fullfile(out_dir,tag),fullfile(two_d_dir,tag));
 end
-Runs = 1:9; ResultDirectory = two_d_dir; NDays = 1; Visible = 'off';
+Runs = 1:9; ResultDirectory = two_d_dir; FigureDirectory = two_d_dir;
+NDays = 1; Visible = 'off';
 Plot_1D_Then_All_12;
 check(isequal(summary.RunID.',1:9), ...
     'two-dimensional plot loads runs 1 to 9 without the 1-D results');
@@ -146,7 +148,8 @@ for run_id = 10:12
     tag = sprintf('TC_2D_run%02d_%s__1d.mat',run_id,RM(run_id).name);
     copyfile(fullfile(out_dir,tag),fullfile(subset_dir,tag));
 end
-Runs = 10:12; ResultDirectory = subset_dir; NDays = 1; Visible = 'off';
+Runs = 10:12; ResultDirectory = subset_dir; FigureDirectory = subset_dir;
+NDays = 1; Visible = 'off';
 Plot_1D_Then_All_12;
 check(isequal(summary.RunID.',10:12), ...
     'one-dimensional plot loads runs 10 to 12 without the 2-D results');
@@ -178,7 +181,7 @@ check(clean_axes_and_bottom_legend(time_fig,true,1), ...
 close([fig time_fig]);
 
 check(strcmp(script_error_id(struct( ...
-    'ResultDirectory',subset_dir,'Runs',[10 11],'NDays',1,'Visible','off')), ...
+    'ResultDirectory',subset_dir,'FigureDirectory',subset_dir,'Runs',[10 11],'NDays',1,'Visible','off')), ...
     'Plot_1D_Then_All_12:BadRuns'), ...
     'plot rejects an incomplete scenario treatment group');
 
@@ -187,7 +190,7 @@ S = load(bad_file);
 S_missing = rmfield(S,'R_ew');
 save(bad_file,'-struct','S_missing');
 check(strcmp(script_error_id(struct( ...
-    'ResultDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
+    'ResultDirectory',out_dir,'FigureDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
     'Plot_1D_Then_All_12:IncompleteCarbonResult'), ...
     'plot rejects a result missing an NEE respiration component');
 save(bad_file,'-struct','S');
@@ -195,14 +198,14 @@ save(bad_file,'-struct','S');
 S.Domain.PH_d(end) = NaN;
 save(bad_file,'-struct','S');
 check(strcmp(script_error_id(struct( ...
-    'ResultDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
+    'ResultDirectory',out_dir,'FigureDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
     'Plot_1D_Then_All_12:NonfiniteMeasurement'), ...
     'plot rejects a scenario with a nonfinite final measurement');
 S.Domain.PH_d(end) = 6.36;
 S.Domain.N2Oflx(:) = NaN;
 save(bad_file,'-struct','S');
 check(strcmp(script_error_id(struct( ...
-    'ResultDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
+    'ResultDirectory',out_dir,'FigureDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
     'Plot_1D_Then_All_12:NonfiniteMeasurement'), ...
     'plot rejects a scenario with no finite cumulative measurement');
 
@@ -210,7 +213,7 @@ S.Domain.N2Oflx = 12*[0; 1; 2; 3];
 S.Domain.PH_d = S.Domain.PH_d(1:3);
 save(bad_file,'-struct','S');
 check(strcmp(script_error_id(struct( ...
-    'ResultDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
+    'ResultDirectory',out_dir,'FigureDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
     'Plot_1D_Then_All_12:TimeLengthMismatch'), ...
     'plot rejects measurements with mismatched daily lengths');
 
@@ -218,7 +221,7 @@ S.Domain.PH_d = 6+0.12*[0; 1; 2; 3];
 S.RB_L = S.RB_L(1:3,:,:,:);
 save(bad_file,'-struct','S');
 check(strcmp(script_error_id(struct( ...
-    'ResultDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
+    'ResultDirectory',out_dir,'FigureDirectory',out_dir,'Runs',1:12,'NDays',1,'Visible','off')), ...
     'Plot_1D_Then_All_12:CropTimeLengthMismatch'), ...
     'plot rejects crop arrays with mismatched daily lengths');
 

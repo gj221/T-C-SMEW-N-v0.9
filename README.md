@@ -1,6 +1,29 @@
 # T&C-SMEW-N v0.9
 
-The twelve simulations are defined in `v2/Run_Matrix_12.m`. Each group
+## Repository layout
+
+```
+v2/run/          launchers: ERW_run, Run_Matrix_12, Run_One_Subfield,
+                 Run_All_12_Parallel, Run_Subfield_Worker,
+                 Terminate_Process_Tree
+v2/plotting/     figure scripts: Plot_1D_Then_All_12, Plot_Grid_Setup,
+                 Plot_Biogeo_Pools, Plot_Nflux_Diagnostics,
+                 Plot_Kantola_Benchmark, and the Cflux_post_processing helper
+v2/figures/      every PNG and FIG the plotting scripts write
+v2/T&C_Code/     model source, Inputs, Parameters and Tests
+v2/SIM/          simulation results (not tracked)
+v2/logs/         worker logs and status files (not tracked)
+v2/Experimental observations/   digitised field data used by the benchmark
+```
+
+Every plotting entry point is a runnable script: `cd` into `v2/plotting` and
+run it by name, with no arguments. Each one puts the folders it needs on the
+path, so it works from any working directory. `Cflux_post_processing` stays a
+function because the benchmark script calls it as a helper.
+
+## Simulations
+
+The twelve simulations are defined in `v2/run/Run_Matrix_12.m`. Each group
 contains control, basalt and calcite treatments.
 
 | Runs | Scenario group | Domain and application |
@@ -15,15 +38,15 @@ The retained 12-cell geometry has four 25 m by 25 m field cells, four
 big bluestem as the high C4 PFT and purple coneflower as the low C3 PFT.
 
 All runs use the control Kantola T&C parameters, forcing and initial
-state. The active biogeochemical depth is 2500 mm in every run, set by
-the deepest configured prairie root depth. Treatment rows only supply
+state. The active biogeochemical depth is 300 mm in every run, matching the
+workbook value and the spin-up that produced Data_Kantola_BG.mat. Treatment rows only supply
 the amendment properties. Untreated cells use the control chemistry row.
 The configuration workbook contains only the five Kantola cases used by
 the single-column comparison and the twelve-run matrix.
 
 The archived Kantola background file contains areal pool totals and no
 depth metadata. It is reused unchanged in every case. This keeps the runs
-comparable, but it is not a new 2500 mm equilibrium spin-up.
+comparable, and the 300 mm active depth is the depth it was spun up at.
 
 The 12-cell runs exchange subsurface water with a finite-volume
 Buckingham-Darcy calculation. Water advects the dissolved pools used by
@@ -39,17 +62,19 @@ are excluded when the adaptive lateral time step is calculated.
 From PowerShell at the repository root:
 
 ```powershell
-matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',10:12,'MaxConcurrent',3,'MaxRuntimeHours',168)"
-matlab -batch "cd('v2'); Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRuntimeHours',168)"
-matlab -batch "cd('v2'); Plot_1D_Then_All_12"
+matlab -batch "cd('v2/run'); Run_All_12_Parallel('Runs',10:12,'MaxConcurrent',3,'MaxRuntimeHours',168)"
+matlab -batch "cd('v2/run'); Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRuntimeHours',168)"
+matlab -batch "cd('v2/plotting'); Plot_1D_Then_All_12"
 ```
 
 The plotting command first draws the vertical 1-D weathering and nitrogen
 figure (`vertical_1d_weathering_nitrogen.png` and `.fig`) and then writes
 `Subfield_12_summary.png`, `Subfield_12_summary.fig`,
 `Subfield_12_time_dynamics.png` and `Subfield_12_time_dynamics.fig` to
-`v2/SIM/Subfield_12`. The all-12 stage is skipped with a warning listing
-the missing runs until the 2-D results finish. The time plot
+`v2/figures`, reading the results from `v2/SIM/Subfield_12`. Set
+`FigureDirectory` beforehand to write the figures somewhere else. The
+all-12 stage is skipped with a warning listing the missing runs until the
+2-D results finish. The time plot
 uses two columns per scenario group and no more than three stacked rows.
 It shows control, basalt and calcite through time for cumulative N2O,
 cumulative nitrate leaching, the soil nitrate pool, pore-water pH, NEE
@@ -59,7 +84,8 @@ harvested fruit/grain carbon in g C m^-2, so prairie PFTs contribute zero
 yield. Both carbon metrics use the full 3600 m^2 domain area as the
 denominator.
 
-The completed 1-D runs can be plotted before the 2-D runs finish:
+The completed 1-D runs can be plotted before the 2-D runs finish, from
+`v2/plotting`:
 
 ```matlab
 Runs = 10:12; Plot_1D_Then_All_12
@@ -77,12 +103,14 @@ This writes PNG and FIG copies of `Subfield_2D_summary` and
 `Subfield_2D_time_dynamics`. Running the script without setting `Runs`
 plots the 1-D group first and then all 12 scenarios together.
 
-From an open MATLAB session in `v2`:
+From an open MATLAB session at the repository root:
 
 ```matlab
+cd v2/run
 Run_All_12_Parallel('DryRun',true)
 Run_All_12_Parallel('Runs',10:12,'MaxConcurrent',3,'MaxRuntimeHours',168)
 Run_All_12_Parallel('Runs',1:9,'MaxConcurrent',2,'MaxRuntimeHours',168)
+cd ../plotting
 Plot_1D_Then_All_12
 ```
 
@@ -100,15 +128,17 @@ Results go to `v2/SIM/Subfield_12`. Logs and worker status files go to
 comparisons use the same code. A one-day check uses:
 
 ```matlab
+cd v2/run
 Run_All_12_Parallel('MaxConcurrent',2,'NDays',1,'Overwrite',true)
-addpath(fullfile('T&C_Code','Tests')); test_subfield_12_smoke_results(1)
+addpath(fullfile('..','T&C_Code','Tests')); test_subfield_12_smoke_results(1)
+cd ../plotting
 NDays = 1; Plot_1D_Then_All_12
 ```
 
 The September 2019 mineral-N regression uses a small saved fixture:
 
 ```matlab
-addpath(fullfile('T&C_Code','Tests')); test_no3_immobilization_replay
+addpath(fullfile('v2','T&C_Code','Tests')); test_no3_immobilization_replay
 ```
 
 Two 2-D workers is the default for a 32 GB machine. The three 1-D runs can

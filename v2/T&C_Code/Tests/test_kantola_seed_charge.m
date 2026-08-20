@@ -1,25 +1,36 @@
-function test_na_rebaseline_charge
+function test_kantola_seed_charge
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Charge consistency of the Al-solubility-pin Na re-baseline
-%% (ERW_MOD_PARAM_excel).
+%% Charge and ledger consistency of the Kantola ERW seed.
 %%
-%% The pinned re-seed removes the legacy background Na pool, but charge
-%% moves only as neutral salt pairs (SCEPTER get_soilpH_time.py delivers
-%% inventories to the extract run as Na2O/NaCl and hard-stops on Na < Cl).
-%% Only the An-paired Na may leave; the Na balancing the modelled anion
-%% excess (Kantola porewater PO4 above all) must stay, otherwise the
-%% Kantola counter-anion recompute floors at zero, the ledger identity
-%%   Alk_tot(1) = R_alk(1) + Alk(1)*Vw
-%% breaks by the floored deficit, and the daily solver inherits a
-%% negative Alk_tot it can only host as a hyper-acid f_Al = 1 state
-%% (step-2 hard fail: "no mass-conserving exchange solution").
+%% The seed must hand the daily solver a pore water that can exist.  Two
+%% things made that impossible, and both were live bugs:
 %%
-%% This test runs the REAL excel seed path with the pin enabled (the
-%% production Kantola configuration) and asserts the invariants the
-%% daily solver needs on day 1.
+%%   1. Handing ERW the whole labile mineral pool instead of its
+%%      dissolved fraction.  P(:,43) carries ~183 gP/m2 of labile P; all
+%%      of it in solution is 54 mM phosphate, so anions outweigh cations
+%%      and no nonnegative counter-anion exists at any pH.  The frame now
+%%      applies the model's own solubility coefficients (BiogeoPar.aP,
+%%      aNO3, aNH4) -- the same ones Biogeo_Leakage and Biogeo_uptake
+%%      already apply to those pools.
+%%
+%%   2. Assigning exchange fractions by fiat.  The old convention gave
+%%      sodium every site the measured Ca/Mg/K did not claim (f_Na = 0.76,
+%%      an ESP of 76%) and inverted Gaines-Thomas for the concentration,
+%%      producing 0.5 M Na whose only job was balancing that phosphate.
+%%      The seed now solves the Appelo site sum against the spin-up
+%%      solution, with Al set by Al(OH)3 solubility.
+%%
+%% This runs the REAL excel seed path in the production Kantola
+%% configuration and asserts what the daily solver needs on day 1: a
+%% nonnegative counter-anion that closes WITHOUT its max(An,0) floor, a
+%% positive alkalinity pool, and the ledger identity
+%%   Alk_tot(1) = Alk(1)*Vw + R_alk(1)
+%% telescoping exactly.  A floored An breaks that identity and the solver
+%% then inherits an Alk_tot it can only host as a hyper-acid f_Al = 1
+%% state.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-fprintf('\n=== test_na_rebaseline_charge ===\n');
+fprintf('\n=== test_kantola_seed_charge ===\n');
 n_pass = 0;
 
 here = fileparts(mfilename('fullpath'));
@@ -50,11 +61,17 @@ ERW_TC_const.cov_moll = 1;
 ERW_TC_const.bulk_pH_params = struct('scheme', 'appelo', ...
     'Al_solubility_pin', true);
 
+% The frame hands ERW only the DISSOLVED part of the labile mineral
+% pools (MAIN_FRAME_BG_ERW_10mins / ERW_Daily_Step_2D apply the model's
+% own solubility coefficients).  Mirror that here, or the harness feeds
+% the solver a pore water that no charge balance can close.
+bp_handoff = Biogeochemistry_Parameter(1);
 ERW_biogeochem = struct();
 ERW_biogeochem.Mg(1) = 2268.73; ERW_biogeochem.Si(1) = 1;
 ERW_biogeochem.Ca(1) = 530.237; ERW_biogeochem.K(1) = 7675.04;
-ERW_biogeochem.PO4(1) = 54053.8; ERW_biogeochem.NO3(1) = 481.263;
-ERW_biogeochem.NH4(1) = 3088.98;
+ERW_biogeochem.PO4(1) = bp_handoff.aP   * 54053.8;
+ERW_biogeochem.NO3(1) = bp_handoff.aNO3 * 481.263;
+ERW_biogeochem.NH4(1) = bp_handoff.aNH4 * 3088.98;
 ERW_biogeochem.excCa = 530.237; ERW_biogeochem.excMg = 2268.73;
 ERW_biogeochem.excK = 7675.04;
 
@@ -87,8 +104,8 @@ Vw = B.NH4_tot(1)/B.NH4(1);
 check(isfinite(Vw) && Vw > 0, 'field-water volume is positive');
 
 %% ---- pools the daily solver receives
-check(B.Na(1) >= 0, 'porewater Na is non-negative after re-baseline');
-check(B.An(1) >= 0, 'counter-anion is non-negative after re-baseline');
+check(B.Na(1) >= 0, 'porewater Na is non-negative');
+check(B.An(1) >= 0, 'counter-anion is non-negative');
 
 % Kantola recompute must close WITHOUT engaging its max(An,0) floor:
 % the raw carbonate-frame value equals the stored An.
@@ -107,7 +124,7 @@ check(B.Alk_tot(1) > 0, 'Alk_tot(1) is positive (hostable by the CEC)');
 
 %% ---- exchange fractions stay a partition of unity
 f_sum = B.f_Ca(1) + B.f_Mg(1) + B.f_K(1) + B.f_Na(1) + B.f_Al(1) + B.f_H(1);
-check(abs(f_sum - 1) <= 1e-8, 'exchange fractions sum to 1 after renorm');
+check(abs(f_sum - 1) <= 1e-8, 'exchange fractions sum to 1');
 check(all([B.f_Ca(1), B.f_Mg(1), B.f_K(1), B.f_Na(1), B.f_Al(1), B.f_H(1)] >= 0), ...
     'exchange fractions are non-negative');
 
@@ -117,7 +134,7 @@ fprintf('  ---------------------------------------\n');
 fprintf('  %d passed, 0 failed\n', n_pass);
 
     function check(ok, label)
-        assert(ok, 'test_na_rebaseline_charge:Failed', '%s', label);
+        assert(ok, 'test_kantola_seed_charge:Failed', '%s', label);
         n_pass = n_pass + 1;
         fprintf('  PASS  %s\n', label);
     end

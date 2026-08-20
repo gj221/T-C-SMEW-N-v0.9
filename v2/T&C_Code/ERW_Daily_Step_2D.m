@@ -154,6 +154,19 @@ E.TC.CO2_atm = Ca(:)/22.41;      %% [ppm] -> [umol-conv/L]
 cov_moll = C.n * C.Zbio/1000 * E.TC.s(j,:) * 1000;
 E.TC_const.cov_moll = cov_moll;
 
+%% Solution fractions for the BG -> ERW handoff, identical to the 1-D
+%% frame (MAIN_FRAME_BG_ERW_10mins).  P(:,43), P(:,32) and P(:,31) are
+%% labile MINERAL pools; only the dissolved part carries pore-water
+%% charge, and these are the model's own solubility coefficients, the
+%% same ones Biogeo_Leakage and Biogeo_uptake apply to those pools.
+persistent BiogeoPar_erw_handoff
+if isempty(BiogeoPar_erw_handoff)
+    BiogeoPar_erw_handoff = Biogeochemistry_Parameter(1);
+end
+erw_PO4_fraction = BiogeoPar_erw_handoff.aP;
+erw_NO3_fraction = BiogeoPar_erw_handoff.aNO3;
+erw_NH4_fraction = BiogeoPar_erw_handoff.aNH4;
+
 %% ---------------------------------------------------------------------
 %% Seed dissolved and exchangeable pools on the first ERW day
 %% ---------------------------------------------------------------------
@@ -162,9 +175,9 @@ if ~E.init_done_j2
     bg.Mg  = P_c(1,68)/24.3/cov_moll*1e6;
     bg.K   = P_c(1,52)/39.1/cov_moll*1e6;
     bg.Si  = P_c(2,76)/28.1/cov_moll*1e6;
-    bg.PO4 = P_c(2,43)/31  /cov_moll*1e6;
-    bg.NO3 = P_c(2,32)/14  /cov_moll*1e6;
-    bg.NH4 = P_c(2,31)/14  /cov_moll*1e6;
+    bg.PO4 = erw_PO4_fraction * P_c(2,43)/31  /cov_moll*1e6;
+    bg.NO3 = erw_NO3_fraction * P_c(2,32)/14  /cov_moll*1e6;
+    bg.NH4 = erw_NH4_fraction * P_c(2,31)/14  /cov_moll*1e6;
     bg.excCa = P_c(1,61)/40  /cov_moll*1e6;
     bg.excMg = P_c(1,69)/24.3/cov_moll*1e6;
     bg.excK  = P_c(1,53)/39.1/cov_moll*1e6;
@@ -296,9 +309,9 @@ if j > 2
     dMg  = (P_c(j,68) - P_c(j-1,68))/24.3*1e6;
     dK   = (P_c(j,52) - P_c(j-1,52))/39.1*1e6;
     dSi  = (P_c(j,76) - P_c(j-1,76))/28.1*1e6;
-    dPO4 = (P_c(j,43) - P_c(j-1,43))/31  *1e6;
-    dNO3 = (P_c(j,32) - P_c(j-1,32))/14  *1e6;
-    dNH4 = (P_c(j,31) - P_c(j-1,31))/14  *1e6;
+    dPO4 = erw_PO4_fraction * (P_c(j,43) - P_c(j-1,43))/31  *1e6;
+    dNO3 = erw_NO3_fraction * (P_c(j,32) - P_c(j-1,32))/14  *1e6;
+    dNH4 = erw_NH4_fraction * (P_c(j,31) - P_c(j-1,31))/14  *1e6;
 else
     dCa=0; dMg=0; dK=0; dSi=0; dPO4=0; dNO3=0; dNH4=0;
 end
@@ -427,7 +440,12 @@ E.P60 = bg.Ca(dm_end,:) * 40   * cov_moll / 1e6;
 E.P68 = bg.Mg(dm_end,:) * 24.3 * cov_moll / 1e6;
 E.P52 = bg.K(dm_end,:)  * 39.1 * cov_moll / 1e6;
 E.P76 = bg.Si(dm_end,:) * 28.1 * cov_moll / 1e6;
-E.P43 = bg.PO4(dm_end,:)* 31   * cov_moll / 1e6;
+% Only write phosphate back when ERW was handed the whole pool; with a
+% solution fraction < 1 the solver carries the dissolved subset and this
+% would destroy the sorbed remainder.
+if erw_PO4_fraction >= 1
+    E.P43 = bg.PO4(dm_end,:)* 31   * cov_moll / 1e6;
+end
 E.has_update = true;
 
 end

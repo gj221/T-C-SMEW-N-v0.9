@@ -440,16 +440,15 @@ end
 Ca_total = Ca_initial + cec_per_L*f_initial(1)/2;
 Mg_total = Mg_initial + cec_per_L*f_initial(2)/2;
 K_total  = K_initial  + cec_per_L*f_initial(3);
-if Al_solubility_pin
-    % The pinned re-baseline does not conserve the legacy exchangeable
-    % Na slot (the pre-correction 'Kantola' seed convention fills
-    % f_Na ~ 0.8, i.e. a ~0.2-0.4 M equivalent inventory that corrected
-    % Appelo selectivity cannot host at the Al-saturated root).  Only
-    % the dissolved rain-supported Na is conserved.
-    Na_total = Na_initial;
-else
-    Na_total = Na_initial + cec_per_L*f_initial(4);
-end
+% Sodium is conserved like every other base cation.  The pin is a
+% statement about aluminium only (aqueous Al fixed by Al(OH)3
+% solubility); tying the Na inventory to it was a workaround for the old
+% seed's f_Na ~ 0.8, and with f_Na now derived from the Appelo law the
+% exchangeable slot is meaningful and must be carried.  Dropping it
+% leaves Na_total too small for the exchanger, the solver drives
+% dissolved Na to zero, and the log-space Na exchange residual then has
+% no root at all.
+Na_total = Na_initial + cec_per_L*f_initial(4);
 Al3_frac = H^4 / (H^4 + H^3*K1_Al + H^2*K1_Al*K2_Al + H*K1_Al*K2_Al*K3_Al + ...
     K1_Al*K2_Al*K3_Al*K4_Al);
 if ~(isfinite(Al3_frac) && Al3_frac > 0 && isfinite(Ca_total) && Ca_total > 0)

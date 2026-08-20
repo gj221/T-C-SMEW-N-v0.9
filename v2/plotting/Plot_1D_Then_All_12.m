@@ -10,6 +10,8 @@
 %%   2) The twelve-scenario summary and time dynamics (runs 1:12),
 %%      including the associated FIG files.
 %%
+%% PNG and FIG copies of every figure are written to v2/figures.
+%%
 %% Stage 2 is skipped with a warning listing the missing runs, so the
 %% script stays runnable while the 2-D parallel runs are still in
 %% progress.  Stage 1 raises when a 1-D result is missing.
@@ -18,7 +20,8 @@
 %%   Runs             complete treatment groups        [1:12 with the
 %%                    single-group summary and dynamics stage; empty
 %%                    means the two-stage default]
-%%   ResultDirectory  result folder                    [SIM/Subfield_12]
+%%   ResultDirectory  folder holding the run results     [SIM/Subfield_12]
+%%   FigureDirectory  folder the figures are written to           [figures]
 %%   NDays            shortened-run filename tag       []
 %%   Visible          figure visibility                ['on']
 %%   OutputFile       summary PNG (single-group mode)  []
@@ -26,9 +29,9 @@
 %%   DryRun           print the plan without plotting  [false]
 %%
 %% Examples
-%%   matlab -batch "cd('v2'); Plot_1D_Then_All_12"
-%%   matlab -batch "cd('v2'); NDays=1; Plot_1D_Then_All_12"
-%%   matlab -batch "cd('v2'); Runs=10:12; Plot_1D_Then_All_12"
+%%   matlab -batch "cd('v2/plotting'); Plot_1D_Then_All_12"
+%%   matlab -batch "cd('v2/plotting'); NDays=1; Plot_1D_Then_All_12"
+%%   matlab -batch "cd('v2/plotting'); Runs=10:12; Plot_1D_Then_All_12"
 %%
 %% Result variables are left in the workspace: summary, fig,
 %% time_fig, plot_file, time_plot_file for the summary stage, and
@@ -39,9 +42,19 @@
 %% normalised by the full domain area.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+%% This script lives in v2/plotting; the repository root is one level up.
+%% The launchers in v2/run and the model code are put on the path here so
+%% the script runs from any folder.
 here = fileparts(mfilename('fullpath'));
+if isempty(here); here = pwd; end
+root = fileparts(here);
+addpath(fullfile(root,'run'),fullfile(root,'T&C_Code'), ...
+    fullfile(root,'T&C_Code','Parameters'));
 if ~exist('ResultDirectory','var') || isempty(ResultDirectory)
-    ResultDirectory = fullfile(here,'SIM','Subfield_12');
+    ResultDirectory = fullfile(root,'SIM','Subfield_12');
+end
+if ~exist('FigureDirectory','var') || isempty(FigureDirectory)
+    FigureDirectory = fullfile(root,'figures');
 end
 if ~exist('Runs','var'); Runs = []; end
 if ~exist('NDays','var'); NDays = []; end
@@ -51,7 +64,9 @@ if ~exist('TimeOutputFile','var') || isempty(TimeOutputFile); TimeOutputFile = '
 if ~exist('DryRun','var') || isempty(DryRun); DryRun = false; end
 
 validate_options(NDays,Visible,DryRun,ResultDirectory);
-opt = struct('ResultDirectory',ResultDirectory,'NDays',NDays, ...
+if ~isfolder(FigureDirectory); mkdir(FigureDirectory); end
+opt = struct('ResultDirectory',ResultDirectory, ...
+    'FigureDirectory',FigureDirectory,'NDays',NDays, ...
     'Visible',Visible,'OutputFile',OutputFile, ...
     'TimeOutputFile',TimeOutputFile);
 
@@ -141,9 +156,6 @@ function [fig,plot_file,stats] = plot_group_figure(run_ids,opt)
 %%
 %% Colours, line weights, axis treatment, application markers and legend
 %% placement follow the summary figure so the two figures read as one set.
-here = fileparts(mfilename('fullpath'));
-addpath(here,fullfile(here,'T&C_Code'), ...
-    fullfile(here,'T&C_Code','Parameters'));
 if numel(run_ids) ~= 3
     error('Plot_1D_Then_All_12:BadRuns', ...
         'Expected one complete treatment group of three runs, got %d.', ...
@@ -275,7 +287,7 @@ lgd.Layout.Tile = 'south';
 title(tl,sprintf('%s: weathering signal and nitrogen partitioning', ...
     group_label),'Color','k');
 
-plot_file = fullfile(opt.ResultDirectory, ...
+plot_file = fullfile(opt.FigureDirectory, ...
     sprintf('%s_weathering_nitrogen%s.png',RM(run_ids(1)).layout,suffix));
 exportgraphics(fig,plot_file,'Resolution',200);
 [plot_folder,plot_name] = fileparts(plot_file);
@@ -501,7 +513,7 @@ title(tl,summary_title,'Color','k');
 suffix = '';
 if ~isempty(opt.NDays); suffix = sprintf('__%dd',opt.NDays); end
 if isempty(opt.OutputFile)
-    plot_file = fullfile(opt.ResultDirectory, ...
+    plot_file = fullfile(opt.FigureDirectory, ...
         [output_stem '_summary' suffix '.png']);
 else
     plot_file = char(opt.OutputFile);
@@ -601,7 +613,7 @@ time_lgd.Layout.Tile = 'south';
 title(time_tl,time_title,'Color','k');
 
 if isempty(opt.TimeOutputFile)
-    time_plot_file = fullfile(opt.ResultDirectory, ...
+    time_plot_file = fullfile(opt.FigureDirectory, ...
         [output_stem '_time_dynamics' suffix '.png']);
 else
     time_plot_file = char(opt.TimeOutputFile);

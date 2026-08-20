@@ -1,12 +1,20 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% Diagnostic plots: N2O emissions and NO3 leaching
 %%%% Kantola (Urbana, US) 2016-2020: control vs basalt (Beerling) vs calcite
+%%%% Standalone runnable script; run it directly (e.g. run Plot_Nflux_Diagnostics).
 %%%% Run after the ERW_run cases (5, 3, 7) have been saved to
-%%%% SIM\Kantola_pH_N2O ; scenarios not yet run are skipped.
+%%%% SIM/Kantola_legacy_pH_N ; scenarios not yet run are skipped.
+%%%% Figures are written to v2/figures.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clear; close all;
 
-res_dir = fullfile(cd,'SIM','Kantola_legacy_pH_N');
+%%%% This script lives in v2/plotting; the repository root is one level up.
+here = fileparts(mfilename('fullpath'));
+if isempty(here); here = pwd; end
+root = fileparts(here);
+res_dir = fullfile(root,'SIM','Kantola_legacy_pH_N');
+fig_dir = fullfile(root,'figures');
+if ~isfolder(fig_dir); mkdir(fig_dir); end
 all_files = {'TC_ERW_results_Kantola_crop_control.mat';...
     'TC_ERW_results_Kantola_crop_Beerling.mat';...
     'TC_ERW_results_Kantola_crop_calcite.mat'};
@@ -97,8 +105,8 @@ xline(appl_dates,':','Color',col_appl,'LineWidth',lw_appl);
 ylabel('NO_3^- pool [gN m^{-2}]')
 title('Soil NO_3^- pool')
 
-exportgraphics(gcf,fullfile(res_dir,'NO3_N2O_pH.png'),'Resolution',300)
-savefig(gcf,fullfile(res_dir,'NO3_N2O_pH.fig'))
+exportgraphics(gcf,fullfile(fig_dir,'NO3_N2O_pH.png'),'Resolution',300)
+savefig(gcf,fullfile(fig_dir,'NO3_N2O_pH.fig'))
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% Figure 2: feedstock and pH influence on the N fluxes
@@ -178,8 +186,8 @@ xlabel('pore-water pH [-]'); ylabel('N_2O/(N_2O+N_2) [-]')
 title('Denitrification product ratio vs pH')
 legend([scen_names {'partition curve'}],'Location','best','AutoUpdate','off')
 
-exportgraphics(gcf,fullfile(res_dir,'N_budget.png'),'Resolution',300)
-savefig(gcf,fullfile(res_dir,'N_budget.fig'))
+exportgraphics(gcf,fullfile(fig_dir,'N_budget.png'),'Resolution',300)
+savefig(gcf,fullfile(fig_dir,'N_budget.fig'))
 
 %%%% run totals
 fprintf('\n%-10s %13s %13s %13s %13s %13s %9s\n','scenario','N2O [gN/m2]','N2 [gN/m2]',...

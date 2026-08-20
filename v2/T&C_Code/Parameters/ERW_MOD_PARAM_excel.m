@@ -315,6 +315,18 @@ K_Al = [K1, K2, K3, K4]; % aluminium speciation constants
 % 9.66 is representative of microcrystalline/proto-gibbsite — the kinetically
 % active Al-hydroxide phase in agricultural soils receiving silicate amendments.
 K_AlOH3 = 9.66;
+% When the Al solubility pin is active the daily solver works with the
+% amorphous phase (ERW_function overrides K_AlOH3 to 10.8, SCEPTER
+% 'amal'), so the seed and its saturation diagnostic must use the same
+% phase.  Otherwise Al_w(1) is reported against microcrystalline
+% gibbsite and Omega_AlOH3(1) comes out at 10^(10.8-9.66) = 13.8, which
+% reads as supersaturation when the solution is exactly at equilibrium.
+if isfield(ERW_TC_const_input, 'bulk_pH_params') && ...
+        isstruct(ERW_TC_const_input.bulk_pH_params) && ...
+        isfield(ERW_TC_const_input.bulk_pH_params, 'Al_solubility_pin') && ...
+        isequal(ERW_TC_const_input.bulk_pH_params.Al_solubility_pin, true)
+    K_AlOH3 = 10.8;
+end
 
 % hydrogen ion conc
 H(1) = 10^(-pH(1))*conv_mol; % [umol/l]
@@ -671,73 +683,10 @@ end
     K1, K2, K3, K4, CEC_tot(1), rho_bulk, Zrw, conv_mol, ...
     bulk_pH_params, K_AlOH3, Al_CEC_scale);
 
-% Appelo + Al-solubility-pin re-baseline of the legacy Na pool.  The
-% legacy 'Kantola' seed convention (ERW_pre_processing) fills the sodium
-% slot f_Na = f_CEC_sat - f_Ca - f_Mg - f_K ~ 0.8 and derives
-% Na_w = sqrt((Ca/f_Ca)*K_Ca_Na)*f_Na from the pre-correction
-% Gaines-Thomas form, seeding a ~0.3-0.7 M porewater Na pool (with the
-% matching exchange inventory) that the corrected Appelo selectivity
-% cannot host: at the Al-saturated pinned root (f_H ~ 1e-17) the law
-% f_Na = K_Na_H*Na_w*(f_H/H)*10^(alpha*f_H) caps exchange Na at O(1e-9)
-% while the pool demands f_Na ~ 1e-4 - no joint solution exists.
-% Re-seed Na_w to the rain-supported steady state (zero when no rain-Na
-% flux is supplied) and rescale f_Na law-consistently (linear in Na_w at
-% fixed H and f_H, so the inversion's law ratios and the CEC sum are
-% preserved); the pinned run then starts from a state the daily
-% conservation + exchange system can actually host.  The frame-side
-% companion disables the self-inflating background pump (keyword_add)
-% for pinned runs.
-if isfield(bulk_pH_params, 'Al_solubility_pin') && ...
-        isequal(bulk_pH_params.Al_solubility_pin, true)
-    Na_legacy = Na(1);
-    if exist('Na_rain_ss', 'var') && isfinite(Na_rain_ss) && Na_rain_ss > 0
-        Na_target = Na_rain_ss;
-    else
-        Na_target = 0;
-    end
-    % Only salt-paired Na can leave: charge moves as neutral salt pairs
-    % (SCEPTER get_soilpH_time.py transfers inventories to the extract
-    % run as Na2O/NaCl and hard-stops on Na < Cl - a strong anion with
-    % no pairable cation is an inadmissible state).  The carbonate-frame
-    % counter-anion recompute below (An = 2Mg+2Ca+Na+K+NH4-Alk-PO4-NO3)
-    % needs Na >= Alk+PO4+NO3-2Mg-2Ca-K-NH4 to close with An >= 0;
-    % dropping below that floor leaves the modelled anion excess
-    % (Kantola porewater PO4 above all) without countercharge, the
-    % max(An,0) floor breaks the Alk_tot = R_alk + Alk*V identity, and
-    % the daily solver inherits a negative Alk_tot it can only host as a
-    % hyper-acid f_Al = 1 state (day-2 hard fail).  The retained Na is
-    % the minimal electroneutral remainder of the legacy pool.
-    Alk_seed = k1(1)*CO2_w(1)/H(1) + 2*k2(1)*k1(1)*CO2_w(1)/(H(1)^2) ...
-        - H(1) + k_w(1)/H(1);
-    Na_floor = max(0, Alk_seed + PO4(1) + NO3(1) ...
-        - (2*Mg(1) + 2*Ca(1) + K(1) + NH4(1)));
-    Na(1) = min(max(Na_target, Na_floor), max(Na_legacy, Na_target));
-    if isfinite(Na_legacy) && Na_legacy > 0
-        f_Na_new = f_Na(1) * (Na(1)/Na_legacy);
-    else
-        f_Na_new = f_Na(1);
-    end
-    f_renorm = 1 - f_Na(1) + f_Na_new;
-    if isfinite(f_renorm) && f_renorm > 1e-6
-        f_Ca(1) = f_Ca(1)/f_renorm;
-        f_Mg(1) = f_Mg(1)/f_renorm;
-        f_K(1)  = f_K(1)/f_renorm;
-        f_Al(1) = f_Al(1)/f_renorm;
-        f_H(1)  = f_H(1)/f_renorm;
-        f_Na(1) = f_Na_new/f_renorm;
-    else
-        % Degenerate legacy seed (exchange Na ~ full CEC): drop the slot.
-        f_Na(1) = 0;
-    end
-    % The removed dissolved Na leaves as neutral salt, taking the same
-    % equivalents off the inverter's counter-anion (exact in that frame:
-    % only the Na term of its charge closure changed).  The Kantola
-    % convention below overwrites An(1) with its own carbonate-frame
-    % recompute, which the Na floor above keeps nonnegative.
-    if isfinite(Na_legacy) && Na_legacy > Na(1)
-        An(1) = max(0, An(1) - (Na_legacy - Na(1)));
-    end
-end
+% Sodium needs no re-baseline here.  The Kantola seed
+% (ERW_pre_processing) sets pore-water Na from deposition and derives
+% its exchange fraction from the Appelo law, so the inventory handed
+% to the inversion is already the one the exchanger can host.
 
 pH(1) = -log10(H(1)/conv_mol);
 Al_den_seed = H(1)^4 + H(1)^3*K1 + H(1)^2*K1*K2 + ...

@@ -6,17 +6,19 @@ if ~exist('bulk_pH_params','var') || ~isstruct(bulk_pH_params)
     bulk_pH_params = struct();
 end
 bulk_pH_params.scheme = 'appelo';
-% Al solubility pin OFF.  The pin (aqueous Al fixed by amorphous Al(OH)3,
-% SCEPTER 'amal' semantics, plus the Na re-baseline and background-pump
-% shutdown it drags along) was scaffolding for an Al-saturated exchange
-% corner that only existed under the inverted Appelo constants
-% (Resolve_Appelo_Constants used 10^(+Z*(logKH-alpha)) instead of the
-% scepter.f90 form 10^(-logKH), overstating Al selectivity by ~10^56).
-% With the source-verified constants the Kantola equilibrium at pH ~6 is
-% base-saturated (f_Al ~ 1e-5), the legacy Al_tot conservation and Na/An
-% seed are hostable, and the pin is not needed.  The machinery stays
-% available for genuinely acid scenarios.
-bulk_pH_params.Al_solubility_pin = false;
+% Aqueous Al is held at Al(OH)3 equilibrium.  SCEPTER carries the same
+% phase as an equilibrium solid (scepter.f90 case('amal'),
+% Al(OH)3 + 3H+ = Al3+ + 3H2O, therm_ref = 10^10.8 from PHREEQC.DAT),
+% and the ERW module already computes the saturation state
+% (Omega_AlOH3 in ERW_function) but never acted on it: Al released by
+% basalt weathering simply accumulated in solution, reaching ~0.2 M by
+% year four, four orders above solubility at pH 6, until the Al_tot
+% conservation residual aborted the run.  Pinning solution Al to the
+% hydroxide equilibrium makes the excess precipitate as secondary
+% Al(OH)3, which is what happens in the soil.  Exchangeable Al then
+% derives from solution, so the measured exchange-Al heritage is not
+% conserved - the same trade SCEPTER makes.
+bulk_pH_params.Al_solubility_pin = true;
 
 %%% Maize–soybean rotations
 %%%%%%%%%

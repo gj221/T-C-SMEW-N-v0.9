@@ -7,7 +7,10 @@ clear all;
 close all;
 clc;
 
-current_directory = cd;
+%%%%%% This launcher lives in v2/run; the repository root is one level up.
+script_directory = fileparts(mfilename('fullpath'));
+if isempty(script_directory); script_directory = cd; end
+current_directory = fileparts(script_directory);
 Directory=current_directory+"\T&C_Code";
 addpath(Directory)
 addpath(Directory+'\Inputs')

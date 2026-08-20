@@ -8,9 +8,9 @@ if nargin < 1 || isempty(n_days); n_days = 1; end
 fprintf('\n=== test_subfield_12_smoke_results (%d day) ===\n',n_days);
 n_pass = 0;
 v2 = fileparts(fileparts(fileparts(mfilename('fullpath'))));
-%% Run_Matrix_12 lives in v2, not in T&C_Code; without this the test only
-%% passes when the caller happens to have v2 on the path already.
-addpath(v2,fullfile(v2,'T&C_Code'));
+%% Run_Matrix_12 lives in v2/run, not in T&C_Code; without this the test
+%% only passes when the caller happens to have v2/run on the path already.
+addpath(fullfile(v2,'run'),fullfile(v2,'T&C_Code'));
 result_dir = fullfile(v2,'SIM','Subfield_12');
 RM = Run_Matrix_12();
 

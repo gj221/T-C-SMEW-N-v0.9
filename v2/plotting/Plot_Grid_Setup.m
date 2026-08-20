@@ -26,11 +26,16 @@
 %% 2 x 2 main grid of 25 m cells).  The layer mesh matches
 %% ERW_MOD_PARAM_parameters.xlsx (Kantola rows).
 %%
-%% Outputs: Grid_Setup.png and Grid_Setup.fig next to this file.
+%% Outputs: Grid_Setup.png and Grid_Setup.fig in v2/figures.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+%% This script lives in v2/plotting; the repository root is one level up.
 here = fileparts(mfilename('fullpath'));
-addpath(here,fullfile(here,'T&C_Code'));
+if isempty(here); here = pwd; end
+root = fileparts(here);
+addpath(fullfile(root,'T&C_Code'));
+figure_dir = fullfile(root,'figures');
+if ~isfolder(figure_dir); mkdir(figure_dir); end
 
 %% geometry
 L  = 60;                 % field side [m]
@@ -250,7 +255,7 @@ title(ax,'(d) 2-D horizontal: lateral transport through the active zone', ...
     'FontSize',11,'Color','k');
 
 %% ================= save =================
-plot_file = fullfile(here,'Grid_Setup.png');
+plot_file = fullfile(figure_dir,'Grid_Setup.png');
 exportgraphics(fig,plot_file,'Resolution',250);
 [plot_folder,plot_name] = fileparts(plot_file);
 fig_file = fullfile(plot_folder,[plot_name '.fig']);

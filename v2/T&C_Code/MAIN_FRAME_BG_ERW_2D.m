@@ -848,7 +848,12 @@ for i = 2:NN
                 end
                 P(j,60,c) = ERW{c}.P60;  P(j,68,c) = ERW{c}.P68;
                 P(j,52,c) = ERW{c}.P52;  P(j,76,c) = ERW{c}.P76;
-                P(j,43,c) = ERW{c}.P43;
+                %% Phosphate only returns when ERW was handed the whole labile
+                %% pool; under a solution fraction < 1 the solver carries the
+                %% dissolved subset and BIOGEOCHEMISTRY keeps ownership of P(:,43).
+                if isfield(ERW{c},'P43')
+                    P(j,43,c) = ERW{c}.P43;
+                end
             end
         end
     end

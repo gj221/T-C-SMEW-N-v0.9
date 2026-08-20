@@ -1,3 +1,43 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Biogeochemical pool time series of one single-column run: carbon,
+%% nitrogen, phosphorus, potassium, calcium, magnesium and silicon pools,
+%% the stoichiometric ratios, and the heterotrophic respiration shares.
+%%
+%% Standalone runnable script; run it directly (e.g. run Plot_Biogeo_Pools).
+%% It plots whatever single-column result is already in the workspace, and
+%% otherwise loads one. Set ResultFile beforehand to choose another run:
+%%
+%%   ResultFile = 'SIM/FINAL_mesocosm/TC_ERW_results_Kantola_crop_control.mat';
+%%   Plot_Biogeo_Pools
+%%
+%% PNG copies of every figure are written to v2/figures.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% This script lives in v2/plotting; the repository root is one level up.
+here = fileparts(mfilename('fullpath'));
+if isempty(here); here = pwd; end
+root = fileparts(here);
+figure_dir = fullfile(root,'figures');
+if ~isfolder(figure_dir); mkdir(figure_dir); end
+
+%% The daily pool matrix is called P in a saved run and B in this script.
+if ~exist('B','var')
+    if ~exist('P','var')
+        if ~exist('ResultFile','var') || isempty(ResultFile)
+            ResultFile = fullfile(root,'SIM','Kantola_legacy_pH_N', ...
+                'TC_ERW_results_Kantola_crop_control.mat');
+        end
+        if ~isfile(ResultFile)
+            error('Plot_Biogeo_Pools:MissingResult', ...
+                ['No single-column result in the workspace and none at %s.\n' ...
+                'Run ERW_run first, or set ResultFile to a saved run.'],ResultFile);
+        end
+        fprintf('Loading %s\n',ResultFile);
+        load(ResultFile,'P','Lk','Zbio','rsd','R_litter','R_litter_sur', ...
+            'R_microbe','R_bacteria','R_ew');
+    end
+    B = P;
+end
 
 Lkday = mean(Lk)*24; 
 ZBIOG = Zbio/1000;
@@ -803,3 +843,22 @@ if exist("B_out",'var')
 
     
 end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Save every panel to v2/figures.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+saved_figures = { ...
+    f1, 'Litter_carbon';          f2, 'Soil_and_microbial_carbon'; ...
+    f3, 'Nitrogen_pools';         f4, 'Phosphorus_pools'; ...
+    f5, 'Potassium_pools';        f15,'Calcium_pools'; ...
+    f16,'Magnesium_pools';        f17,'Silicon_pools'; ...
+    f6, 'Ratio_CN';               f7, 'Ratio_CP'; ...
+    f8, 'Ratio_CK';               f18,'Ratio_CCa'; ...
+    f19,'Ratio_CMg';              f20,'Ratio_CSi'; ...
+    f13,'Soil_organic_carbon';    f14,'Respiration_shares'};
+for k = 1:size(saved_figures,1)
+    exportgraphics(saved_figures{k,1}, ...
+        fullfile(figure_dir,sprintf('Biogeo_%s.png',saved_figures{k,2})), ...
+        'Resolution',200);
+end
+fprintf('Saved %d figures to %s\n',size(saved_figures,1),figure_dir);

@@ -1,8 +1,30 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Kantola benchmark: single-column control, basalt (Beerling and Lewis)
+%% and pretreatment runs against the digitised field observations.
+%%
+%% Standalone runnable script; run it directly (e.g. run Plot_Kantola_Benchmark).
+%%
+%% Inputs it expects, none of which are produced by the twelve-run matrix:
+%%   SIM/FINAL_field          the four ERW_run cases named below
+%%   SIM/Kantola_uncertainty  uc_post_results.mat and the daboxplot toolbox
+%%   Experimental observations/Web plot digitizer   digitised field data
+%%
+%% The ten figures are shown on screen and are not written to disk.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 clear all
 close all
 clc
 
-current_directory = cd;
+%% This script lives in v2/plotting; the repository root is one level up.
+%% Cflux_post_processing sits next to it and the workbook is read off the
+%% model input folder, so both go on the path here.
+script_directory = fileparts(mfilename('fullpath'));
+if isempty(script_directory); script_directory = cd; end
+current_directory = fileparts(script_directory);
+addpath(script_directory, ...
+    fullfile(current_directory,'T&C_Code'), ...
+    fullfile(current_directory,'T&C_Code','Inputs'));
 
 % simulation folder dir
 SCENARIO_TEST = '\FINAL_field';
@@ -13,14 +35,16 @@ NN_case_study_ERW_MOD = [3 4 5 6]; % No. of experiment setup in ERW_MOD sheet
 
 %%%%%%%%%%%%%% read ERW module parameters fromexcel
 ERW_PARAM_opts = detectImportOptions('ERW_MOD_PARAM_parameters.xlsx',"Sheet",'ERW_MOD');
-ERW_PARAM_opts.DataRange ="A2:AH6";
+%% 35 columns, matching the ERW_MOD sheet that ERW_run and
+%% Run_One_Subfield read.
+ERW_PARAM_opts.DataRange ="A2:AI6";
 ERW_PARAM_opts.VariableTypes ={'double','string','string','double','double',...
   'string','double','double','string','double',...
   'string','string','string','string','double',...
   'double','double','double','double','double',...
   'double','double','double','string','double',...
   'string','string','double','double','double',...
-  'double','double','double','double'};
+  'double','double','double','double','double'};
 ERW_PARAM_opts = setvaropts(ERW_PARAM_opts,{'f_CEC_in','rock_filepath','mineral','rock_f_in'},'FillValue','NaN');
 
 ERW_PARAM_input_t = readtable('ERW_MOD_PARAM_parameters.xlsx', ERW_PARAM_opts);
@@ -33,7 +57,12 @@ ERW_PARAM_input_pre = ERW_PARAM_input_t(ERW_PARAM_input_t.Number == NN_case_stud
 
 %% load data
 % check which data you need
-fl_path = dir(fullfile(current_directory,'SIM',SCENARIO_TEST));
+run_dir = fullfile(current_directory,'SIM',SCENARIO_TEST);
+fl_path = dir(run_dir);
+assert(~isempty(fl_path), ...
+    ['No single-column runs found in %s.\nRun the four ERW_run cases ' ...
+    '(3, 4, 5 and 6) with SCENARIO_TEST = ''%s'' first.'], ...
+    run_dir,SCENARIO_TEST);
 aTable = struct2table(fl_path);
 disp(aTable);
 
@@ -99,26 +128,14 @@ data4{1} = Lewis_Mg_diss(:,2:5);
 data4{2} = Beerling_Mg_diss(:,2:5);
 
 %% load exp data
-script_dir = fileparts(mfilename('fullpath'));
-if isempty(script_dir)
-    script_dir = current_directory;
-end
-
-data_root_candidates = {
-    fullfile(script_dir,'Experimental observations','Web plot digitizer')
-    fullfile(current_directory,'Experimental observations','Web plot digitizer')
-};
+obs_dir = fullfile(current_directory, ...
+    'Experimental observations','Web plot digitizer');
 fl_path = [];
-for c = 1:numel(data_root_candidates)
-    candidate_dir = data_root_candidates{c};
-    if isfolder(candidate_dir)
-        fl_path = dir(fullfile(candidate_dir,'*.mat'));
-        if ~isempty(fl_path)
-            break;
-        end
-    end
+if isfolder(obs_dir)
+    fl_path = dir(fullfile(obs_dir,'*.mat'));
 end
-assert(~isempty(fl_path), 'No Beerling reference .mat files found in expected data directories.');
+assert(~isempty(fl_path), ...
+    'No digitised reference .mat files found in %s.',obs_dir);
 
 % check which data you need
 aTable = struct2table(fl_path);

@@ -48,11 +48,14 @@ validate_optional_integer(opt.NDays,'NDays');
 validate_optional_integer(opt.GridNx,'GridNx');
 validate_optional_integer(opt.GridNy,'GridNy');
 
+%% This launcher and its worker live in v2/run; results, logs and status
+%% files belong to the repository root one level up.
 here = fileparts(mfilename('fullpath'));
+root = fileparts(here);
 RM = Run_Matrix_12();
 runs = opt.Runs(:)';
-log_dir = fullfile(here,'logs','Subfield_12');
-out_dir = fullfile(here,'SIM','Subfield_12');
+log_dir = fullfile(root,'logs','Subfield_12');
+out_dir = fullfile(root,'SIM','Subfield_12');
 status_dir = fullfile(log_dir,'status');
 
 extra = {};

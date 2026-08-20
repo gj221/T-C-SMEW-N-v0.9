@@ -57,8 +57,10 @@ end
 
 R = RM(run_id);
 
-current_directory = fileparts(mfilename('fullpath'));
-if isempty(current_directory); current_directory = pwd; end
+%% This function lives in v2/run; the repository root is one level up.
+script_directory = fileparts(mfilename('fullpath'));
+if isempty(script_directory); script_directory = pwd; end
+current_directory = fileparts(script_directory);
 Directory           = fullfile(current_directory,'T&C_Code');
 Input_Directory     = fullfile(Directory,'Inputs');
 Parameter_Directory = fullfile(Directory,'Parameters');

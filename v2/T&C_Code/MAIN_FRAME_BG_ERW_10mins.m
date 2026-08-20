@@ -298,6 +298,26 @@ end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ERW_initialized = false;
+
+%%% Solution fractions for the BG -> ERW handoff.  P(:,43), P(:,32) and
+%%% P(:,31) are the labile MINERAL pools, and only part of each is
+%%% dissolved: the rest is sorbed or exchange-held and carries no
+%%% pore-water charge.  These are the model's own solubility
+%%% coefficients, the same ones Biogeo_Leakage and Biogeo_uptake already
+%%% apply to those pools, so the ERW charge balance now sees the same
+%%% dissolved phase the leaching and uptake terms do.  Handing ERW the
+%%% whole labile pool (the fraction dropped, i.e. 1) puts ~54 mM
+%%% phosphate in solution, three to four orders above any real soil, and
+%%% the charge balance can then only close by inventing an equally
+%%% impossible counter-cation.  SCEPTER leaves inorganic P out of its
+%%% aqueous species list for the same reason (scepter.f90 chraq_all).
+%%% Biogeochemistry_Parameter's solubility block does not depend on the
+%%% CUE option, so the call argument is immaterial here (the 2-D frame
+%%% builds BiogeoPar_lateral the same way).
+BiogeoPar_erw_handoff = Biogeochemistry_Parameter(1);
+ERW_biogeo_PO4_fraction = BiogeoPar_erw_handoff.aP;
+ERW_biogeo_NO3_fraction = BiogeoPar_erw_handoff.aNO3;
+ERW_biogeo_NH4_fraction = BiogeoPar_erw_handoff.aNH4;
 for i=2:NN
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     if  (mod(i,1000) == 0) || (i == 2)
@@ -782,11 +802,11 @@ for i=2:NN
                 % silicon
                 ERW_biogeochem.Si(j-1,:) = P(2,76)/28.1/cov_moll*1e6;
                 % phosphorus
-                ERW_biogeochem.PO4(j-1,:) = P(2,43)/31/cov_moll*1e6;
+                ERW_biogeochem.PO4(j-1,:) = ERW_biogeo_PO4_fraction * P(2,43)/31/cov_moll*1e6;
                 % NO3-
-                ERW_biogeochem.NO3(j-1,:) = P(2,32)/14/cov_moll*1e6;
+                ERW_biogeochem.NO3(j-1,:) = ERW_biogeo_NO3_fraction * P(2,32)/14/cov_moll*1e6;
                 % NH4+
-                ERW_biogeochem.NH4(j-1,:) = P(2,31)/14/cov_moll*1e6;
+                ERW_biogeochem.NH4(j-1,:) = ERW_biogeo_NH4_fraction * P(2,31)/14/cov_moll*1e6;
                 
                 % exchangeable
                 % calcium
@@ -872,9 +892,9 @@ for i=2:NN
                 ERW_biogeochem.dK_tot(j,:) = (P(j,52) - P(j-1,52))/39.1*1e6;
                 ERW_biogeochem.dSi_tot(j,:) = (P(j,76) - P(j-1,76))/28.1*1e6;
 
-                ERW_biogeochem.dPO4_tot(j,:) = (P(j,43) - P(j-1,43))/31*1e6;
-                ERW_biogeochem.dNO3_tot(j,:) = (P(j,32) - P(j-1,32))/14*1e6;
-                ERW_biogeochem.dNH4_tot(j,:) = (P(j,31) - P(j-1,31))/14*1e6;
+                ERW_biogeochem.dPO4_tot(j,:) = ERW_biogeo_PO4_fraction * (P(j,43) - P(j-1,43))/31*1e6;
+                ERW_biogeochem.dNO3_tot(j,:) = ERW_biogeo_NO3_fraction * (P(j,32) - P(j-1,32))/14*1e6;
+                ERW_biogeochem.dNH4_tot(j,:) = ERW_biogeo_NH4_fraction * (P(j,31) - P(j-1,31))/14*1e6;
 
             else
                 ERW_biogeochem.dCa_tot(j,:) = 0;
@@ -1118,7 +1138,13 @@ for i=2:NN
             P(j, 68)= ERW_biogeochem.Mg(dm_end,:)* 24.3 * cov_moll / 1e6; %  Mg [g /m^2 d]
             P(j, 52)= ERW_biogeochem.K(dm_end,:)* 39.1 * cov_moll / 1e6; %  K [g /m^2 d]
             P(j, 76)= ERW_biogeochem.Si(dm_end,:)* 28.1 * cov_moll / 1e6; % Si [g /m^2 d]
-            P(j, 43)= ERW_biogeochem.PO4(dm_end,:)* 31 * cov_moll / 1e6; % PO4 [g /m^2 d]
+            % Only write the phosphate pool back when ERW was handed all of it.
+            % With a solution fraction < 1 the solver carries the dissolved
+            % subset, and overwriting the whole labile pool with it would
+            % destroy the sorbed remainder (a ~200x pool loss at aP = 0.005).
+            if ERW_biogeo_PO4_fraction >= 1
+                P(j, 43)= ERW_biogeochem.PO4(dm_end,:)* 31 * cov_moll / 1e6; % PO4 [g /m^2 d]
+            end
 
             
         end

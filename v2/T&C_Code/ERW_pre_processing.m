@@ -132,21 +132,74 @@ elseif excel_input.fX_conc_convention == "f_CEC_to_conc"
 
 elseif excel_input.fX_conc_convention == "Kantola"
 
-    % case study: Kantola (exchangeable pools from the BG spin-up)
-    % INPUT CEC fractions
-    f_Mg(1) = (ERW_biogeochem_input.excMg*n*Zrw*s(1)*1000)/CEC_tot(1)*2;
-    f_Ca(1) = (ERW_biogeochem_input.excCa*n*Zrw*s(1)*1000)/CEC_tot(1)*2;
-    f_K(1) = (ERW_biogeochem_input.excK*n*Zrw*s(1)*1000)/CEC_tot(1);
-    f_H(1) = 0.15;
-
+    % case study: Kantola.
+    %
+    % The published T&C-SMEW seed assumes an exchange composition
+    % (f_CEC_sat = 0.8, f_H = 0.15) and back-derives the pore-water
+    % concentrations from the Gaines-Thomas inverses, then fits
+    % K_Ca_H/K_Ca_Mg/K_Ca_K to reproduce that same state.  Under GT that
+    % is self-consistent: the fitted constants absorb whatever the
+    % assumed composition implies, so the absolute Na and Al values never
+    % have to be physical.
+    %
+    % This model runs Appelo/SCEPTER selectivity with FIXED literature
+    % constants (Resolve_Appelo_Constants), which removes that freedom.
+    % The assumed composition and the derived concentrations become
+    % physical claims, and two of them are false: handing sodium every
+    % site the measured Ca/Mg/K do not claim gives f_Na = 0.76, an ESP of
+    % 76% (a sodic soil, not a Mollisol), and the GT inverses evaluated at
+    % f_Ca ~ 0.003 return 0.5 M Na and 89 mM Al, the latter 2e5 times the
+    % Al(OH)3 solubility at pH 6.
+    %
+    % The 80% base saturation the published seed assumes is right for
+    % this soil, so it is kept.  What changes is where the unmeasured
+    % remainder goes.  The spin-up's exchangeable pools (P(:,61/69/53))
+    % come back essentially equal to the solution pools and account for
+    % only ~4% of the CEC, so the remainder is real and has to be
+    % assigned; a Mollisol carries it as Ca and Mg, not sodium.
+    % Proportions below are the standard exchangeable-base split for a
+    % near-neutral Mollisol and are exposed as constants so a site with
+    % its own exchange data can override them.
     f_CEC_sat = 0.8;
-    f_Na(1) = f_CEC_sat-f_Ca(1)-f_Mg(1)-f_K(1);
+    f_H(1) = 0.15;
     f_Al(1) = (1-f_CEC_sat)-f_H(1);
 
-    % estimates of concentrations
-    Na(1) = ((Ca(1)/f_Ca(1))*K_Ca_Na)^(1/2)*f_Na(1);
-    Al(1) = ((Ca(1)/f_Ca(1))^3*K_Ca_Al)^(1/2)*f_Al(1)*Al_CEC_scale;
-    Al_w(1) = Al(1)/(H(1)^4/(H(1)^4+H(1)^3*K1+H(1)^2*K1*K2+H(1)*K1*K2*K3+K1*K2*K3*K4));
+    % Pore-water Na is a measured quantity, so it is set first and the
+    % exchange fraction follows from the Appelo law rather than the other
+    % way round.  It must be strictly positive: the log-space exchange
+    % residual log(f_Na) - (log K_Na_H + log[Na] + log(f_H/[H]) + ...)
+    % has no root at [Na] = 0, where both sides clamp onto different
+    % floors and leave a fixed ~13 log-unit residual that pins the scaled
+    % error at 1 and stalls every other equation in the block.  Use the
+    % deposition-supported steady state when the site supplies a rain-Na
+    % flux, otherwise a Midwest agricultural default of 200 umol/L
+    % (~4.6 mg/L), which is mid-range for a leached non-sodic soil.
+    if ~(isfinite(Na(1)) && Na(1) > 0)
+        Na(1) = 200;
+    end
+    [K_Na_H_kant, ~, ~, ~, ~, alpha_kant] = Resolve_Appelo_Constants([]);
+    f_Na(1) = K_Na_H_kant*Na(1)*(f_H(1)/H(1))*10^(alpha_kant*f_H(1));
+    f_Na(1) = min(max(f_Na(1), 0), f_CEC_sat);
+
+    % The measured Ca/Mg/K carry the rest of the base saturation in the
+    % standard exchangeable split for a near-neutral Mollisol; exposed as
+    % constants so a site with its own exchange data can override them.
+    kantola_base_split = [0.79, 0.17, 0.04];   % Ca Mg K
+    kantola_base_split = kantola_base_split/sum(kantola_base_split);
+    f_base_kant = f_CEC_sat - f_Na(1);
+    f_Ca(1) = f_base_kant*kantola_base_split(1);
+    f_Mg(1) = f_base_kant*kantola_base_split(2);
+    f_K(1)  = f_base_kant*kantola_base_split(3);
+
+    % Dissolved Al is set by Al(OH)3 solubility, which is what controls
+    % it in any soil near pH 6 (Lindsay 1979 p.51); SCEPTER holds the
+    % same phase as its equilibrium solid 'amal'.  Never by the GT
+    % inverse, which is unbounded as f_Ca falls.
+    Al_w(1) = Initialize_ERW_Equilibrium(H(1), K1, K2, K3, K4, ...
+        conv_mol, K_AlOH3, Al_CEC_scale);
+    Al_den_kant = H(1)^4 + H(1)^3*K1 + H(1)^2*K1*K2 + ...
+        H(1)*K1*K2*K3 + K1*K2*K3*K4;
+    Al(1) = (H(1)^4/Al_den_kant)*Al_w(1);
 
     % estimates of K_CEC
     K_Ca_H = (f_Ca(1)/Ca(1))*(H(1)/f_H(1))^2;
