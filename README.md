@@ -16,6 +16,25 @@ v2/logs/         worker logs and status files (not tracked)
 v2/Experimental observations/   digitised field data used by the benchmark
 ```
 
+### Bruce Field ERA5 forcing
+
+`Preprocess_Bruce_Field_ERA5` reads the split ERA5-Land time-series NetCDF
+files and writes `Data_Bruce_Field_Spinup_2014_2023.mat` and
+`Data_Bruce_Field_Transient_2024_2025.mat` in `v2/T&C_Code/Inputs`.
+The period labels use UTC boundaries. `Date` is fixed Eastern Standard Time
+(GMT-5), as required by the radiation partitioning calculation.
+
+From the repository root:
+
+```matlab
+addpath(fullfile('v2','T&C_Code','Inputs','Preprocess'))
+Preprocess_Bruce_Field_ERA5
+```
+
+The ERA5 files contain the grid point at 36.7 N, 78.5 W. The preprocessing
+uses a 127.4689 m USGS 3DEP elevation at that point. Negative precipitation
+and shortwave values within the observed NetCDF packing noise are set to zero.
+
 Every plotting entry point is a runnable script: `cd` into `v2/plotting` and
 run it by name, with no arguments. Each one puts the folders it needs on the
 path, so it works from any working directory. `Cflux_post_processing` stays a

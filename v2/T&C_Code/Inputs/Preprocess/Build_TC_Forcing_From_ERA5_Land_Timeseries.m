@@ -3,13 +3,14 @@ function Build_TC_Forcing_From_ERA5_Land_Timeseries( ...
 % Convert one-point ERA5-Land hourly time-series data to T&C forcing.
 % Use the CDS time-series product because tp and ssrd are hourly increments.
 % Lat and Lon are degrees, Zbas is m a.s.l., and DeltaGMT is a fixed hour offset.
+% era5_file can be one NetCDF file or a directory containing split files.
 
 narginchk(6,6);
 era5_file = char(era5_file);
 output_file = char(output_file);
-if ~isfile(era5_file)
+if ~isfile(era5_file) && ~isfolder(era5_file)
     error('Build_TC_Forcing_From_ERA5_Land_Timeseries:MissingInput', ...
-        'ERA5-Land NetCDF file not found: %s',era5_file);
+        'ERA5-Land NetCDF source not found: %s',era5_file);
 end
 [output_dir,~,output_ext] = fileparts(output_file);
 if ~isempty(output_dir) && ~isfolder(output_dir)
@@ -25,32 +26,36 @@ validateattributes(Lon,{'numeric'},{'scalar','real','finite','>=',-180,'<=',180}
 validateattributes(Zbas,{'numeric'},{'scalar','real','finite'});
 validateattributes(DeltaGMT,{'numeric'},{'scalar','real','finite','>=',-12,'<=',14});
 
-info = ncinfo(era5_file);
-time_name = find_variable(info,{'valid_time','time'});
-t2m_name = find_variable(info,{'t2m','2m_temperature'});
-d2m_name = find_variable(info,{'d2m','2m_dewpoint_temperature'});
-sp_name = find_variable(info,{'sp','surface_pressure'});
-u10_name = find_variable(info,{'u10','10m_u_component_of_wind'});
-v10_name = find_variable(info,{'v10','10m_v_component_of_wind'});
-tp_name = find_variable(info,{'tp','total_precipitation'});
-ssrd_name = find_variable(info,{'ssrd','surface_solar_radiation_downwards'});
+sources = source_metadata(era5_file);
+[t2m_source,t2m_name] = find_variable(sources,{'t2m','2m_temperature'});
+[d2m_source,d2m_name] = find_variable(sources,{'d2m','2m_dewpoint_temperature'});
+[sp_source,sp_name] = find_variable(sources,{'sp','surface_pressure'});
+[u10_source,u10_name] = find_variable(sources,{'u10','10m_u_component_of_wind'});
+[v10_source,v10_name] = find_variable(sources,{'v10','10m_v_component_of_wind'});
+[tp_source,tp_name] = find_variable(sources,{'tp','total_precipitation'});
+[ssrd_source,ssrd_name] = find_variable(sources, ...
+    {'ssrd','surface_solar_radiation_downwards'});
+forcing_sources = unique([t2m_source,d2m_source,sp_source,u10_source, ...
+    v10_source,tp_source,ssrd_source]);
 
-require_units(era5_file,t2m_name,{'k','kelvin'});
-require_units(era5_file,d2m_name,{'k','kelvin'});
-require_units(era5_file,sp_name,{'pa','pascal','pascals'});
-require_units(era5_file,u10_name,{'ms-1','m/s'});
-require_units(era5_file,v10_name,{'ms-1','m/s'});
-require_units(era5_file,tp_name,{'m','metre','meter'});
-require_units(era5_file,ssrd_name,{'jm-2','j/m2'});
+require_units(sources(t2m_source).File,t2m_name,{'k','kelvin'});
+require_units(sources(d2m_source).File,d2m_name,{'k','kelvin'});
+require_units(sources(sp_source).File,sp_name,{'pa','pascal','pascals'});
+require_units(sources(u10_source).File,u10_name,{'ms-1','m/s'});
+require_units(sources(v10_source).File,v10_name,{'ms-1','m/s'});
+require_units(sources(tp_source).File,tp_name,{'m','metre','meter'});
+require_units(sources(ssrd_source).File,ssrd_name,{'jm-2','j/m2'});
 
-Date = read_local_date(era5_file,time_name,DeltaGMT);
-t2m = read_vector(era5_file,t2m_name);
-d2m = read_vector(era5_file,d2m_name);
-sp = read_vector(era5_file,sp_name);
-u10 = read_vector(era5_file,u10_name);
-v10 = read_vector(era5_file,v10_name);
-tp = read_vector(era5_file,tp_name);
-ssrd = read_vector(era5_file,ssrd_name);
+time_name = find_variable_name(sources(t2m_source).Info,{'valid_time','time'});
+Date = read_local_date(sources(t2m_source).File,time_name,DeltaGMT);
+validate_source_axes(sources,forcing_sources,Date,Lat,Lon,DeltaGMT);
+t2m = read_vector(sources(t2m_source).File,t2m_name);
+d2m = read_vector(sources(d2m_source).File,d2m_name);
+sp = read_vector(sources(sp_source).File,sp_name);
+u10 = read_vector(sources(u10_source).File,u10_name);
+v10 = read_vector(sources(v10_source).File,v10_name);
+tp = read_vector(sources(tp_source).File,tp_name);
+ssrd = read_vector(sources(ssrd_source).File,ssrd_name);
 
 n = numel(Date);
 series = {t2m,d2m,sp,u10,v10,tp,ssrd};
@@ -74,11 +79,12 @@ if any(sp<=0)
     error('Build_TC_Forcing_From_ERA5_Land_Timeseries:BadPressure', ...
         'ERA5 surface pressure must be positive.');
 end
-if any(tp < -1e-9)
+% GRIB-to-NetCDF conversion can leave sub-resolution negative packing noise.
+if any(tp < -1e-6)
     error('Build_TC_Forcing_From_ERA5_Land_Timeseries:NegativePrecipitation', ...
         'ERA5 hourly precipitation contains a negative value.');
 end
-if any(ssrd < -1e-3)
+if any(ssrd < -100)
     error('Build_TC_Forcing_From_ERA5_Land_Timeseries:NegativeRadiation', ...
         'ERA5 hourly surface solar radiation contains a negative value.');
 end
@@ -130,7 +136,45 @@ save(output_file,'Date','Pr','Ta','Ws','ea','Pre', ...
 fprintf('Wrote %s with %d hourly forcing records.\n',output_file,n);
 end
 
-function name = find_variable(info,candidates)
+function sources = source_metadata(era5_source)
+if isfile(era5_source)
+    files = {era5_source};
+else
+    listing = dir(fullfile(era5_source,'*.nc'));
+    if isempty(listing)
+        error('Build_TC_Forcing_From_ERA5_Land_Timeseries:NoNetCDF', ...
+            'No NetCDF files were found in: %s',era5_source);
+    end
+    [~,order] = sort({listing.name});
+    listing = listing(order);
+    files = arrayfun(@(x) fullfile(x.folder,x.name),listing, ...
+        'UniformOutput',false);
+end
+sources = repmat(struct('File','','Info',[]),numel(files),1);
+for k = 1:numel(files)
+    sources(k).File = files{k};
+    sources(k).Info = ncinfo(files{k});
+end
+end
+
+function [source_index,name] = find_variable(sources,candidates)
+for k = 1:numel(candidates)
+    for j = 1:numel(sources)
+        available = {sources(j).Info.Variables.Name};
+        idx = find(strcmpi(available,candidates{k}),1);
+        if ~isempty(idx)
+            source_index = j;
+            name = available{idx};
+            return
+        end
+    end
+end
+error('Build_TC_Forcing_From_ERA5_Land_Timeseries:MissingVariable', ...
+    'Required ERA5 variable not found. Expected one of: %s', ...
+    strjoin(candidates,', '));
+end
+
+function name = find_variable_name(info,candidates)
 available = {info.Variables.Name};
 for k = 1:numel(candidates)
     idx = find(strcmpi(available,candidates{k}),1);
@@ -142,6 +186,30 @@ end
 error('Build_TC_Forcing_From_ERA5_Land_Timeseries:MissingVariable', ...
     'Required ERA5 variable not found. Expected one of: %s', ...
     strjoin(candidates,', '));
+end
+
+function validate_source_axes(sources,source_indices,reference_date,Lat,Lon,DeltaGMT)
+for k = source_indices
+    info = sources(k).Info;
+    time_name = find_variable_name(info,{'valid_time','time'});
+    this_date = read_local_date(sources(k).File,time_name,DeltaGMT);
+    if numel(this_date)~=numel(reference_date) || ...
+            any(abs(this_date-reference_date)>1e-10)
+        error('Build_TC_Forcing_From_ERA5_Land_Timeseries:TimeAxisMismatch', ...
+            'ERA5 NetCDF files do not share the same hourly time axis.');
+    end
+    lat_name = find_variable_name(info,{'latitude','lat'});
+    lon_name = find_variable_name(info,{'longitude','lon'});
+    source_lat = read_vector(sources(k).File,lat_name);
+    source_lon = read_vector(sources(k).File,lon_name);
+    source_lon = mod(source_lon+180,360)-180;
+    expected_lon = mod(Lon+180,360)-180;
+    if numel(source_lat)~=1 || numel(source_lon)~=1 || ...
+            abs(source_lat-Lat)>1e-8 || abs(source_lon-expected_lon)>1e-8
+        error('Build_TC_Forcing_From_ERA5_Land_Timeseries:CoordinateMismatch', ...
+            'ERA5 source coordinates do not match Lat and Lon.');
+    end
+end
 end
 
 function require_units(nc_file,name,allowed)
