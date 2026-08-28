@@ -144,6 +144,17 @@ if ~strcmp(Bouchet_Check_Existing_Result( ...
         'Run %d reported completion but wrote no matching final MAT.',run_id);
 end
 
+%% The lateral scheme is proven conservative for a single step by
+%% test_lateral_routing, but a campaign run takes 43824 steps across
+%% twelve columns and nothing checked that the residuals stayed small once
+%% accumulated.  The driver records them; this reads them back.  It runs
+%% after the result is saved, so a failure flags the run without losing it.
+existing = dir(fullfile(results_dir,sprintf('TC_2D_run%02d_*.mat',run_id)));
+existing = existing(~[existing.isdir]);
+fprintf('Lateral conservation over the whole run:\n');
+Bouchet_Check_Lateral_Conservation( ...
+    fullfile(existing(1).folder,existing(1).name),'Bouchet_Kantola_2D');
+
 end
 
 function run_validation(code_dir,repo_root,campaign_dir,campaign_tag)
