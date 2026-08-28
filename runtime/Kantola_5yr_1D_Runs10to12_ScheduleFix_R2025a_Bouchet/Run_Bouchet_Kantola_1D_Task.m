@@ -62,8 +62,10 @@ if ~strcmp(strtrim(fileread(stamp_file)),expected_stamp)
         'Code, inputs, tests or numerical runtime changed after validation.');
 end
 %% The stamp this process verified travels into the saved result so a later
-%% job can tell which validation produced each MAT.
-setenv('TC_VALIDATION_FINGERPRINT',expected_stamp);
+%% job can tell which validation produced each MAT.  It travels as a digest
+%% because the full fingerprint is far past setenv's 32766-character limit.
+stamp_digest = Bouchet_Fingerprint_Digest(expected_stamp);
+setenv('TC_VALIDATION_FINGERPRINT',stamp_digest);
 if ~exist(results_dir,'dir'); mkdir(results_dir); end
 if ~exist(logs_dir,'dir'); mkdir(logs_dir); end
 
@@ -74,7 +76,7 @@ lock_cleanup = Bouchet_Acquire_Run_Lock( ...
     fullfile(logs_dir,'locks',sprintf('run_%02d.lock',run_id))); %#ok<NASGU>
 
 if strcmp(Bouchet_Check_Existing_Result( ...
-        results_dir,run_id,expected_stamp,1,1826),'complete')
+        results_dir,run_id,stamp_digest,1,1826),'complete')
     fprintf('Run %d needs no work under the current validation.\n',run_id);
     return
 end
@@ -114,7 +116,7 @@ if ~strcmp(Bouchet_Campaign_Validation_Fingerprint( ...
          'was executing. Discard its result.'],run_id);
 end
 if ~strcmp(Bouchet_Check_Existing_Result( ...
-        results_dir,run_id,expected_stamp,1,1826),'complete')
+        results_dir,run_id,stamp_digest,1,1826),'complete')
     error('Bouchet_Kantola_1D:MissingResult', ...
         'Run %d reported completion but wrote no matching final MAT.',run_id);
 end
