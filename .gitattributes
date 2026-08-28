@@ -1,0 +1,5 @@
+# Slurm submission scripts and shell helpers run on Linux. core.autocrlf is
+# true on the Windows working copy, so without this a fresh checkout hands
+# back CRLF and the cluster fails them with $'\r': command not found.
+*.sbatch text eol=lf
+*.sh     text eol=lf

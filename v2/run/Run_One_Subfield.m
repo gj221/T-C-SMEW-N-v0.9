@@ -22,7 +22,11 @@ function result_file = Run_One_Subfield(run_id, varargin)
 %%   Run_One_Subfield(5)                       % run 5 of the matrix
 %%   Run_One_Subfield(11)                      % basalt, one-dimensional
 %%   Run_One_Subfield(5,'NDays',3)             % short smoke test
+%%   Run_One_Subfield(12,'StartDate','2016-11-09','NDays',3)
 %%   Run_One_Subfield(5,'GridNx',1,'GridNy',1) % coarser main grid
+%%   Run_One_Subfield(11,'AppeloAlpha',0.8)     % calibration trajectory
+%%   Run_One_Subfield(11,'AppeloLogKH',[5.9 4.8 10.47 10.986 16.47])
+%%   Run_One_Subfield(2,'ParallelWorkers',6)    % parallel daily ERW columns
 %%
 %% Returns the path of the saved result file.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -30,8 +34,9 @@ function result_file = Run_One_Subfield(run_id, varargin)
 %% ResultDirectory defaults to the usual SIM/Subfield_12, so behaviour is
 %% unchanged when it is not given. It exists because two runs of the same
 %% run_id launched concurrently would otherwise race on one output path.
-opt = struct('NDays',[],'GridNx',[],'GridNy',[],'SaveResults',true, ...
-    'ResultDirectory','');
+opt = struct('NDays',[],'StartDate',[],'GridNx',[],'GridNy',[], ...
+    'AppeloAlpha',[],'AppeloLogKH',[],'ParallelWorkers',[], ...
+    'SaveResults',true,'ResultDirectory','');
 if mod(numel(varargin),2) ~= 0
     error('Run_One_Subfield:BadOptions','Options must be name/value pairs.');
 end
@@ -45,8 +50,30 @@ end
 validate_optional_integer(opt.NDays,'NDays');
 validate_optional_integer(opt.GridNx,'GridNx');
 validate_optional_integer(opt.GridNy,'GridNy');
+validate_optional_nonnegative_scalar(opt.AppeloAlpha,'AppeloAlpha');
+validate_optional_nonnegative_integer(opt.ParallelWorkers,'ParallelWorkers');
+if ~isempty(opt.AppeloLogKH) && ~(isnumeric(opt.AppeloLogKH) && ...
+        isvector(opt.AppeloLogKH) && numel(opt.AppeloLogKH) == 5 && ...
+        all(isfinite(opt.AppeloLogKH)))
+    error('Run_One_Subfield:BadOptions', ...
+        'AppeloLogKH must be five finite values ordered [Na K Ca Mg Al].');
+end
+opt.AppeloLogKH = reshape(opt.AppeloLogKH,1,[]);
 if ~(islogical(opt.SaveResults) && isscalar(opt.SaveResults))
     error('Run_One_Subfield:BadOptions','SaveResults must be scalar logical.');
+end
+start_datenum = [];
+if ~isempty(opt.StartDate)
+    try
+        start_datenum = datenum(opt.StartDate);
+    catch
+        error('Run_One_Subfield:BadStartDate', ...
+            'StartDate must be a scalar date accepted by datenum.');
+    end
+    if ~(isnumeric(start_datenum) && isscalar(start_datenum) && isfinite(start_datenum))
+        error('Run_One_Subfield:BadStartDate', ...
+            'StartDate must be a scalar date accepted by datenum.');
+    end
 end
 
 RM = Run_Matrix_12();
@@ -125,12 +152,21 @@ cc = MOD_PARAM_input.cc;
 load(fullfile(Input_Directory,['Data_' id_location '.mat']));     %#ok<LOAD>
 
 x1 = 61351;                     %% 01-Jan-2016
+if ~isempty(start_datenum)
+    [date_error,x1] = min(abs(Date-start_datenum));
+    if isempty(x1) || date_error > 1/48
+        error('Run_One_Subfield:BadStartDate', ...
+            'StartDate is outside the available hourly forcing record.');
+    end
+end
 NN = 1826*24;
-x2 = x1+NN-1;
-
 if ~isempty(opt.NDays)
     NN = opt.NDays*24;
-    x2 = x1+NN-1;
+end
+x2 = x1+NN-1;
+if x2 > numel(Date)
+    error('Run_One_Subfield:BadWindow', ...
+        'Requested StartDate and NDays exceed the forcing record.');
 end
 
 Date=Date(x1:x2); Pr=Pr(x1:x2); Ta=Ta(x1:x2); Ws=Ws(x1:x2); ea=ea(x1:x2);
@@ -173,11 +209,37 @@ if R.use_subdomains
 else
     topo = Build_Single_Cell_Topology(g.field_side_m^2);
 end
+parallel_workers = resolve_parallel_workers(opt.ParallelWorkers,topo.N_cells);
+run_provenance.matlab_version = version;
+run_provenance.matlab_release = version('-release');
+run_provenance.computer = computer;
+run_provenance.blas = regexprep(strtrim(evalc('version -blas')),'\s+',' ');
+run_provenance.max_threads = maxNumCompThreads;
+run_provenance.parallel_workers = parallel_workers;
+run_provenance.numerical_identity = getenv('TC_NUMERICAL_IDENTITY');
+%% The campaign gate that this process passed before it started.  Filename
+%% wildcards cannot tell which code produced a MAT, so the stamp travels
+%% with the result and a later job can reject anything validated
+%% differently instead of mixing two model versions in one campaign.
+run_provenance.validation_fingerprint = getenv('TC_VALIDATION_FINGERPRINT');
+run_provenance.campaign = getenv('TC_CAMPAIGN_TAG');
+run_provenance.slurm_job_id = getenv('SLURM_JOB_ID');
+run_provenance.slurm_step_id = getenv('SLURM_STEP_ID');
+run_provenance.slurm_restart_count = getenv('SLURM_RESTART_COUNT');
+run_provenance.node = getenv('SLURMD_NODENAME');
+run_provenance.date_start = Date(1);
+run_provenance.date_end = Date(end);
+run_provenance.n_days = NN/24;
+run_provenance.n_timesteps = NN;
+run_provenance.n_columns = topo.N_cells;
+run_provenance.result_directory = char(opt.ResultDirectory);
 
 base_param = fullfile(Parameter_Directory,[char(MOD_PARAM_input.MOD_PARAM) '.m']);
 is_main = strcmp(topo.cell_region,'main');
 ColCfg = repmat(struct('PARAM_IC',base_param,'PFT_OVERRIDE','', ...
-                       'apply_rock',false,'ERW_PARAM',ERW_PARAM_control), ...
+                       'apply_rock',false,'ERW_PARAM',ERW_PARAM_control, ...
+                       'appelo_alpha',opt.AppeloAlpha, ...
+                       'appelo_logKH',opt.AppeloLogKH), ...
                 topo.N_cells,1);
 for c = 1:topo.N_cells
     if is_main(c)
@@ -210,11 +272,56 @@ end
 %% ---------------------------------------------------------------------
 %% Run
 %% ---------------------------------------------------------------------
-old = cd(Directory);
-cleanup = onCleanup(@() cd(old));
+%% Rolling checkpoint for this run.  One file per run, overwritten in
+%% place, so a long column that aborts late (or a machine that sleeps)
+%% resumes instead of replaying from day 1.  MAIN_FRAME refuses to resume
+%% a checkpoint whose code fingerprint has moved on unless
+%% ERW_ckpt_force_resume is set, so an edit to the chemistry starts clean.
+ckpt_dir = char(opt.ResultDirectory);
+if isempty(ckpt_dir)
+    ckpt_dir = fullfile(current_directory,'SIM','Subfield_12');
+end
+ckpt_dir = fullfile(ckpt_dir,'checkpoints');
+if ~exist(ckpt_dir,'dir'); mkdir(ckpt_dir); end
+ckpt_tag = R.name;
+if ~isempty(opt.AppeloAlpha)
+    ckpt_tag = sprintf('%s__alpha%s',ckpt_tag,number_tag(opt.AppeloAlpha));
+end
+if ~isempty(opt.AppeloLogKH)
+    logkh_parts = arrayfun(@number_tag,opt.AppeloLogKH,'UniformOutput',false);
+    ckpt_tag = sprintf('%s__logkh%s',ckpt_tag,strjoin(logkh_parts,'_'));
+end
+ckpt_tag = sprintf('%s__%dd__from%s',ckpt_tag,NN/24,datestr(Date(1),'yyyymmdd'));
+ERW_ckpt_file = fullfile(ckpt_dir, ...
+    sprintf('ckpt_run%02d_%s.mat',R.id,ckpt_tag));
+%% Interval comes from the environment so it reaches the worker
+%% processes the launcher spawns (a launcher-workspace variable does
+%% not).  TC_CKPT_MINUTES = 0 disables checkpointing entirely.
+if ~exist('ERW_ckpt_minutes','var') || isempty(ERW_ckpt_minutes)
+    ERW_ckpt_minutes = str2double(getenv('TC_CKPT_MINUTES'));
+    if ~isfinite(ERW_ckpt_minutes) || ERW_ckpt_minutes < 0
+        ERW_ckpt_minutes = 10;
+    end
+end
+if ERW_ckpt_minutes == 0
+    ERW_ckpt_file = '';
+end
+%% Debugging escape hatch, also via the environment so it reaches the
+%% worker.  Resumes a checkpoint whose code fingerprint has moved on:
+%% legitimate when iterating on a LATE-timestep failure whose earlier
+%% trajectory the edit cannot touch, and never for production results,
+%% because the run then contains two model versions spliced at the
+%% resume point.  MAIN_FRAME warns and names that iteration.
+if ~exist('ERW_ckpt_force_resume','var') || isempty(ERW_ckpt_force_resume)
+    ERW_ckpt_force_resume = strcmpi(strtrim(getenv('TC_CKPT_FORCE_RESUME')), '1');
+end
+
+parallel_pool_created = start_parallel_pool(parallel_workers);
+old = pwd;
+cleanup = onCleanup(@() restore_run_environment(old,parallel_pool_created));
+cd(Directory);
 MAIN_FRAME_BG_ERW_2D;
 clear cleanup
-cd(old);
 
 %% ---------------------------------------------------------------------
 %% Save
@@ -230,7 +337,15 @@ if opt.SaveResults
     if R.use_subdomains && (~isempty(opt.GridNx) || ~isempty(opt.GridNy))
         tag = sprintf('%s__grid%dx%d',tag,nx,ny);
     end
+    if ~isempty(opt.AppeloAlpha)
+        tag = sprintf('%s__alpha%s',tag,number_tag(opt.AppeloAlpha));
+    end
+    if ~isempty(opt.AppeloLogKH)
+        logkh_parts = arrayfun(@number_tag,opt.AppeloLogKH,'UniformOutput',false);
+        tag = sprintf('%s__logkh%s',tag,strjoin(logkh_parts,'_'));
+    end
     if ~isempty(opt.NDays); tag = sprintf('%s__%dd',tag,opt.NDays); end
+    if ~isempty(start_datenum); tag = sprintf('%s__from%s',tag,datestr(start_datenum,'yyyymmdd')); end
     result_file = fullfile(fl_save,sprintf('TC_2D_run%02d_%s.mat',R.id,tag));
     tmp_result = [tempname(fl_save) '.mat'];
     try
@@ -241,6 +356,12 @@ if opt.SaveResults
         rethrow(ME)
     end
     fprintf('Saved: %s\n', result_file);
+    %% The run finished and its results are on disk, so the rolling
+    %% checkpoint is now dead weight.  Drop it: these files are large
+    %% and keeping one per completed run would fill the volume.
+    if exist('ERW_ckpt_file','var') && ~isempty(ERW_ckpt_file) && isfile(ERW_ckpt_file)
+        delete(ERW_ckpt_file);
+    end
 end
 
 end
@@ -251,4 +372,72 @@ if ~(isnumeric(value) && isscalar(value) && isfinite(value) && ...
         value == fix(value) && value >= 1)
     error('Run_One_Subfield:BadOptions','%s must be a positive integer.',name);
 end
+end
+
+function validate_optional_nonnegative_scalar(value,name)
+if isempty(value); return; end
+if ~(isnumeric(value) && isscalar(value) && isfinite(value) && value >= 0)
+    error('Run_One_Subfield:BadOptions', ...
+        '%s must be a finite nonnegative scalar.',name);
+end
+end
+
+function validate_optional_nonnegative_integer(value,name)
+if isempty(value); return; end
+if ~(isnumeric(value) && isscalar(value) && isfinite(value) && ...
+        value == fix(value) && value >= 0)
+    error('Run_One_Subfield:BadOptions', ...
+        '%s must be a nonnegative integer.',name);
+end
+end
+
+function workers = resolve_parallel_workers(requested,n_cells)
+if isempty(requested)
+    text = strtrim(getenv('TC_PARALLEL_WORKERS'));
+    if isempty(text)
+        requested = 0;
+    else
+        requested = str2double(text);
+    end
+end
+validate_optional_nonnegative_integer(requested,'ParallelWorkers');
+workers = min(requested,n_cells);
+if workers < 2; workers = 0; end
+end
+
+function created = start_parallel_pool(workers)
+created = false;
+if workers == 0; return; end
+if isempty(ver('parallel')) || ~license('test','Distrib_Computing_Toolbox')
+    error('Run_One_Subfield:MissingParallelToolbox', ...
+        'ParallelWorkers requires Parallel Computing Toolbox.');
+end
+pool = gcp('nocreate');
+if isempty(pool)
+    pool = parpool('Threads',workers);
+    created = true;
+elseif ~isa(pool,'parallel.ThreadPool')
+    error('Run_One_Subfield:WrongParallelPool', ...
+        'ParallelWorkers requires a thread-based pool.');
+elseif pool.NumWorkers < workers
+    error('Run_One_Subfield:SmallParallelPool', ...
+        'The existing thread pool has %d workers; %d are required.', ...
+        pool.NumWorkers,workers);
+end
+fprintf('Daily ERW chemistry: %d parallel workers\n',workers);
+clear pool
+end
+
+function restore_run_environment(old,delete_pool)
+cd(old);
+if delete_pool
+    pool = gcp('nocreate');
+    if ~isempty(pool); delete(pool); end
+end
+end
+
+function tag = number_tag(value)
+tag = strrep(sprintf('%.17g',value),'.','p');
+tag = strrep(tag,'-','m');
+tag = strrep(tag,'+','');
 end

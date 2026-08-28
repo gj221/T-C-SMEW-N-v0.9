@@ -47,6 +47,13 @@ if R1.NN ~= n_days*24
     error('test_2d_driver_equivalence:WrongBaselineDuration', ...
         'Baseline contains %d h; expected %d h.',R1.NN,n_days*24);
 end
+expected_fingerprint = ERW_Equivalence_Fingerprint(v2,n_days);
+if ~isfield(R1,'equivalence_fingerprint') || ...
+        ~strcmp(R1.equivalence_fingerprint,expected_fingerprint)
+    error('test_2d_driver_equivalence:StaleBaseline', ...
+        ['The saved 1-D baseline does not match the current production code, ' ...
+         'parameters, inputs and run entry points. Regenerate and fingerprint it.']);
+end
 fprintf('Baseline loaded (%d h simulated)\n', R1.NN);
 
 %% ---------------------------------------------------------------------
@@ -76,36 +83,8 @@ S2 = run_driver_single(R1, code);
 %%   iterative solver be bit-reproducible across a change in input
 %%   rounding, which it is not.
 %%
-%%   The one exception is the BG-pool vector P.  Its elements are the
-%%   day-end ERW pore-water pools, which pass once more through the
-%%   exchange-solution branch logic (CEC cation exchange, Al(OH)3
-%%   precipitation) at the run end.  On Al-saturated states such as the
-%%   Kantola column the branch choice sits on a bifurcation: the ulp
-%%   forcing noise selects a different exchange split late in the final
-%%   day, and the Ca/Mg/K pools amplify that split to ~1e-4 relative
-%%   (observed 3.2e-4 on pool 68) while every other field -- pore pH
-%%   included, at 1e-13 -- stays anchored.  That is solver sensitivity to
-%%   input rounding at a hard branch, not a transcription error, so P is
-%%   held to tol_phys (5e-3 relative) instead of the round-off class.
-%%   The remaining chemistry keeps the 1e-8 class.
-%%
-%%   With the Appelo H-referenced exchange scheme (bulk_pH_params.scheme
-%%   = 'appelo', SCEPTER stock constants) the same interpolation-ulp
-%%   branch noise lands slightly louder on two more fields: pore pH and
-%%   the labile-N availability index.  Both stay at six to eight
-%%   significant figures of agreement on quantities without meaningful
-%%   experimental digits, so they carry their own classes (tol_pH,
-%%   tol_navl) instead of failing the round-off class.  The pH class was
-%%   1e-7 while the inverted constants pinned the exchange in the
-%%   f_Al = 1 corner (observed 4.2e-8); the scepter.f90-form constants
-%%   put the root on the smooth base-saturated interior where the same
-%%   input ulps map to ~7e-7 relative on H, so the class carries a ~3x
-%%   margin over that.
 tol_exact = 0;
 tol_chem  = 1e-8;
-tol_phys  = 5e-3;
-tol_pH    = 2e-6;    %% PH_d   (observed 7.0e-7 under corrected appelo)
-tol_navl  = 1e-5;    %% NavlI  (observed 1.1e-7 under corrected appelo)
 
 n_pass = 0; n_fail = 0;
 
@@ -119,17 +98,11 @@ for k = 1:numel(exact_names)
     if ok; n_pass = n_pass + 1; else; n_fail = n_fail + 1; end
 end
 
-fprintf('\nERW-coupled chemistry (round-off classes, per-field; P at %.0e, PH_d %.0e, NavlI %.0e):\n', tol_phys, tol_pH, tol_navl);
+fprintf('\nERW-coupled chemistry (relative tol = %.0e):\n',tol_chem);
 chem_names  = {'P','PH_d','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI'};
 chem_labels = {'P   BG pools','PH_d pore pH','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI'};
 for k = 1:numel(chem_names)
-    switch chem_names{k}
-        case 'P';     tok = tol_phys;
-        case 'PH_d';  tok = tol_pH;
-        case 'NavlI'; tok = tol_navl;
-        otherwise;    tok = tol_chem;
-    end
-    ok = compare_field(chem_labels{k}, R1.(chem_names{k}), S2.(chem_names{k}), tok);
+    ok = compare_field(chem_labels{k},R1.(chem_names{k}),S2.(chem_names{k}),tol_chem);
     if ok; n_pass = n_pass + 1; else; n_fail = n_fail + 1; end
 end
 
@@ -149,19 +122,35 @@ if ~isequal(size(a), size(b))
     fprintf('  FAIL  %-18s shape %s vs %s\n', name, mat2str(size(a)), mat2str(size(b)));
     ok = false; return
 end
-d  = abs(a(:) - b(:));
-d(isnan(a(:)) & isnan(b(:))) = 0;          %% NaN in both is agreement
-sc = max(1, max(abs(b(:))));
+av = a(:); bv = b(:);
+%% One-sided NaN, and +Inf against -Inf, are genuine disagreements.  Reject
+%% them before any masking: abs(Inf-Inf) and abs(NaN-x) are both NaN, and
+%% forcing a NaN maximum to zero further down would report them as a pass.
+if any(xor(isnan(av),isnan(bv)))
+    fprintf('  FAIL  %-18s NaN in only one field\n', name);
+    ok = false; return
+end
+if any(isinf(av) & isinf(bv) & (sign(av) ~= sign(bv)))
+    fprintf('  FAIL  %-18s opposite infinities\n', name);
+    ok = false; return
+end
+d  = abs(av - bv);
+d(isnan(av) & isnan(bv)) = 0;              %% NaN in both is agreement
+d(isinf(av) & isinf(bv)) = 0;              %% same-signed Inf is agreement
+finite_b = bv(isfinite(bv));
+if isempty(finite_b); sc = 1; else; sc = max(1, max(abs(finite_b))); end
 md = max(d);
-if isempty(md) || isnan(md); md = 0; end
+if isempty(md); md = 0; end
 rel = md/sc;
 if rel <= tol
     fprintf('  PASS  %-18s max|d| = %.3e  (rel %.2e)\n', name, md, rel);
     ok = true;
 else
     [~,iw] = max(d);
-    fprintf('  FAIL  %-18s max|d| = %.3e  (rel %.2e) first at linear index %d\n', ...
-        name, md, rel, iw);
+    first_bad = find(d/sc > tol,1);
+    fprintf(['  FAIL  %-18s max|d| = %.3e  (rel %.2e) at linear index %d; ' ...
+        'first crossing %d: 1-D %.12g, 2-D %.12g, |d| %.3e\n'], ...
+        name, md, rel, iw, first_bad, av(first_bad), bv(first_bad), d(first_bad));
     ok = false;
 end
 end
