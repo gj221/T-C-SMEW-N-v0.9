@@ -1,0 +1,198 @@
+function test_bouchet_2d_parallel_configuration
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Static and failure-path checks for the Bouchet runs 1-9 campaign.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+test_dir = fileparts(mfilename('fullpath'));
+code_dir = fileparts(test_dir);
+v2_dir = fileparts(code_dir);
+repo_root = fileparts(v2_dir);
+run_dir = fullfile(v2_dir,'run');
+campaign = 'Base_2D';
+runtime_dir = fullfile(repo_root,'runtime',campaign);
+addpath(code_dir,run_dir,runtime_dir);
+
+old_workers = getenv('TC_PARALLEL_WORKERS');
+cleanup = onCleanup(@() setenv('TC_PARALLEL_WORKERS',old_workers));
+
+setenv('TC_PARALLEL_WORKERS','');
+assert(Resolve_2D_Parfor_Workers(12) == 0);
+setenv('TC_PARALLEL_WORKERS','0');
+assert(Resolve_2D_Parfor_Workers(12) == 0);
+setenv('TC_PARALLEL_WORKERS','12');
+assert(Resolve_2D_Parfor_Workers(12) == 12);
+setenv('TC_PARALLEL_WORKERS','20');
+assert(Resolve_2D_Parfor_Workers(12) == 12);
+assert_error(@() Resolve_2D_Parfor_Workers(0), ...
+    'Resolve_2D_Parfor_Workers:BadColumnCount');
+setenv('TC_PARALLEL_WORKERS','1.5');
+assert_error(@() Resolve_2D_Parfor_Workers(12), ...
+    'Resolve_2D_Parfor_Workers:BadEnvironment');
+setenv('TC_PARALLEL_WORKERS','bad');
+assert_error(@() Resolve_2D_Parfor_Workers(12), ...
+    'Resolve_2D_Parfor_Workers:BadEnvironment');
+
+driver = fileread(fullfile(code_dir,'MAIN_FRAME_BG_ERW_2D.m'));
+parallel_loops = regexp(driver, ...
+    'parfor\s*\(c\s*=\s*1:N_col,\s*parallel_workers\)','match');
+assert(numel(parallel_loops) == 1, ...
+    'Only the independent daily ERW loop may use parfor.');
+hourly_at = strfind(driver,'%% HOURLY BLOCK');
+erw_at = strfind(driver,'%% ERW  --  once per day');
+parfor_at = regexp(driver, ...
+    'parfor\s*\(c\s*=\s*1:N_col,\s*parallel_workers\)','start');
+assert(parfor_at(1) > hourly_at(1) && parfor_at(1) > erw_at(1), ...
+    'The parallel loop must be the post-routing daily ERW calculation.');
+
+wrapper = fileread(fullfile(runtime_dir,'Run_Base_2D_Task.m'));
+assert(contains(wrapper,"version('-release')") && ...
+       contains(wrapper,"'2025a'"), ...
+    'The Bouchet wrapper must reject an unexpected MATLAB release.');
+assert(contains(wrapper,'Bouchet_Single_Thread_Runtime'), ...
+    'The 2-D wrapper must use the shared single-thread gate.');
+assert(contains(wrapper,"read_positive_integer('SLURM_ARRAY_TASK_ID')"));
+assert(contains(wrapper,'run_id > 9'));
+assert(contains(wrapper,"'ParallelWorkers',workers"));
+assert(contains(wrapper,"'GridNx',2,'GridNy',2"));
+assert(contains(wrapper,'Campaign_Parameters'));
+assert(contains(wrapper,'TC_CKPT_FORCE_RESUME'));
+%% The production graph also depends on the authoritative 1-D validation,
+%% so the 2-D element must check only its own Linux deployment instead of
+%% repeating the four 315-day trajectories and complete audit.
+validation_at = strfind(wrapper,'function run_validation');
+assert(~isempty(validation_at), ...
+    'The R2025a production-environment validation path is missing.');
+validation_source = wrapper(validation_at(1):end);
+assert(contains(wrapper,'TC_VALIDATE_ONLY') && ...
+       contains(validation_source,'test_bouchet_2d_parallel_configuration') && ...
+       contains(validation_source,'test_biogeochemistry_io_path_portability') && ...
+       contains(validation_source,'test_bouchet_linux_portability({campaign_dir,one_d_dir})') && ...
+       ~contains(validation_source,'run_post_legacy_equation_audit_tests(1);') && ...
+       ~contains(validation_source,'Validate_Preapplication_Identity;'), ...
+    'The 2-D deployment gate is incomplete or repeats the common long audit.');
+assert(contains(wrapper,'Bouchet_Acquire_Run_Lock') && ...
+       contains(wrapper,'locks'), ...
+    'The wrapper must lock the array element before it starts work.');
+assert(contains(wrapper,'Bouchet_Check_Existing_Result') && ...
+       contains(wrapper,"setenv('TC_VALIDATION_FINGERPRINT'"), ...
+    'The wrapper must stamp its result and vet any existing one.');
+assert(contains(wrapper,'Fingerprint_Digest'), ...
+    'The validation stamp must reach the solver as a digest.');
+%% Single-step conservation is proven by test_lateral_routing; a campaign
+%% run accumulates 43824 steps and needs its residuals read back.
+assert(contains(wrapper,'Check_Lateral_Conservation'), ...
+    'The 2-D wrapper must check lateral conservation after the run.');
+%% Everything else exercises the lateral scheme in the quiet period; the
+%% amendment is when it is most stressed, so the audit must cover it.
+suite = fileread(fullfile(test_dir, ...
+    'run_post_legacy_equation_audit_tests.m'));
+assert(contains(suite,'test_2d_amendment_conservation'), ...
+    'The audit must exercise the 2-D scheme while feedstock is applied.');
+conservation = fileread(fullfile(runtime_dir, ...
+    'Check_Lateral_Conservation.m'));
+for token = {'erw_mass_abs_residual_umol','erw_mass_throughput_umol', ...
+        'heat_residual_relative', ...
+        'sub_steps_max','LateralConservation'}
+    assert(contains(conservation,token{1}), ...
+        'The lateral conservation check omits %s.',token{1});
+end
+%% Lateral CO2 moves between cells (dissolved with the water, soil gas by
+%% diffusion) and is checked with DIC. Air displaced by that water reaches
+%% the atmosphere through the ERW step's ADV, so no atmosphere residual is
+%% left to check here.
+assert(~contains(conservation,'IC_atmosphere'), ...
+    'The lateral conservation check still reads the atmosphere residual.');
+
+temp_result = [tempname '.mat'];
+temp_cleanup = onCleanup(@() delete(temp_result)); %#ok<NASGU>
+Domain.lateral.erw_mass_residual_umol = ...
+    [1e-3 zeros(1,3); -1e-3 zeros(1,3)];
+Domain.lateral.erw_mass_abs_residual_umol = ...
+    [1e-3 zeros(1,3); 1e-3 zeros(1,3)];
+Domain.lateral.erw_mass_throughput_umol = 100*ones(2,4);
+Domain.lateral.heat_residual_relative = zeros(2,1);
+Domain.lateral.heat_residual_J = zeros(2,1);
+Domain.lateral.sub_steps_max = ones(2,1);
+Domain.lateral.heat_sub_steps_max = ones(2,1);
+save(temp_result,'Domain');
+assert_error(@() Check_Lateral_Conservation(temp_result,'Test'), ...
+    'Test:LateralConservation');
+Domain.lateral.erw_mass_throughput_umol = 100*ones(2,3);
+save(temp_result,'Domain');
+assert_error(@() Check_Lateral_Conservation(temp_result,'Test'), ...
+    'Test:LateralConservation');
+Domain.lateral.erw_mass_throughput_umol = 100*ones(2,4);
+Domain.lateral.erw_mass_abs_residual_umol(1,1) = NaN;
+save(temp_result,'Domain');
+assert_error(@() Check_Lateral_Conservation(temp_result,'Test'), ...
+    'Test:LateralConservation');
+Domain.lateral.erw_mass_abs_residual_umol = zeros(2,4);
+Domain.lateral.heat_residual_relative(1) = NaN;
+save(temp_result,'Domain');
+assert_error(@() Check_Lateral_Conservation(temp_result,'Test'), ...
+    'Test:LateralConservation');
+assert(contains(wrapper,'SourceChangedDuringRun') && ...
+       contains(wrapper,'IncompleteStatus') && ...
+       contains(wrapper,'MissingResult'), ...
+    'The wrapper must recheck status and source fingerprint after the run.');
+assert(contains(wrapper,'validation_stamp.txt') && ...
+       contains(wrapper,'Bouchet_Campaign_Validation_Fingerprint') && ...
+       contains(wrapper,'StaleValidation') && ...
+       contains(wrapper,'Bouchet_Write_Validation_Stamp'), ...
+    'The 2-D production path must require a current validation stamp.');
+for asset = {'ERW_MOD_PARAM_parameters.xlsx','Data_Kantola.mat', ...
+        'Data_Kantola_BG.mat','Ca_Data.mat','All_deposition_data.mat', ...
+        'blueridge_CDF_data.json','TC_ERW_results_Kantola_crop_control.mat'}
+    assert(contains(wrapper,asset{1}), ...
+        'The deployment preflight omits %s.',asset{1});
+end
+
+sbatch = fileread(fullfile(runtime_dir,'submit_base_2d.sbatch'));
+assert(contains(sbatch,'#SBATCH --array=1-9%9'));
+assert(contains(sbatch,'#SBATCH --constraint=cpumodel:9575f'));
+assert(contains(sbatch,'#SBATCH --ntasks=1'));
+assert(contains(sbatch,'#SBATCH --cpus-per-task=6'));
+assert(contains(sbatch,'export TC_PARALLEL_WORKERS=6'));
+assert(contains(sbatch,'export TC_CKPT_MINUTES=10'));
+assert(contains(sbatch,'unset TC_CKPT_FORCE_RESUME'));
+assert(contains(sbatch,'export OMP_NUM_THREADS=1'));
+assert(contains(sbatch,'export MKL_NUM_THREADS=1'));
+assert(contains(sbatch,'export TC_NUMERICAL_IDENTITY=') && ...
+       contains(sbatch,'parallel_workers=6'), ...
+    'The 2-D numerical identity is missing.');
+assert(contains(sbatch,'scontrol show node "$SLURMD_NODENAME"') && ...
+       contains(sbatch,'lscpu') && contains(sbatch,'hostname'), ...
+    'The job must record and verify its assigned hardware.');
+assert(contains(sbatch,'cpumodel:9575f') && ...
+       contains(sbatch,'sha256sum'), ...
+    'The job must reject another CPU model and record source hashes.');
+%% An unqualified srun inherits the allocation, so an overridden --ntasks
+%% would start several MATLAB processes for one array element.
+assert(contains(sbatch, ...
+    'srun --nodes=1 --ntasks=1 --cpus-per-task="$SLURM_CPUS_PER_TASK"'), ...
+    'The production step must pin one task to one node.');
+assert(contains(sbatch,'"${SLURM_JOB_NUM_NODES:-0}" != "1"') && ...
+       contains(sbatch,'"${SLURM_NTASKS:-0}" != "1"'), ...
+    'The production path must verify its own allocation.');
+
+R = Run_Matrix_12();
+assert(isequal([R(1:9).id],1:9));
+assert(all([R(1:9).use_subdomains]));
+assert(all(arrayfun(@(x) x.geom.main_grid_nx == 2 && ...
+    x.geom.main_grid_ny == 2,R(1:9))));
+assert(all([R(1:9).biogeo_depth_mm] == 300));
+
+fprintf('PASS: Bouchet runs 1-9 parallel configuration\n');
+
+end
+
+function assert_error(fcn,identifier)
+try
+    fcn();
+catch ME
+    assert(strcmp(ME.identifier,identifier), ...
+        'Expected %s, received %s.',identifier,ME.identifier);
+    return
+end
+error('Expected error %s was not raised.',identifier);
+end

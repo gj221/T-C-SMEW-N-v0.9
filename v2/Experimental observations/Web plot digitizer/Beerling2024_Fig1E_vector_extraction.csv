@@ -1,0 +1,26 @@
+# Beerling et al. 2024 PNAS Fig. 1E soil pH, read from the vector geometry of the
+# published PDF (marker-square centres and half-bar lengths; y calibrated on the
+# five axis ticks, 53.17 and 53.14 pt per pH unit, tick residual < 1e-5), 2026-09-24.
+# Means +/- SEM over blocks. Agrees with Data_Beerling.mat (WebPlotDigitizer) to
+# within 0.003 pH; SEM is empty where the figure draws no bar (shorter than the marker).
+treatment,depth_cm,period,pH,SEM
+control,0-10,pre,6.203,0.063
+control,0-10,2017,6.278,0.076
+control,0-10,2018,6.313,0.051
+control,0-10,2019,6.131,0.073
+control,0-10,2020,5.976,0.054
+control,10-30,pre,6.020,0.113
+control,10-30,2017,6.285,0.083
+control,10-30,2018,6.315,0.081
+control,10-30,2019,6.128,0.071
+control,10-30,2020,6.244,0.078
+basalt,0-10,pre,6.127,0.074
+basalt,0-10,2017,6.600,0.060
+basalt,0-10,2018,6.663,0.042
+basalt,0-10,2019,6.919,
+basalt,0-10,2020,6.918,0.031
+basalt,10-30,pre,6.106,0.071
+basalt,10-30,2017,6.403,0.068
+basalt,10-30,2018,6.565,0.056
+basalt,10-30,2019,6.477,0.048
+basalt,10-30,2020,6.509,0.048

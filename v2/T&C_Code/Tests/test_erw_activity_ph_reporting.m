@@ -1,0 +1,99 @@
+function test_erw_activity_ph_reporting
+%%% Every pH the model reports or compares with an electrode is an ACTIVITY
+%%% pH, -log10(g1*[H+]), while the solvers keep [H+] as a concentration.
+%%%
+%%%   1. the bulk extract closes on its own ionic strength and reports
+%%%      pH_conc - log10(g1) at that ionic strength, with diag.H still the
+%%%      extract's H+ concentration (the next day's root anchor);
+%%%   2. inverting that reported pH recovers the pore-water state that
+%%%      produced it, so the seed reproduces the measurement on its scale;
+%%%   3. with a nonzero pore-water ionic strength the inverted seed closes
+%%%      charge on the conditional constants, not the thermodynamic ones;
+%%%   4. the daily solver and the seed report pore pH the same way.
+
+v2 = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+code_dir = fullfile(v2,'T&C_Code');
+addpath(v2, code_dir);
+
+conv_mol = 1e6;
+Al_CEC_scale = 1e3;
+k1 = 0.447; k2 = 4.68e-5; k_w = 1e-2; k_nh3 = 5.623413e-4; k_H = 0.83;
+K1_Al = 10; K2_Al = 8; K3_Al = 0.2; K4_Al = 0.631;
+
+%% fixture: the TC_GT prescribed exchange state of test_pH_conversion
+f_CEC = [0.647 0.129 0.043 0 0 0.181];
+K_CEC = [10^0.1, 10^(-2)*conv_mol, 10^0.38*conv_mol, ...
+    10^(-0.86)/conv_mol, 10^(-5.4)*conv_mol];
+H_pw = 10^(-5.2)*conv_mol;
+Ca = (f_CEC(1)/K_CEC(5))*(H_pw/f_CEC(6))^2;
+Mg = (Ca/f_CEC(1))*K_CEC(1)*f_CEC(2);
+K = sqrt((Ca/f_CEC(1))*K_CEC(2))*f_CEC(3);
+Na = 0;
+CO2_air = 400/22.41;
+CO2_w = 10*k_H*CO2_air;
+An = ERW_Residual_An_From_Charge(H_pw,CO2_w,Ca,Mg,Na,K,0,0,0,0, ...
+    k1,k2,k_w,k_nh3,K1_Al,K2_Al,K3_Al,K4_Al,Al_CEC_scale);
+CEC_tot = 25*1e-5*1.15e6*0.2*conv_mol;
+bpp = struct('n_extract',2,'K_CEC',K_CEC, ...
+    'H_extract_anchor_umolL',H_pw,'H_pore_anchor_umolL',H_pw, ...
+    'H_prev',NaN,'H_prev_valid',false,'initial_f_CEC',f_CEC, ...
+    'field_water_L_m2',25, ...
+    'DIC_field_umol_L',CO2_w*(1+k1/H_pw+k1*k2/H_pw^2));
+forward = @(H,C,Mg_,K_,An_,p) Porewater_to_Bulk_pH( ...
+    H,C,Mg_,K_,Na,0,0,An_,0,0,0,CO2_air,k1,k2,k_w,k_nh3,k_H, ...
+    K1_Al,K2_Al,K3_Al,K4_Al,f_CEC(1),f_CEC(2),f_CEC(3),f_CEC(4), ...
+    f_CEC(5),f_CEC(6),CEC_tot,1.15e6,0.2,conv_mol,p,Al_CEC_scale);
+
+%% 1. extract closure and activity reporting
+[pH_bulk,diag] = forward(H_pw,Ca,Mg,K,An,bpp);
+I_ext = diag.extract_activity_I;
+g1 = ERW_Activity_Coefficient(1,I_ext);
+assert(I_ext > 0 && abs(diag.ionic_str_extract-I_ext) <= 1e-14+1e-6*I_ext, ...
+    'The extract must close on its own ionic strength.');
+assert(abs(diag.gamma_mono_extract-g1) <= 8*eps, ...
+    'The reported extract coefficient must be Davies at the closed ionic strength.');
+assert(abs(diag.pH_conc+log10(diag.H/conv_mol)) <= 1e-12, ...
+    'diag.H must remain the extract H+ concentration.');
+assert(abs(pH_bulk-(diag.pH_conc-log10(g1))) <= 1e-12 && ...
+    diag.pH == pH_bulk && diag.pH_bulk == pH_bulk, ...
+    'The extract must report the activity pH, pH_conc - log10(g1).');
+assert(pH_bulk-diag.pH_conc > 0 && pH_bulk-diag.pH_conc < 0.1, ...
+    'A dilute 1:n extract moves pH up by a few hundredths, not more.');
+
+%% 2. the inversion recovers the state that produced the reported pH
+[H_inv,~,f_Ca_i,~,~,~,~,f_H_i] = Invert_Bulk_pH( ...
+    pH_bulk,Ca,Mg,K,Na,0,0,0,CO2_air,CO2_w, ...
+    k1,k2,k_w,k_nh3,k_H,K1_Al,K2_Al,K3_Al,K4_Al, ...
+    CEC_tot,1.15e6,0.2,conv_mol,bpp,9.66,Al_CEC_scale);
+assert(abs(log10(H_inv/H_pw)) < 1e-6 && abs(f_Ca_i-f_CEC(1)) < 1e-5 && ...
+    abs(f_H_i-f_CEC(6)) < 1e-5, ...
+    'Inverting the reported activity pH must recover the generating state.');
+
+%% 3. a nonzero pore ionic strength closes the seed on conditional constants
+I_pore = 0.03;
+bpp_I = bpp;
+bpp_I.pore_ionic_strength = I_pore;
+[H_I,~,~,~,~,~,~,~,An_I,Al_w_I,Ca_I,Mg_I,K_I,Na_I] = Invert_Bulk_pH( ...
+    pH_bulk,Ca,Mg,K,Na,0,0,0,CO2_air,CO2_w, ...
+    k1,k2,k_w,k_nh3,k_H,K1_Al,K2_Al,K3_Al,K4_Al, ...
+    CEC_tot,1.15e6,0.2,conv_mol,bpp_I,9.66,Al_CEC_scale);
+kc = ERW_Conditional_Constants([k1,k2,k_w,K1_Al,K2_Al,K3_Al,K4_Al],9.66,I_pore);
+An_expected = ERW_Residual_An_From_Charge(H_I,CO2_w,Ca_I,Mg_I,Na_I,K_I, ...
+    0,0,0,Al_w_I,kc(1),kc(2),kc(3),k_nh3,kc(4),kc(5),kc(6),kc(7),Al_CEC_scale);
+assert(abs(An_I-An_expected) <= 1e-9*max(1,An_expected), ...
+    'The seed must close charge on constants conditioned at the pore ionic strength.');
+assert(abs(log10(H_I/H_inv)) > 1e-4, ...
+    'The pore-side conditioning must move the inverted pore-water state.');
+
+%% 4. the daily solver and the seed report pore pH on the same scale
+erw = fileread(fullfile(code_dir,'ERW_function.m'));
+par = fileread(fullfile(code_dir,'Parameters','ERW_MOD_PARAM_excel.m'));
+assert(contains(erw,'pH_conc = -log10(H/conv_mol);') && ...
+    contains(erw,'pH = pH_conc-log10(gamma_mono);') && ...
+    contains(par,'pH(1) = pH_conc(1)-log10(gamma_mono_0);'), ...
+    'Pore-water pH must be reported as the activity pH in the solver and the seed.');
+assert(contains(par,'bulk_pH_params.CEC_ref_pH = pH_conc(1);'), ...
+    'The pH-dependent CEC reference must stay on the concentration basis CEC_at_H uses.');
+
+fprintf('PASS: pH is reported on the activity scale, and the extract and seed close on their ionic strengths.\n');
+end
