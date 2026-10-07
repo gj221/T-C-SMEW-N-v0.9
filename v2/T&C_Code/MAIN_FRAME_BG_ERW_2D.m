@@ -29,12 +29,25 @@
 %%             Millington-Quirk effective diffusivity.
 %%
 %% METEOROLOGY
-%%   The plot is flat and small, so all columns share one meteorological
-%%   forcing series.  Sub-domains diverge through vegetation, soil state
-%%   and treatment, not through their driving weather.
+%%   All columns share one meteorological forcing series.  Without
+%%   topography sub-domains diverge through vegetation, soil state and
+%%   treatment, not through their driving weather; with OPT_DEM each
+%%   cell's shortwave is projected onto its own slope, aspect and sky view
+%%   (Topographic_Radiation_Projection).
+%%
+%% TOPOGRAPHY AND CELL GEOMETRY (from T&C-SMEW-N v1.0)
+%%   OPT_DEM = 1 with a DEM attached to the topology
+%%   (Attach_Topography_To_Topology) drives the lateral solvers on total
+%%   head, routes runoff down the DEM to the outlet cell(s), and projects
+%%   radiation per cell.  A polygon grid (Build_Polygon_Grid_Topology)
+%%   weights every domain result by each cell's overlap with its polygon.
+%%   Neither is used unless asked for, and without them the frame is the
+%%   flat sub-plot frame bit for bit.
 %%
 %% EXPECTED IN THE CALLER WORKSPACE
-%%   topo                Build_Cell_Topology struct (N_col = topo.N_cells)
+%%   topo                Build_Cell_Topology or Build_Polygon_Grid_Topology
+%%                       struct (N_col = topo.N_cells), with topography
+%%                       attached when OPT_DEM = 1
 %%   ColCfg              [N_col x 1] struct: .PARAM_IC .PFT_OVERRIDE
 %%                       .apply_rock (logical)
 %%   Parameter_Directory path holding the parameter scripts
@@ -78,6 +91,35 @@ if exist('NavlI_out','var');  ctx.NavlI_out = NavlI_out;   end
 if exist('RexmyI_out','var'); ctx.RexmyI_out = RexmyI_out; end
 if exist('NupI_L_out','var'); ctx.NupI_L_out = NupI_L_out; end
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% FIELD-SCALE HETEROGENEITY, two independent switches, both default OFF.
+%%%   OPT_DEM         = 1  topography from a DEM: total-head Darcy,
+%%%                        slope-normal faces, overland routing of runoff
+%%%                        and its dissolved load, per-cell sky-view and
+%%%                        beam-angle radiation.
+%%%   OPT_CELL_INPUTS = 1  per-cell soil properties (pH, sand, clay, OM,
+%%%                        CEC) from a per-cell agronomic table
+%%%                        (Configure_Cell_Agronomic_Inputs) instead of one
+%%%                        shared row.
+%%% They are orthogonal at runtime -- the per-cell path reads only cell ids
+%%% and plan coordinates, the DEM path adds only elevation-derived fields --
+%%% so all four combinations are meaningful. Switched OFF, every branch
+%%% below is skipped and the frame is bit-identical to the flat, uniform
+%%% case. Ported from T&C-SMEW-N v1.0, which gated both implicitly by file
+%%% presence; the explicit switches are this tree's addition.
+%%%
+%%% The polygon grid (Build_Polygon_Grid_Topology) is neither switch. It is
+%%% the cell geometry, recognised by its overlap areas, and it changes only
+%%% how the results are weighted (DOMAIN AGGREGATION) and what the overland
+%%% router credits to the field.
+if ~exist('OPT_DEM','var');         OPT_DEM         = 0; end
+if ~exist('OPT_CELL_INPUTS','var'); OPT_CELL_INPUTS = 0; end
+if ~(isequal(OPT_DEM,0) || isequal(OPT_DEM,1)) || ...
+        ~(isequal(OPT_CELL_INPUTS,0) || isequal(OPT_CELL_INPUTS,1))
+    error('MAIN_FRAME_BG_ERW_2D:BadSwitch', ...
+        'OPT_DEM and OPT_CELL_INPUTS must each be 0 or 1.');
+end
+
 PAR = cell(N_col,1);
 biogeo_exchange_scheme = repmat({'TC_GT'},N_col,1);
 biogeo_KNmaxd = cell(N_col,1);
@@ -87,7 +129,24 @@ for c = 1:N_col
     if isfield(ColCfg(c),'PFT_OVERRIDE') && ~isempty(ColCfg(c).PFT_OVERRIDE)
         ovr = fullfile(Parameter_Directory, [char(ColCfg(c).PFT_OVERRIDE) '.m']);
     end
-    PAR{c} = Load_Cell_Parameters(char(ColCfg(c).PARAM_IC), ovr, ctx);
+    %%% Per-cell parameter context. Only under OPT_CELL_INPUTS does a column
+    %%% get its own MOD/ERW parameter row; otherwise every column reads the
+    %%% one shared context exactly as before. The ERW row in ColCfg already
+    %%% exists on every run (control vs. treated), so that branch MUST be
+    %%% gated on the switch -- taken unconditionally, as v1.0 has it, it
+    %%% silently re-parameterises every margin column of every existing run.
+    cell_ctx = ctx;
+    if OPT_CELL_INPUTS == 1
+        if isfield(ColCfg(c),'MOD_PARAM') && istable(ColCfg(c).MOD_PARAM) && ...
+                height(ColCfg(c).MOD_PARAM) == 1
+            cell_ctx.MOD_PARAM_input = ColCfg(c).MOD_PARAM;
+        end
+        if isfield(ColCfg(c),'ERW_PARAM') && istable(ColCfg(c).ERW_PARAM) && ...
+                height(ColCfg(c).ERW_PARAM) == 1
+            cell_ctx.ERW_PARAM_input = ColCfg(c).ERW_PARAM;
+        end
+    end
+    PAR{c} = Load_Cell_Parameters(char(ColCfg(c).PARAM_IC), ovr, cell_ctx);
     if isfield(PAR{c},'bulk_pH_params') && ...
             isfield(PAR{c}.bulk_pH_params,'scheme')
         biogeo_exchange_scheme{c} = PAR{c}.bulk_pH_params.scheme;
@@ -174,15 +233,87 @@ if any(abs(cellfun(@(p) p.Zbio,PAR)-PAR{1}.Zbio) > 1e-9)
 end
 Zlayer_m = diff(PAR{1}.Zs)/1000;      %% [m] layer thickness, shared
 
-%% This retained sub-field topology has no elevation or roughness closure.
-%% A sloped case requires T&C's raster routing machinery and cannot be
-%% represented by the flat adjacency graph without inventing flow paths.
+%% TOPOGRAPHY LIVES IN THE TOPOLOGY, NEVER IN THE PARAMETER FILE. With
+%% OPT_DEM the lateral solvers run on total head H = psi + z and the surface
+%% router moves ponded runoff down the DEM; the vertical column stays 1-D
+%% (Slo_top = 0 in the HYDROLOGIC_UNIT call), so its own kinematic Qi_out
+%% cannot double-count the graph exchange. A non-zero parameter-file Slo_top
+%% would re-introduce that double count and is rejected on every run.
+%%
+%% The flag is derived from BOTH the switch and the topology, and the two
+%% must agree. A topology that carries elevation while the switch is off is
+%% refused rather than silently engaging: the lateral solvers and the
+%% router key on field presence, so a deserialised checkpoint or a reused
+%% struct could otherwise turn topography on behind the switch.
+topography_attached = OPT_DEM == 1 && ...
+    isfield(topo,'topography_attached') && topo.topography_attached;
+if OPT_DEM == 0 && isfield(topo,'cell_z_m') && ~isempty(topo.cell_z_m)
+    error('MAIN_FRAME_BG_ERW_2D:TopographyBehindSwitch', ...
+        ['The topology carries elevation (cell_z_m) but OPT_DEM is 0. ' ...
+         'Either enable OPT_DEM or build the topology without topography.']);
+end
+if OPT_DEM == 1 && ~topography_attached
+    error('MAIN_FRAME_BG_ERW_2D:NoTopographyAttached', ...
+        ['OPT_DEM is 1 but no topography is attached to the topology. ' ...
+         'Attach a DEM with Attach_Topography_To_Topology in the driver.']);
+end
 if N_col > 1
     for c = 1:N_col
         if abs(PAR{c}.Slo_top) > 1e-12 || any(abs(PAR{c}.Slo_pot) > 1e-12)
             error('MAIN_FRAME_BG_ERW_2D:SlopedDomainUnsupported', ...
-                ['The sub-field graph requires zero Slo_top and Slo_pot. ' ...
-                 'Use raster routing when a DTM and surface-flow parameters are available.']);
+                ['Column %d carries a non-zero parameter-file Slo_top/Slo_pot. ' ...
+                 'Put field topography in the cell topology via ' ...
+                 'Attach_Topography_To_Topology (topo.cell_z_m), not in the ' ...
+                 'parameter file.'], c);
+        end
+    end
+    if topography_attached
+        fprintf(['  topography attached: %s; slope %.1f-%.1f%%, ' ...
+            'relief %.2f m, %d outlet cell(s)\n'], ...
+            char(string(topo.topography_source)), ...
+            100*min(topo.cell_slope), 100*max(topo.cell_slope), ...
+            max(topo.cell_z_m)-min(topo.cell_z_m), sum(topo.cell_is_outlet));
+    end
+end
+%% Solar geometry window for the per-cell beam projection (v1.0).
+%% SetSunVariables averages the sun over [HR-t_bef, HR+t_aft]; the run
+%% script's window is [HR+0.67, HR+1.67], while an hour-ending forcing
+%% (ERA5-Land) labels record HR with [HR-1, HR]. The two differ by ~1.7 h,
+%% ~25 deg of azimuth at midday, enough to reverse the east/west aspect
+%% contrast the projection exists to resolve. The global t_bef/t_aft is
+%% left alone; only the per-cell BEAM PROJECTION uses this window, which
+%% defaults to hour-ending [1 0]. Override with TOPO_SOLAR_WINDOW =
+%% [t_bef t_aft]. Inert without topography.
+if ~exist('TOPO_SOLAR_WINDOW','var') || isempty(TOPO_SOLAR_WINDOW)
+    TOPO_SOLAR_WINDOW = [1 0];
+end
+topo_t_bef = TOPO_SOLAR_WINDOW(1); topo_t_aft = TOPO_SOLAR_WINDOW(2);
+if topography_attached
+    %% Report how well each window tracks the observed shortwave, on a
+    %% subsample, so a forcing with another time convention shows in the
+    %% run log instead of silently rotating every aspect.
+    probe = 1:max(1,floor(NN/500)):NN;
+    Rsw_probe = SAB1(probe)+SAB2(probe)+SAD1(probe)+SAD2(probe);
+    sh_topo = zeros(numel(probe),1); sh_run = zeros(numel(probe),1);
+    for pk = 1:numel(probe)
+        sh_topo(pk) = max(0,sin(SetSunVariables(Datam(probe(pk),:), ...
+            DeltaGMT,Lon,Lat,topo_t_bef,topo_t_aft)));
+        sh_run(pk) = max(0,sin(SetSunVariables(Datam(probe(pk),:), ...
+            DeltaGMT,Lon,Lat,t_bef,t_aft)));
+    end
+    if std(Rsw_probe(:)) > 0 && std(sh_topo) > 0 && std(sh_run) > 0
+        r_topo = corrcoef(sh_topo,Rsw_probe(:)); c_topo = r_topo(1,2);
+        r_run  = corrcoef(sh_run,Rsw_probe(:));  c_run  = r_run(1,2);
+        fprintf(['  topographic solar window [HR%+.2f, HR%+.2f]: sun-vs-' ...
+            'shortwave correlation %.3f (run-script window %.3f)\n'], ...
+            -topo_t_bef,topo_t_aft,c_topo,c_run);
+        if c_topo < c_run
+            warning('MAIN_FRAME_BG_ERW_2D:SolarWindowMismatch', ...
+                ['The forcing tracks the run-script solar window (%.3f) ' ...
+                 'better than the topographic one (%.3f); set ' ...
+                 'TOPO_SOLAR_WINDOW to match this forcing time convention ' ...
+                 'or the per-cell beam projection will be rotated.'], ...
+                c_run,c_topo);
         end
     end
 end
@@ -465,6 +596,45 @@ lateral_diag = struct('water_buf_to_main', zeros(NNd,1), ...
 %% bottom leakage and unrouted surface runoff leave the modeled plot.
 exit_water_vert_m3 = zeros(N_col,1);
 exit_water_surface_m3 = zeros(N_col,1);
+%% Overland routing (OPT_DEM). Runoff produced this step is routed down the
+%% DEM and offered to the NEXT step as run-on; T&C's operator split is one
+%% step lagged by design, and overland travel over a farm field is far
+%% below one hydrological step. Solute that arrived with run-on and has not
+%% yet infiltrated sits in a POND store: crediting it straight to the soil
+%% would strand it in the first absorbing cell it reached. All zero and
+%% never touched when the switch is off.
+q_runon_next        = zeros(N_col,1);                  %% [mm/h]
+pond_mass_area      = zeros(N_col,N_lateral_species);  %% [gX/m^2]
+exit_mass_surface_g = zeros(N_lateral_species,1);      %% [g] at outlets
+erw_pond_umol       = zeros(N_col,4);                  %% Na, Al, An, DIC
+exit_mass_surface_erw_umol = zeros(4,1);
+%% Field-origin provenance (v1.0). On a polygon grid a perimeter cell is a
+%% whole square only partly inside the polygon, so the routed water and
+%% solute that came from inside it are carried through the router and the
+%% pond store as passive tracers; a stop-over on a partial cell then cannot
+%% re-label the load with that cell's own overlap fraction. On a
+%% rectangular grid every overlap fraction is 1 and the tracers equal the
+%% totals.
+field_grid = isfield(topo,'cell_overlap_area_m2');
+[~,~,field_fraction] = Field_Aggregation_Areas(topo);
+pond_field_water_mm  = zeros(N_col,1);                 %% [mm]
+pond_field_mass_area = zeros(N_col,N_lateral_species); %% [gX/m^2]
+erw_pond_field_umol  = zeros(N_col,4);
+exit_water_field_surface_m3      = 0;
+exit_mass_surface_field_g        = zeros(N_lateral_species,1);
+exit_mass_surface_erw_field_umol = zeros(4,1);
+if OPT_DEM == 1
+    %% Added only when on, so Domain.lateral keeps its field set otherwise.
+    lateral_diag.surface_water_out_m3   = zeros(NNd,1);
+    lateral_diag.surface_mass_out_g     = zeros(NNd,N_lateral_species);
+    lateral_diag.surface_reinfilt_m3    = zeros(NNd,1);
+    %% Subsurface lateral throughput per day, the sum over faces, layers
+    %% and hours of |Q_edge| [m3], and the net redistribution, half the
+    %% sum over cells of each cell's net gain or loss [m3]: how much water
+    %% the topography actually moved between cells (v1.0).
+    lateral_diag.water_edge_abs_m3      = zeros(NNd,1);
+    lateral_diag.water_net_m3           = zeros(NNd,1);
+end
 
 j = 1;
 tic;
@@ -553,6 +723,13 @@ for c = 1:N_col
         mat2str(PAR{c}.Kbot,17), ...
         mat2str(cec_dpH_c,17),mat2str(last_app_c,17),bgovr_c, ...
         mat2str(sexp_c,17));
+    %% A per-cell MOD row (OPT_CELL_INPUTS) is the column's soil; the ERW
+    %% row above is already per column. Off, the identity is unchanged.
+    if OPT_CELL_INPUTS == 1 && isfield(ColCfg(c),'MOD_PARAM') && ...
+            istable(ColCfg(c).MOD_PARAM) && height(ColCfg(c).MOD_PARAM) == 1
+        ERW_runtime_parts{c} = sprintf('%s;mod_param=%s',ERW_runtime_parts{c}, ...
+            ERW_Runtime_Parameter_Identity(ColCfg(c).MOD_PARAM));
+    end
 end
 ERW_forcing_identity = sprintf('date_start=%.17g;date_end=%.17g',Date(1),Date(end));
 ERW_topology_identity = sprintf([ ...
@@ -566,6 +743,34 @@ ERW_topology_identity = sprintf([ ...
     mat2str(topo.edge_face_distance_a_m,17), ...
     mat2str(topo.edge_face_distance_b_m,17), ...
     mat2str(topo.edge_active,17),mat2str(topo.outer_face_width_m,17));
+%% Topography enters the checkpoint identity ONLY when attached, so every
+%% existing flat checkpoint keeps its fingerprint and stays resumable.
+if topography_attached
+    %% Attach_Topography_To_Topology writes all of these together, so a
+    %% missing field here means a malformed topology and should error.
+    topo_field = @(name) mat2str(reshape(double(topo.(name)),[],1),17);
+    ERW_topology_identity = sprintf(['%s;' ...
+        'topology_source=%s;topology_cell_z=%s;topology_cell_slope=%s;' ...
+        'topology_cell_aspect=%s;topology_cell_svf=%s;topology_cell_twi=%s;' ...
+        'topology_cell_curv_prof=%s;topology_cell_curv_plan=%s;' ...
+        'topology_edge_dz=%s;topology_edge_surface_distance=%s;' ...
+        'topology_overland_ab=%s;topology_overland_ba=%s;topology_is_outlet=%s'], ...
+        ERW_topology_identity, ...
+        char(string(topo.topography_source)), ...
+        topo_field('cell_z_m'),topo_field('cell_slope'), ...
+        topo_field('cell_aspect_deg'),topo_field('cell_svf'), ...
+        topo_field('cell_twi'),topo_field('cell_curv_prof'), ...
+        topo_field('cell_curv_plan'),topo_field('edge_dz_m'), ...
+        topo_field('edge_face_distance_surface_m'), ...
+        topo_field('edge_overland_weight_ab'), ...
+        topo_field('edge_overland_weight_ba'),topo_field('cell_is_outlet'));
+end
+%% Likewise the polygon overlap, which weights the field-origin tracers.
+if field_grid
+    ERW_topology_identity = sprintf('%s;topology_overlap=%s', ...
+        ERW_topology_identity, ...
+        mat2str(reshape(double(topo.cell_overlap_area_m2),[],1),17));
+end
 ERW_numerical_identity = strtrim(getenv('TC_NUMERICAL_IDENTITY'));
 if isempty(ERW_numerical_identity); ERW_numerical_identity = 'unset'; end
 %% The static TC_NUMERICAL_IDENTITY string is what the submission script
@@ -1018,7 +1223,33 @@ for i = i_resume:NN
             Slo_top_cell = p.Slo_top;
             Slo_pot_cell = p.Slo_pot;
         end
-        q_runon(i,1,c) = 0;
+        %% Run-on is what the router delivered last step; nothing without
+        %% topography. Per-cell radiation likewise: with topography each
+        %% cell sees the beam through its own slope and aspect and the sky
+        %% through its own sky-view factor; without it every cell keeps the
+        %% station series and the parameter-file SvF, the identical doubles
+        %% the call took before, with no per-step allocation.
+        if topography_attached
+            q_runon(i,1,c) = q_runon_next(c);
+            if c == 1
+                %% Every cell at once, once per hour: v1.0's one definition
+                %% (slope/aspect beam projection, sky-view diffuse and a
+                %% terrain-reflected term).
+                [sab1_t,sab2_t,sad1_t,sad2_t,parb_t,pard_t] = ...
+                    Topographic_Radiation_Projection( ...
+                    SAB1(i),SAB2(i),SAD1(i),SAD2(i),PARB(i),PARD(i), ...
+                    Datam(i,:),DeltaGMT,Lon,Lat,topo_t_bef,topo_t_aft, ...
+                    topo.cell_slope,topo.cell_aspect_deg,topo.cell_svf);
+            end
+            sab1_c = sab1_t(c); sab2_c = sab2_t(c); sad1_c = sad1_t(c);
+            sad2_c = sad2_t(c); parb_c = parb_t(c); pard_c = pard_t(c);
+            svf_c  = topo.cell_svf(c);
+        else
+            q_runon(i,1,c) = 0;
+            sab1_c = SAB1(i); sab2_c = SAB2(i); sad1_c = SAD1(i);
+            sad2_c = SAD2(i); parb_c = PARB(i); pard_c = PARD(i);
+            svf_c  = p.SvF;
+        end
 
         [V(i,:,c),Vice(i,:,c),O(i,:,c),Oice(i,:,c),ZWT(i,c),OF(i,c),OS(i,c), ...
          OH(i,:,c),OL(i,:,c),Psi_s_H(i,:,c),Psi_s_L(i,:,c),Rd(i,c),Qi_out(i,:,c),WTR(i,:,c), ...
@@ -1055,7 +1286,7 @@ for i = i_resume:NN
             p.Soil_Param,p.Interc_Param,p.SnowIce_Param,p.VegH_Param,p.VegL_Param, ...
             p.Zs_deb,p.Deb_Par, ...
             ZR95_H_c(c,:),ZR95_L_c(c,:), ...
-            SAB1(i),SAB2(i),SAD1(i),SAD2(i),PARB(i),PARD(i),p.SvF, ...
+            sab1_c,sab2_c,sad1_c,sad2_c,parb_c,pard_c,svf_c, ...
             SND(i-1,c),snow_alb_c{c},p.Color_Class,p.OM_H,p.OM_L, ...
             p.PFT_opt_H,p.PFT_opt_L,hc_H(j,:,c),hc_L(j,:,c),p.d_leaf_H,p.d_leaf_L, ...
             Ca(i),Oa,Ci_sunH(i-1,:,c),Ci_shdH(i-1,:,c),Ci_sunL(i-1,:,c),Ci_shdL(i-1,:,c), ...
@@ -1076,14 +1307,21 @@ for i = i_resume:NN
 
         snow_alb_c{c} = snow_alb_new;
         Tstm0_c(c) = 2*Ts(i,c) - Ts(i-1,c);
-        STOT = SAB1(i)+SAB2(i)+SAD1(i)+SAD2(i);
-        ALB(i,c) = SAB1(i)/STOT*snow_alb_new.dir_vis + SAD1(i)/STOT*snow_alb_new.dif_vis + ...
-                   SAB2(i)/STOT*snow_alb_new.dir_nir + SAD2(i)/STOT*snow_alb_new.dif_nir;
+        %% Weighted by the radiation this cell received (the station series
+        %% without topography, so the same doubles as before).
+        STOT = sab1_c+sab2_c+sad1_c+sad2_c;
+        ALB(i,c) = sab1_c/STOT*snow_alb_new.dir_vis + sad1_c/STOT*snow_alb_new.dif_vis + ...
+                   sab2_c/STOT*snow_alb_new.dir_nir + sad2_c/STOT*snow_alb_new.dif_nir;
 
         %% Vertical exit at the base of the column [m3]
         exit_water_vert_m3(c) = exit_water_vert_m3(c) + (Lk(i,c)/1000)*A_cell(c)*dth;
-        exit_water_surface_m3(c) = exit_water_surface_m3(c) + ...
-            ((Rh(i,c)+Rd(i,c))/1000)*A_cell(c);
+        if ~topography_attached
+            %% Flat graph: unrouted runoff leaves each cell where it forms.
+            exit_water_surface_m3(c) = exit_water_surface_m3(c) + ...
+                ((Rh(i,c)+Rd(i,c))/1000)*A_cell(c);
+        end
+        %% With topography, this step's runoff is routed after the lateral
+        %% block and exits only at the outlet cell(s).
     end
 
     %% ------------------------------------------------------------------
@@ -1155,6 +1393,128 @@ for i = i_resume:NN
             lateral_diag.heat_residual_relative(j), ...
             ldiag.heat.energy_residual_relative);
         lateral_diag.heat_sub_steps_max(j)= max(lateral_diag.heat_sub_steps_max(j),ldiag.heat.sub_steps);
+        if OPT_DEM == 1
+            lateral_diag.water_edge_abs_m3(j) = lateral_diag.water_edge_abs_m3(j) + ...
+                sum(abs(ldiag.Q_edge(:)))*dth;
+            Q_face = sum(ldiag.Q_edge,2);                         %% m3/h, a -> b
+            Q_cell_net = accumarray(topo.edge_b(:),Q_face,[N_col 1]) - ...
+                accumarray(topo.edge_a(:),Q_face,[N_col 1]);      %% m3/h gained
+            lateral_diag.water_net_m3(j) = lateral_diag.water_net_m3(j) + ...
+                0.5*sum(abs(Q_cell_net))*dth;
+        end
+    end
+
+    %% ------------------------------------------------------------------
+    %% OVERLAND ROUTING (OPT_DEM). Ponded runoff runs down the DEM carrying
+    %% its dissolved load, leaves the domain only at the topographic
+    %% outlet(s), and is otherwise offered to the next step as run-on.
+    %% Ported from v1.0 with its field-origin tracers: on a polygon grid
+    %% the perimeter cells are whole squares only partly inside the
+    %% polygon, and the field's share of the export is carried, not
+    %% inferred from the outlet cell's overlap.
+    %%
+    %% TWO SOURCES OF SURFACE SOLUTE. Saturation-excess runoff (Rd) is soil
+    %% water reaching the surface and carries the active-zone pore-water
+    %% concentration, capped at the mobile pool it comes from.
+    %% Infiltration-excess runoff (Rh) is ponded water that re-mobilises the
+    %% pond store in the share Rh/WIS, WIS being the water Rh is defined
+    %% against in HYDROLOGIC_UNIT. What the router delivers goes to the
+    %% NEXT step's pond, not into the soil, because its water has not
+    %% infiltrated yet.
+    %% ------------------------------------------------------------------
+    if N_col > 1 && topography_attached
+        Rh_c = reshape(Rh(i,1,:),N_col,1);
+        Rd_c = reshape(Rd(i,1,:),N_col,1);
+        runoff_step_mm = max(Rh_c + Rd_c, 0);
+        depth_m = runoff_step_mm/1000;
+        P_cells_ov = reshape(P(j,:,:),79,N_col).';
+        [~,mobile_now] = Biogeo_Lateral_Pools(P_cells_ov);
+        mobile_now = mobile_now .* lateral_fraction;
+        theta_ov = reshape(O(i,:,:),ms,N_col).';
+        C_soil = Biogeo_Lateral_Concentration( ...
+            mobile_now,A_cell,theta_ov,Zlayer_m,bio_active_fraction);
+        C_soil = reshape(C_soil(:,1,:),N_col,N_lateral_species);
+
+        WIS_c    = reshape(WIS(i,1,:),N_col,1);
+        runon_mm = reshape(q_runon(i,1,:),N_col,1)*dth;
+        out_frac = min(1, Rh_c./max(WIS_c,eps));
+        out_frac(WIS_c <= 0) = 0;
+        pond_out_area = pond_mass_area .* out_frac;
+        pond_in_area  = pond_mass_area - pond_out_area;
+        pond_in_water_mm = runon_mm.*(1-out_frac);
+
+        soil_out_area = min((Rd_c/1000).*C_soil, mobile_now);
+        soil_out_area(~isfinite(soil_out_area) | soil_out_area < 0) = 0;
+        C_surf = (soil_out_area + pond_out_area) ./ max(depth_m,eps);
+        C_surf(~isfinite(C_surf) | C_surf < 0) = 0;
+        removed_area = depth_m .* C_surf;
+        soil_share = soil_out_area ./ max(soil_out_area+pond_out_area,eps);
+        soil_removed_area = removed_area .* soil_share;
+
+        %% FIELD-ORIGIN provenance as passive tracer columns (v1.0). The Rd
+        %% part is this cell's own water, so its field share is the cell's
+        %% overlap fraction; the Rh part is surface water whose field share
+        %% is the pond's own provenance plus local rain. Solute likewise.
+        surf_field_mm = pond_field_water_mm + ...
+            max(WIS_c - runon_mm,0).*field_fraction;
+        rh_field_frac = surf_field_mm ./ max(WIS_c,eps);
+        water_tracer = (Rd_c.*field_fraction + Rh_c.*rh_field_frac) ./ ...
+            max(runoff_step_mm,eps);
+        pond_field_out_area = pond_field_mass_area .* out_frac;
+        mass_tracer = (soil_removed_area.*field_fraction + pond_field_out_area) ./ ...
+            max(depth_m,eps);
+        water_tracer(~isfinite(water_tracer)) = 0;
+        mass_tracer(~isfinite(mass_tracer)) = 0;
+        C_route = [C_surf, water_tracer, mass_tracer];
+        [q_deliver_mm,C_deliver,~,exit_tracer,~,exit_cell_m3,exit_cell_g] = ...
+            Surface_Runoff_Routing(topo,runoff_step_mm,C_route,dth);
+
+        %% Only the pond share that infiltrated joins the soil pools; the
+        %% soil-derived load that ran off leaves them. The routed load
+        %% stays on the surface with its provenance.
+        P_cells_ov = Biogeo_Lateral_Pools(P_cells_ov, pond_in_area - soil_removed_area);
+        P(j,:,:) = reshape(P_cells_ov.',1,79,N_col);
+        pond_mass_area       = (q_deliver_mm/1000) .* C_deliver(:,1:N_lateral_species);
+        pond_field_water_mm  = q_deliver_mm .* C_deliver(:,N_lateral_species+1);
+        pond_field_mass_area = (q_deliver_mm/1000) .* ...
+            C_deliver(:,N_lateral_species+2:end);
+
+        %% The ERW aqueous stores ride the same water, so they must leave
+        %% overland too or the exported solution is not charge balanced.
+        if OPT_ERW == 1 && all(cellfun(@(x) isfield(x,'init') && x.init,ERW))
+            [ERW,erw_surf] = ERW_Surface_Export(ERW,topo,runoff_step_mm,Rd_c, ...
+                out_frac,erw_pond_umol,erw_pond_field_umol,pond_in_water_mm, ...
+                field_fraction,dth);
+            erw_pond_umol       = erw_surf.delivered_umol;
+            erw_pond_field_umol = erw_surf.delivered_field_umol;
+            exit_mass_surface_erw_umol = ...
+                exit_mass_surface_erw_umol + erw_surf.exit_umol;
+            exit_mass_surface_erw_field_umol = ...
+                exit_mass_surface_erw_field_umol + erw_surf.exit_field_umol;
+        end
+
+        %% q_runon is a RATE [mm/h]; q_deliver_mm is a depth per step.
+        q_runon_next          = q_deliver_mm/dth;
+        exit_water_surface_m3 = exit_water_surface_m3 + exit_cell_m3;
+        exit_mass_surface_g   = exit_mass_surface_g + ...
+            sum(exit_cell_g(:,1:N_lateral_species),1).';
+        exit_water_field_surface_m3 = exit_water_field_surface_m3 + ...
+            exit_tracer(N_lateral_species+1);
+        exit_mass_surface_field_g = exit_mass_surface_field_g + ...
+            reshape(exit_tracer(N_lateral_species+2:end),[],1);
+        lateral_diag.surface_water_out_m3(j) = ...
+            lateral_diag.surface_water_out_m3(j) + sum(exit_cell_m3);
+        lateral_diag.surface_mass_out_g(j,:) = ...
+            lateral_diag.surface_mass_out_g(j,:) + ...
+            sum(exit_cell_g(:,1:N_lateral_species),1);
+        lateral_diag.surface_reinfilt_m3(j) = ...
+            lateral_diag.surface_reinfilt_m3(j) + sum(pond_in_water_mm/1000.*A_cell);
+
+        Pj = P(j,transported,:);
+        if any(Pj(:) < -1e-9)
+            error('MAIN_FRAME_BG_ERW_2D:NegativePool', ...
+                'Overland routing produced a negative pool at i=%d.',i);
+        end
     end
 
     if N_col > 1 && OPT_ERW == 1 && ...
@@ -1274,12 +1634,29 @@ fprintf('\nCOMPUTATIONAL TIME [h] %.3f   (%.1f ms per column-step)\n', ...
     Computational_Time/3600, 1000*Computational_Time/(NN*N_col));
 
 %% ========================================================================
-%% DOMAIN AGGREGATION  --  area-weighted over the sub-plot cells
+%% DOMAIN AGGREGATION  --  area-weighted over the sub-plot cells, or over
+%% the polygon a polygon grid was built on
 %% ========================================================================
-w_col = reshape(A_cell/A_tot, 1, N_col);
-Domain.area_m2       = A_tot;
-Domain.area_main_m2  = sum(A_cell(strcmp(topo.cell_region,'main')));
-Domain.area_buffer_m2= sum(A_cell(~strcmp(topo.cell_region,'main')));
+if field_grid
+    %% Polygon grid (v1.0): each cell weighs by its overlap with the
+    %% polygon, and the total area includes any polygon land a majority-
+    %% rule grid leaves in dropped squares (carried at the domain mean).
+    %% The weights are Field_Aggregate_Areal's, so a mean below is v1.0's.
+    [A_field,w_col,~,A_field_total] = Field_Aggregation_Areas(topo);
+    Domain.area_m2 = A_field_total;
+    Domain.simulated_area_m2 = A_tot;
+    Domain.grid_outside_area_m2 = A_tot-sum(A_field);
+    if isfield(topo,'field_missed_area_m2')
+        Domain.field_missed_area_m2 = A_field_total-sum(A_field);
+    end
+    Domain.area_main_m2   = sum(A_field(strcmp(topo.cell_region,'main')));
+    Domain.area_buffer_m2 = sum(A_field(~strcmp(topo.cell_region,'main')));
+else
+    w_col = reshape(A_cell/A_tot, 1, N_col);
+    Domain.area_m2       = A_tot;
+    Domain.area_main_m2  = sum(A_cell(strcmp(topo.cell_region,'main')));
+    Domain.area_buffer_m2= sum(A_cell(~strcmp(topo.cell_region,'main')));
+end
 Domain.N2Oflx        = squeeze(N2Oflx)  * w_col.';
 Domain.N2flx         = squeeze(N2flx)   * w_col.';
 Domain.VOL            = squeeze(VOL)     * w_col.';
@@ -1302,11 +1679,45 @@ Domain.lateral       = lateral_diag;
 Domain.exit_water_vert_m3 = exit_water_vert_m3;
 Domain.exit_water_surface_m3 = exit_water_surface_m3;
 Domain.exit_water_total_m3 = exit_water_vert_m3+exit_water_surface_m3;
+if OPT_DEM == 1
+    Domain.topography_attached = topography_attached;
+    %% Solute exported at the topographic outlet(s) with overland runoff
+    %% [g element], one entry per lateral species, and the ERW aqueous
+    %% species [umol] ordered as Domain.lateral.erw_species_names.
+    Domain.exit_mass_surface_g = exit_mass_surface_g;
+    Domain.exit_mass_surface_species = lateral_species;
+    Domain.exit_mass_surface_erw_umol = exit_mass_surface_erw_umol;
+    fprintf('Overland: %.4g m3 water left at the outlet(s)\n', ...
+        sum(exit_water_surface_m3));
+end
+if field_grid
+    %% Exports that originated inside the polygon (v1.0). Routed runoff
+    %% leaves through the OUTLET cell, often a partial perimeter cell, so
+    %% with topography its field share is the routed tracer, not that
+    %% cell's own overlap fraction.
+    Domain.exit_water_field_vert_m3 = sum(exit_water_vert_m3.*field_fraction);
+    if topography_attached
+        Domain.exit_water_field_surface_m3 = exit_water_field_surface_m3;
+        Domain.exit_mass_surface_field_g = exit_mass_surface_field_g;
+        Domain.exit_mass_surface_erw_field_umol = exit_mass_surface_erw_field_umol;
+    else
+        Domain.exit_water_field_surface_m3 = sum(exit_water_surface_m3.*field_fraction);
+    end
+    Domain.exit_water_field_total_m3 = Domain.exit_water_field_vert_m3 + ...
+        Domain.exit_water_field_surface_m3;
+    Domain.cell_overlap_area_m2 = A_field;
+    Domain.cell_overlap_fraction = field_fraction;
+    Domain.field_aggregation = 'polygon_overlap_area';
+end
 Domain.cell_region   = topo.cell_region;
 Domain.cell_area_m2  = A_cell;
 
 fprintf('Domain: %.0f m2 total (%.0f main, %.0f margin)\n', ...
     Domain.area_m2, Domain.area_main_m2, Domain.area_buffer_m2);
+if field_grid
+    fprintf('Domain: %.0f m2 polygon inside a %.0f m2 simulated grid\n', ...
+        Domain.area_m2, Domain.simulated_area_m2);
+end
 fprintf('Cumulative N2O   : %.4f gN/m2\n', sum(Domain.N2Oflx,'omitnan'));
 fprintf('Cumulative NO3   : %.4f gN/m2\n', sum(Domain.LEAK_NO3,'omitnan'));
 fprintf('Net lateral water margin->field: %.4f m3\n', ...
