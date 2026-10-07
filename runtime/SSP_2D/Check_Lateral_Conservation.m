@@ -146,6 +146,27 @@ if isfield(L,'water_buf_to_main')
     fprintf('  net lateral water margin->field %.4f m3\n', ...
         report.water_buf_to_main_m3);
 end
+%% A topographic run also moves runoff overland and exports it at the
+%% outlet cell(s). Reported the same way: Surface_Runoff_Routing and
+%% ERW_Surface_Export enforce their own mass closure at every step, and
+%% the subsurface exchange above stays a closed redistribution.
+if isfield(D,'topography_attached') && D.topography_attached
+    if isfield(L,'surface_water_out_m3')
+        report.surface_water_out_m3 = sum(L.surface_water_out_m3,'omitnan');
+        fprintf('  overland water at the outlet(s) %.4f m3\n', ...
+            report.surface_water_out_m3);
+    end
+    if isfield(D,'exit_mass_surface_erw_umol')
+        report.surface_erw_out_umol = reshape(D.exit_mass_surface_erw_umol,1,[]);
+        fprintf(['  overland ERW export Na %.6g, Al %.6g, An %.6g, ' ...
+            'DIC %.6g umol\n'],report.surface_erw_out_umol);
+    end
+    if isfield(L,'water_net_m3')
+        report.water_net_m3 = sum(L.water_net_m3,'omitnan');
+        fprintf('  subsurface water moved between cells %.4f m3 (net)\n', ...
+            report.water_net_m3);
+    end
+end
 
 if ~isempty(failures)
     error([error_id_prefix ':LateralConservation'], ...

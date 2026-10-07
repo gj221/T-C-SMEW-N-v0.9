@@ -4,9 +4,10 @@ function setups = Build_Shapefile_Grid_Setups( ...
 %% Build one independent full-grid setup per connected polygon region.
 %% coverage_rule: a fraction (default 0.95) or 'majority'
 %% (Build_Projected_Field_Topology).
-%% margin_width_m (this tree, not v1.0): a positive width grids each region
-%% with a margin band around it (Build_Margin_Field_Topology, majority rule
-%% only); 0 or empty is v1.0's field grid unchanged.
+%% margin_width_m (this tree, not v1.0): a positive width labels the outer
+%% band of that width inside each region as its margin
+%% (Build_Margin_Field_Topology, majority rule only; the squares are v1.0's
+%% either way); 0 or empty is v1.0's field grid, every square 'main'.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if nargin < 2; cell_size_m = []; end

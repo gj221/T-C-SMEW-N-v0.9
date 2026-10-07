@@ -3,9 +3,10 @@ function topo = Build_Field_Grid_Topology(shape_file,varargin)
 %% Build_Field_Grid_Topology
 %%
 %% The cell grid of one sub-field run on a real field: T&C-SMEW-N v1.0's
-%% polygon grid on a field shapefile (Build_Shapefile_Grid_Setups), with
-%% this tree's margin band for the margin layouts, and the DEM attached
-%% when one is given (Load_Field_DEM, Attach_Topography_To_Topology).
+%% polygon grid on a field shapefile (Build_Shapefile_Grid_Setups), its
+%% outer band labelled as the margin the margin layouts need (this tree;
+%% Build_Margin_Field_Topology), and the DEM attached when one is given
+%% (Load_Field_DEM, Attach_Topography_To_Topology).
 %%
 %% Run_One_Subfield calls it for a FieldShapefile run. Saved,
 %%     topo = Build_Field_Grid_Topology(...);
@@ -19,8 +20,9 @@ function topo = Build_Field_Grid_Topology(shape_file,varargin)
 %%                     terrain (Run_Topographic_Grid_Convergence)
 %%   'CoverageRule'    'majority' (default) or a fraction in (0,1), v1.0's
 %%                     coverage calibration (whole field only)
-%%   'MarginWidthM'    margin band around the field [m]; 0 (default) is
-%%                     v1.0's field grid, every cell 'main'
+%%   'MarginWidthM'    width of the field's outer band labelled margin [m];
+%%                     0 (default) is v1.0's labels, every cell 'main'. The
+%%                     squares are the same either way.
 %%   'FeatureIndices'  shapefile features to use (default all)
 %%   'PolygonIndex'    connected region to grid (default: the only one)
 %%   'FieldDEM'        GeoTIFF, directory of tiles or {paths}; empty = flat

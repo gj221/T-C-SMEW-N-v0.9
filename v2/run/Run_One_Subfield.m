@@ -41,16 +41,17 @@ function result_file = Run_One_Subfield(run_id, varargin)
 %% FIELD GRIDS (from T&C-SMEW-N v1.0)
 %%   Without a field option runs 1 to 9 use the 12-column plot, exactly as
 %%   before. FieldShapefile replaces it with v1.0's polygon grid on the real
-%%   field: square cells of GridCellSizeM metres, kept under the majority
-%%   rule (FieldMinCoverage, default 'majority'; each square more than half
+%%   field: squares of GridCellSizeM metres, kept under the majority rule
+%%   (FieldMinCoverage, default 'majority'; each square more than half
 %%   inside, on the lattice of least misrepresented area), the width taken
 %%   from the terrain (Run_Topographic_Grid_Convergence). Every sub-field
-%%   layout keeps its margin: the grid covers the field and a band of
-%%   MarginWidthM metres around it (default the plot's 5 m), main cells
-%%   being those more than half inside the field (Build_Margin_Field_
-%%   Topology). MarginWidthM 0 is v1.0's whole-field grid, for runs 1 to 3
-%%   only. FieldDEM attaches topography, which switches the 2-D frame's
-%%   OPT_DEM on; CellAgronomicFile gives every cell its own soil
+%%   layout keeps its margin as the plot does, as the field's outer band:
+%%   squares more than half inside the field shrunk by MarginWidthM metres
+%%   (default the plot's 5 m) are main, the rest margin
+%%   (Build_Margin_Field_Topology). All nine runs simulate the same squares;
+%%   MarginWidthM 0 labels every square main, v1.0's whole-field grid, for
+%%   runs 1 to 3 only. FieldDEM attaches topography, which switches the 2-D
+%%   frame's OPT_DEM on; CellAgronomicFile gives every cell its own soil
 %%   (OPT_CELL_INPUTS). Building a grid needs the Mapping Toolbox, so a
 %%   cluster campaign loads one saved by Build_Field_Grid_Topology
 %%   (FieldTopologyFile) and every run uses the identical grid.
@@ -240,9 +241,9 @@ if uses_field_grid && ~R.use_subdomains
         'A field grid is for the sub-field runs 1 to 9; run %d is one column.', ...
         run_id);
 end
-%% Every sub-field layout keeps the plot's margin by default, so the nine
-%% runs share one domain, as they share the 12-column plot; a margin layout
-%% cannot do without one.
+%% Every sub-field layout keeps the plot's margin by default, the field's
+%% outer band, as the 12-column plot keeps its outer 5 m ring for all nine
+%% runs; a margin layout cannot do without one.
 field_margin_m = R.geom.margin_width_m;
 if ~isempty(opt.MarginWidthM); field_margin_m = opt.MarginWidthM; end
 if has_field_shape && field_margin_m == 0 && ~strcmp(R.layout,'whole_field')
@@ -621,8 +622,8 @@ if uses_field_grid
         '%.0f m2 main + %.0f m2 margin (%g m wide)\n'], ...
         topo.N_cells,topo.cell_size_m,topo.grid_rotation_degrees, ...
         sum(field_area(is_main)),sum(field_area(~is_main)),topo.buffer_width_m);
-    fprintf(['Grid: %.0f m2 simulated, %.0f m2 of it outside the domain ' ...
-        'polygon; %.0f m2 of the polygon in dropped squares\n'], ...
+    fprintf(['Grid: %.0f m2 simulated, %.0f m2 of it outside the field; ' ...
+        '%.0f m2 of the field in dropped squares\n'], ...
         sum(topo.cell_area_m2),sum(topo.cell_area_m2)-sum(field_area), ...
         field_missed_m2);
     if OPT_DEM == 1

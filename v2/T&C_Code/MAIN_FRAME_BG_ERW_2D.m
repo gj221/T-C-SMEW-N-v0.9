@@ -1507,8 +1507,12 @@ for i = i_resume:NN
         lateral_diag.surface_mass_out_g(j,:) = ...
             lateral_diag.surface_mass_out_g(j,:) + ...
             sum(exit_cell_g(:,1:N_lateral_species),1);
+        %% The run-on delivered for the next step's re-infiltration, as in
+        %% v1.0: with the outlet export it is every step's runoff exactly
+        %% (the router's own closure), so the two ledgers close the
+        %% overland budget over a run.
         lateral_diag.surface_reinfilt_m3(j) = ...
-            lateral_diag.surface_reinfilt_m3(j) + sum(pond_in_water_mm/1000.*A_cell);
+            lateral_diag.surface_reinfilt_m3(j) + sum((q_deliver_mm/1000).*A_cell);
 
         Pj = P(j,transported,:);
         if any(Pj(:) < -1e-9)
