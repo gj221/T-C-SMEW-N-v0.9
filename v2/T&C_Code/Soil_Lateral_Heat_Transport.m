@@ -144,11 +144,13 @@ incident_G = zeros(N_cells,ms);
 for e = 1:N_edges
     if isfield(topo,'edge_active') && ~topo.edge_active(e); continue; end
     a = topo.edge_a(e); b = topo.edge_b(e);
-    [da,db] = edge_half_distances(topo,e);
+    [da,db,cos_face] = edge_half_distances(topo,e);
     for k = 1:ms
         la = lambda_cell(a,k); lb = lambda_cell(b,k);
         if la <= 0 || lb <= 0; continue; end
-        A_face = topo.edge_face_width_m(e)*Zlayer_m(k);
+        %% Slope-parallel conduction crosses the slope-normal layer
+        %% thickness Zlayer*cos(beta) (cos_face = 1 on a flat graph).
+        A_face = topo.edge_face_width_m(e)*Zlayer_m(k)*cos_face;
         if ~(isfinite(A_face) && A_face > 0)
             error('Soil_Lateral_Heat_Transport:BadGeometry', ...
                 'Every active edge must have positive finite face area.');
@@ -305,8 +307,26 @@ H = cv.*T-rho_i_Lf*Oice;
 
 end
 
-function [da,db] = edge_half_distances(topo,e)
-if isfield(topo,'edge_face_distance_a_m') && ...
+function [da,db,cos_face] = edge_half_distances(topo,e)
+%% Prefer the slope (down-dip) conduction length when topography is
+%% attached (Attach_Topography_To_Topology), then the planar half
+%% distances, then half the centre-to-centre distance.  cos_face =
+%% plan / slope distance = cos(beta) of the face (1 without topography).
+cos_face = 1;
+if isfield(topo,'edge_face_distance_surface_a_m') && ...
+        isfield(topo,'edge_face_distance_surface_b_m')
+    da = topo.edge_face_distance_surface_a_m(e);
+    db = topo.edge_face_distance_surface_b_m(e);
+    %% cos(beta) = plan path / slope path, from the plan distances that
+    %% these slope distances were scaled from, so conductance length and
+    %% face area can never disagree.
+    if isfield(topo,'edge_face_distance_a_m') && isfield(topo,'edge_face_distance_b_m')
+        plan = topo.edge_face_distance_a_m(e)+topo.edge_face_distance_b_m(e);
+    else
+        plan = topo.edge_face_distance_m(e);
+    end
+    cos_face = plan/(da+db);
+elseif isfield(topo,'edge_face_distance_a_m') && ...
         isfield(topo,'edge_face_distance_b_m')
     da = topo.edge_face_distance_a_m(e);
     db = topo.edge_face_distance_b_m(e);
@@ -314,7 +334,11 @@ else
     da = topo.edge_face_distance_m(e)/2;
     db = da;
 end
-if ~(isfinite(da) && isfinite(db) && da > 0 && db > 0)
+%% Mirror Darcy_Lateral_Topology's guard exactly: a degenerate slope distance
+%% would give cos_face = Inf here and only be caught later, on a different
+%% error path, by the in-loop face-area check. Catch it where it is made.
+if ~(isfinite(da) && isfinite(db) && da > 0 && db > 0 && ...
+        isfinite(cos_face) && cos_face > 0 && cos_face <= 1+1e-12)
     error('Soil_Lateral_Heat_Transport:BadGeometry', ...
         'Every active edge must have positive finite half-cell distances.');
 end

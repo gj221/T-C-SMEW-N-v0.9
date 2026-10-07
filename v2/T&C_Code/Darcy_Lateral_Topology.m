@@ -44,20 +44,59 @@ function [Q_edge, dtheta_lat, sub_steps] = Darcy_Lateral_Topology( ...
 %   dtheta_lat    [N_cells x ms] change in theta over dt_h [m3/m3]
 %   sub_steps     number of adaptive sub-steps actually taken
 %
-% Coupling note
-%   On a flat field the elevation head is identical in every cell, so
-%   gravity cancels horizontally and lateral flux is purely
-%   matric-head-driven.  Mass conservation is exact at the finite-volume
-%   level (every face is shared by exactly two cells); the sub-step is
-%   adaptively rescaled to keep theta within [0, Osat] without ever
-%   clipping a volume. Horizontal conductivity is K*aR and ice impedance
-%   is 10^(-5*F_ice), both as in the vertical T&C solver (HYDROLOGIC_UNIT),
-%   so lateral and vertical flow see the same soil.
+% Flux law: the v0.9 finite-volume Darcy exchange plus gravity
+%   This is the v0.9 lateral solver -- a two-point finite-volume
+%   Buckingham-Darcy flux on every shared face, horizontal conductivity
+%   K*aR and ice impedance 10^(-5*F_ice) as in the vertical T&C solver
+%   (HYDROLOGIC_UNIT), so lateral and vertical flow see the same soil --
+%   with one addition: the driving potential is the TOTAL head
+%   H = psi + z (matric head plus elevation; Buckingham 1907, Richards
+%   1931) instead of psi alone.  The elevation term is the nodal drop
+%   z_a - z_b between the two cell centres (topo.edge_dz_m from
+%   Attach_Topography_To_Topology, or cell_z_m): a two-point flux on
+%   cell-centre heads must take both head components at the same nodes,
+%   so that a hydrostatic profile (psi + z uniform) drives no flux.
+%   Because soil layer k sits at the same depth below the surface in both
+%   cells of a face, the elevation difference is the same for every
+%   layer.  On a sloping face the resistance path is the face separation
+%   scaled by 1/cos(beta) and the flux crosses the slope-normal layer
+%   thickness Zlayer*cos(beta).  With no elevation every cell sits at
+%   z = 0, gravity cancels, and the result is bit-identical to v0.9.
+%   This replaces, not supplements, a kinematic (slope-only) lateral
+%   flow: the column's own kinematic Qi_out is switched off in 2-D.
+%   Mass conservation is exact at the finite-volume level (every face is
+%   shared by exactly two cells); the sub-step is adaptively rescaled to
+%   keep theta within [Ohy, Osat-Oice] without ever clipping a volume.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 N_cells = topo.N_cells;
 N_edges = topo.N_edges;
 ms      = numel(Zlayer_m);
+
+%% Per-edge elevation-head drop [mm], from cell a to cell b: the nodal
+%% drop z_a - z_b (Attach_Topography_To_Topology stores it as edge_dz_m;
+%% a topology carrying only cell_z_m gives the same thing).  Absent ->
+%% flat domain -> gravity cancels and the result is bit-identical to the
+%% matric-head-only v0.9 formulation.
+has_z = isfield(topo,'cell_z_m') && ~isempty(topo.cell_z_m);
+if has_z
+    z_m = topo.cell_z_m(:);
+    if numel(z_m) ~= N_cells || any(~isfinite(z_m))
+        error('Darcy_Lateral_Topology:BadElevation', ...
+            'topo.cell_z_m must hold one finite elevation per cell.');
+    end
+end
+if isfield(topo,'edge_dz_m') && ~isempty(topo.edge_dz_m)
+    edge_dz_mm = topo.edge_dz_m(:)*1000;
+    if numel(edge_dz_mm) ~= N_edges || any(~isfinite(edge_dz_mm))
+        error('Darcy_Lateral_Topology:BadElevation', ...
+            'topo.edge_dz_m must hold one finite elevation drop per edge.');
+    end
+elseif has_z
+    edge_dz_mm = (z_m(topo.edge_a(:)) - z_m(topo.edge_b(:)))*1000;
+else
+    edge_dz_mm = zeros(N_edges,1);
+end
 
 if ~(isnumeric(dt_h) && isscalar(dt_h) && isfinite(dt_h) && dt_h > 0)
     error('Darcy_Lateral_Topology:BadTimeStep', ...
@@ -107,7 +146,7 @@ end
 
 %% --- 2. Volume-based nominal sub-step ---------------------------------
 Q_initial = bounded_darcy_flux_rates( ...
-    topo,theta_cell,Zlayer_m,K_cell,h_cell,Ohy_cell,theta_upper);
+    topo,theta_cell,Zlayer_m,K_cell,h_cell,edge_dz_mm,Ohy_cell,theta_upper);
 incident_rate = zeros(N_cells,ms);
 for e = 1:N_edges
     incident_rate(topo.edge_a(e),:) = incident_rate(topo.edge_a(e),:) + abs(Q_initial(e,:));
@@ -127,7 +166,7 @@ dt_sub_h_min = eps*max(dt_h,1);
 while elapsed_h < dt_h * (1 - 1e-12)
     dt_try_h = min(dt_sub_h, dt_h - elapsed_h);
     [Q_step, theta_new, scale] = darcy_step( ...
-        topo, theta_w, Zlayer_m, K_cell, h_cell, dt_try_h, ...
+        topo, theta_w, Zlayer_m, K_cell, h_cell, edge_dz_mm, dt_try_h, ...
         Ohy_cell, theta_upper);
     dt_used_h = dt_try_h * scale;
     if dt_used_h < dt_sub_h_min
@@ -206,7 +245,7 @@ end
 
 %% =======================================================================
 function [Q_step, theta_new, scale] = darcy_step( ...
-    topo, theta, Zlayer_m, K_cell, h_cell, dt_h, theta_lower, theta_upper)
+    topo, theta, Zlayer_m, K_cell, h_cell, edge_dz_mm, dt_h, theta_lower, theta_upper)
 % scale in (0,1] is the fraction of dt_h actually applied.  scale<1 means
 % the candidate fluxes would have pushed a (cell,layer) outside
 % [Ohy, Osat-Oice]; Q_step and dV are rescaled uniformly to land exactly
@@ -217,7 +256,7 @@ N_edges = topo.N_edges;
 ms      = numel(Zlayer_m);
 
 Q_step = bounded_darcy_flux_rates( ...
-    topo,theta,Zlayer_m,K_cell,h_cell,theta_lower,theta_upper);
+    topo,theta,Zlayer_m,K_cell,h_cell,edge_dz_mm,theta_lower,theta_upper);
 
 % Per-cell volumetric in/out over dt_h
 dV_cell = zeros(N_cells, ms);                 % m3
@@ -273,8 +312,8 @@ end
 
 %% =======================================================================
 function Q = bounded_darcy_flux_rates( ...
-    topo,theta,Zlayer_m,K_cell,h_cell,theta_lower,theta_upper)
-Q = darcy_flux_rates(topo,Zlayer_m,K_cell,h_cell);
+    topo,theta,Zlayer_m,K_cell,h_cell,edge_dz_mm,theta_lower,theta_upper)
+Q = darcy_flux_rates(topo,Zlayer_m,K_cell,h_cell,edge_dz_mm);
 bound_tol = 1e-12;
 for e = 1:topo.N_edges
     a = topo.edge_a(e); b = topo.edge_b(e);
@@ -293,7 +332,7 @@ end
 end
 
 %% =======================================================================
-function Q = darcy_flux_rates(topo,Zlayer_m,K_cell,h_cell)
+function Q = darcy_flux_rates(topo,Zlayer_m,K_cell,h_cell,edge_dz_mm)
 N_edges = topo.N_edges;
 ms = numel(Zlayer_m);
 Q = zeros(N_edges,ms);
@@ -303,24 +342,48 @@ for e = 1:N_edges
     end
     a = topo.edge_a(e);
     b = topo.edge_b(e);
+    dz_mm = edge_dz_mm(e);                   % face-normal elevation drop [mm]
     for k = 1:ms
         Ka = K_cell(a,k);
         Kb = K_cell(b,k);
         if Ka <= 0 || Kb <= 0
             continue
         end
-        [da,db] = edge_half_distances(topo,e);
+        [da,db,cos_face] = edge_half_distances(topo,e);
         resistance_h = da/(Ka/1000) + db/(Kb/1000); % h
-        q = ((h_cell(a,k)-h_cell(b,k))/1000) / resistance_h; % m/h
-        A_face = topo.edge_face_width_m(e) * Zlayer_m(k); % m2
+        %% Total hydraulic head H = matric head psi + elevation z [mm].
+        dH_mm = (h_cell(a,k) - h_cell(b,k)) + dz_mm;
+        q = (dH_mm/1000) / resistance_h;      % m/h, along the slope
+        %% The flux runs slope-parallel, so the cross-section it crosses
+        %% is the layer's slope-normal thickness Zlayer*cos(beta) times the
+        %% face width (cos_face = 1 on a flat graph).
+        A_face = topo.edge_face_width_m(e) * Zlayer_m(k) * cos_face; % m2
         Q(e,k) = q * A_face;                  % m3/h
     end
 end
 end
 
 %% =======================================================================
-function [da,db] = edge_half_distances(topo,e)
-if isfield(topo,'edge_face_distance_a_m') && ...
+function [da,db,cos_face] = edge_half_distances(topo,e)
+%% Prefer the slope (down-dip) half-distances when topography is attached,
+%% then the planar half-distances, then half the centre-to-centre distance.
+%% cos_face = plan / slope distance = cos(beta) of the face; exactly 1
+%% whenever the slope distances are absent or the face is level.
+cos_face = 1;
+if isfield(topo,'edge_face_distance_surface_a_m') && ...
+        isfield(topo,'edge_face_distance_surface_b_m')
+    da = topo.edge_face_distance_surface_a_m(e);
+    db = topo.edge_face_distance_surface_b_m(e);
+    %% cos(beta) = plan path / slope path, from the plan distances that
+    %% these slope distances were scaled from, so resistance and face
+    %% area can never disagree.
+    if isfield(topo,'edge_face_distance_a_m') && isfield(topo,'edge_face_distance_b_m')
+        plan = topo.edge_face_distance_a_m(e)+topo.edge_face_distance_b_m(e);
+    else
+        plan = topo.edge_face_distance_m(e);
+    end
+    cos_face = plan/(da+db);
+elseif isfield(topo,'edge_face_distance_a_m') && ...
         isfield(topo,'edge_face_distance_b_m')
     da = topo.edge_face_distance_a_m(e);
     db = topo.edge_face_distance_b_m(e);
@@ -328,7 +391,8 @@ else
     da = topo.edge_face_distance_m(e)/2;
     db = da;
 end
-if ~(isfinite(da) && isfinite(db) && da > 0 && db > 0)
+if ~(isfinite(da) && isfinite(db) && da > 0 && db > 0 && ...
+        isfinite(cos_face) && cos_face > 0 && cos_face <= 1+1e-12)
     error('Darcy_Lateral_Topology:BadGeometry', ...
         'Every active edge must have positive finite half-cell distances.');
 end
