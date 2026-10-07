@@ -1042,15 +1042,18 @@ end
 
 function tag = field_run_tag(topo)
 %% v1.0's field grid tag (shapefile, cell width, polygon, features), with
-%% the margin and the DEM spacing; the coverage rule only when it is not
-%% the majority rule. The shapefile name is cut to 24 characters, since a
+%% the margin and the DEM spacing; the polygon only when the shapefile
+%% holds more than one field, and the coverage rule only when it is not the
+%% majority rule. The shapefile name is cut to 24 characters, since a
 %% result name must stay within 255.
 build = topo.field_grid_build;
 [~,shape_name] = fileparts(build.shapefile);
 shape_name = regexprep(shape_name,'[^A-Za-z0-9]+','_');
 shape_name = shape_name(1:min(end,24));
-tag = sprintf('field_%s__cell%sm__polygon%02d',shape_name, ...
-    number_tag(build.cell_size_m),build.polygon_index);
+tag = sprintf('field_%s__cell%sm',shape_name,number_tag(build.cell_size_m));
+if isfield(topo,'setup_count') && topo.setup_count > 1
+    tag = sprintf('%s__polygon%02d',tag,build.polygon_index);
+end
 if ~isempty(build.feature_indices)
     parts = arrayfun(@(x) sprintf('%d',x),build.feature_indices, ...
         'UniformOutput',false);
