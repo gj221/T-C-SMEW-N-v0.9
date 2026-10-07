@@ -32,6 +32,28 @@ function result_file = Run_One_Subfield(run_id, varargin)
 %%   Run_One_Subfield(2,'ParallelWorkers',6)    % parallel daily ERW columns
 %%   Run_One_Subfield(3,'Scenario','ssp245','LastApplicationYear',2050, ...
 %%       'ResultDirectory',D)                  % rock every November to 2050
+%%   Run_One_Subfield(5,'FieldShapefile',S,'GridCellSizeM',5)
+%%                                             % field grid, 5 m margin
+%%   Run_One_Subfield(5,'FieldShapefile',S,'GridCellSizeM',5,'FieldDEM',D)
+%%                                             % ... with topography
+%%   Run_One_Subfield(5,'FieldTopologyFile',F) % a saved field grid
+%%
+%% FIELD GRIDS (from T&C-SMEW-N v1.0)
+%%   Without a field option runs 1 to 9 use the 12-column plot, exactly as
+%%   before. FieldShapefile replaces it with v1.0's polygon grid on the real
+%%   field: square cells of GridCellSizeM metres, kept under the majority
+%%   rule (FieldMinCoverage, default 'majority'; each square more than half
+%%   inside, on the lattice of least misrepresented area), the width taken
+%%   from the terrain (Run_Topographic_Grid_Convergence). Every sub-field
+%%   layout keeps its margin: the grid covers the field and a band of
+%%   MarginWidthM metres around it (default the plot's 5 m), main cells
+%%   being those more than half inside the field (Build_Margin_Field_
+%%   Topology). MarginWidthM 0 is v1.0's whole-field grid, for runs 1 to 3
+%%   only. FieldDEM attaches topography, which switches the 2-D frame's
+%%   OPT_DEM on; CellAgronomicFile gives every cell its own soil
+%%   (OPT_CELL_INPUTS). Building a grid needs the Mapping Toolbox, so a
+%%   cluster campaign loads one saved by Build_Field_Grid_Topology
+%%   (FieldTopologyFile) and every run uses the identical grid.
 %%
 %% Returns the path of the saved result file.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -44,7 +66,11 @@ opt = struct('NDays',[],'StartDate',[],'GridNx',[],'GridNy',[], ...
     'KNmaxd',[],'Kbot',[],'CECpHSensitivity',[],'ParallelWorkers',[], ...
     'SaveResults',true,'ResultDirectory','','Scenario','', ...
     'CalciteCase',[],'LastApplicationYear',[], ...
-    'BiogeoOverrides',[],'DissolutionFactor',[],'SaturationExponent',[]);
+    'BiogeoOverrides',[],'DissolutionFactor',[],'SaturationExponent',[], ...
+    'FieldShapefile','','GridCellSizeM',[],'FieldMinCoverage',[], ...
+    'FieldFeatureIndices',[],'FieldPolygonIndex',[],'MarginWidthM',[], ...
+    'FieldDEM','','DEMResolutionM',[],'FieldTopologyFile','', ...
+    'CellAgronomicFile','');
 if mod(numel(varargin),2) ~= 0
     error('Run_One_Subfield:BadOptions','Options must be name/value pairs.');
 end
@@ -121,6 +147,73 @@ opt.AppeloLogKH = reshape(opt.AppeloLogKH,1,[]);
 if ~(islogical(opt.SaveResults) && isscalar(opt.SaveResults))
     error('Run_One_Subfield:BadOptions','SaveResults must be scalar logical.');
 end
+%% Field grids (see FIELD GRIDS above).
+opt.FieldShapefile = validate_optional_file_name(opt.FieldShapefile,'FieldShapefile');
+opt.FieldTopologyFile = validate_optional_file_name( ...
+    opt.FieldTopologyFile,'FieldTopologyFile');
+opt.CellAgronomicFile = validate_optional_file_name( ...
+    opt.CellAgronomicFile,'CellAgronomicFile');
+if ~(ischar(opt.FieldDEM) || (isstring(opt.FieldDEM) && isscalar(opt.FieldDEM)))
+    error('Run_One_Subfield:BadOptions', ...
+        'FieldDEM must be a GeoTIFF or a directory of tiles.');
+end
+opt.FieldDEM = char(opt.FieldDEM);
+if ~isempty(opt.FieldDEM) && ~(isfile(opt.FieldDEM) || isfolder(opt.FieldDEM))
+    error('Run_One_Subfield:MissingDEM','FieldDEM does not exist: %s',opt.FieldDEM);
+end
+validate_optional_positive_scalar(opt.GridCellSizeM,'GridCellSizeM');
+validate_optional_nonnegative_scalar(opt.MarginWidthM,'MarginWidthM');
+validate_optional_positive_scalar(opt.DEMResolutionM,'DEMResolutionM');
+validate_optional_index_vector(opt.FieldFeatureIndices,'FieldFeatureIndices');
+validate_optional_integer(opt.FieldPolygonIndex,'FieldPolygonIndex');
+%% FieldMinCoverage: v1.0's coverage rule, 'majority' or a fraction of the
+%% full-cell area below 1 (Build_Projected_Field_Topology). This tree
+%% defaults to the majority rule.
+field_coverage = 'majority';
+if ~isempty(opt.FieldMinCoverage)
+    if (ischar(opt.FieldMinCoverage) || isstring(opt.FieldMinCoverage)) && ...
+            strcmp(char(opt.FieldMinCoverage),'majority')
+        opt.FieldMinCoverage = 'majority';
+    else
+        validate_optional_positive_scalar(opt.FieldMinCoverage,'FieldMinCoverage');
+        if opt.FieldMinCoverage >= 1
+            error('Run_One_Subfield:BadOptions', ...
+                ['FieldMinCoverage is a fraction of full-cell area and must be ' ...
+                 'below 1, or ''majority''.']);
+        end
+    end
+    field_coverage = opt.FieldMinCoverage;
+end
+has_field_shape = ~isempty(opt.FieldShapefile);
+has_field_topology = ~isempty(opt.FieldTopologyFile);
+uses_field_grid = has_field_shape || has_field_topology;
+if has_field_shape && has_field_topology
+    error('Run_One_Subfield:ConflictingFieldGrid', ...
+        'Give FieldShapefile or FieldTopologyFile, not both.');
+end
+%% Without a shapefile these would be ignored by the grid but still name
+%% the result and the checkpoint, so they are refused instead; a saved
+%% grid carries its own.
+if ~has_field_shape && (~isempty(opt.GridCellSizeM) || ...
+        ~isempty(opt.FieldFeatureIndices) || ~isempty(opt.FieldPolygonIndex) || ...
+        ~isempty(opt.FieldDEM) || ~isempty(opt.DEMResolutionM) || ...
+        ~isempty(opt.FieldMinCoverage) || ~isempty(opt.MarginWidthM))
+    error('Run_One_Subfield:IncompleteFieldGrid', ...
+        ['GridCellSizeM, FieldMinCoverage, FieldFeatureIndices, ' ...
+         'FieldPolygonIndex, MarginWidthM, FieldDEM and DEMResolutionM ' ...
+         'require FieldShapefile.']);
+end
+if uses_field_grid && (~isempty(opt.GridNx) || ~isempty(opt.GridNy))
+    error('Run_One_Subfield:ConflictingGridOptions', ...
+        'GridNx and GridNy cannot be combined with a field grid.');
+end
+%% Configure_Cell_Agronomic_Inputs writes each cell's own sand and clay, so
+%% a run-level texture would be overwritten while still naming the result.
+if ~isempty(opt.CellAgronomicFile) && ~isempty(opt.Pcla)
+    error('Run_One_Subfield:ConflictingTexture', ...
+        ['Pcla and Psan set one texture for every column; CellAgronomicFile ' ...
+         'sets texture cell by cell. Supply one or the other.']);
+end
 start_datenum = [];
 if ~isempty(opt.StartDate)
     try
@@ -142,6 +235,20 @@ if ~(isnumeric(run_id) && isscalar(run_id) && isfinite(run_id) && ...
 end
 
 R = RM(run_id);
+if uses_field_grid && ~R.use_subdomains
+    error('Run_One_Subfield:BadFieldLayout', ...
+        'A field grid is for the sub-field runs 1 to 9; run %d is one column.', ...
+        run_id);
+end
+%% Every sub-field layout keeps the plot's margin by default, so the nine
+%% runs share one domain, as they share the 12-column plot; a margin layout
+%% cannot do without one.
+field_margin_m = R.geom.margin_width_m;
+if ~isempty(opt.MarginWidthM); field_margin_m = opt.MarginWidthM; end
+if has_field_shape && field_margin_m == 0 && ~strcmp(R.layout,'whole_field')
+    error('Run_One_Subfield:MarginRequired', ...
+        'The %s layout needs a margin: MarginWidthM must be positive.',R.layout);
+end
 
 %% The calcite application rate lives in the workbook as M_rock_event, so a
 %% second rate is a second ERW row rather than a fourth treatment: the run
@@ -370,13 +477,35 @@ NNd = ceil(NN/24)+1;
 %% ---------------------------------------------------------------------
 g = R.geom;
 nx = g.main_grid_nx; ny = g.main_grid_ny;
-if R.use_subdomains
+if has_field_shape
+    topo = Build_Field_Grid_Topology(opt.FieldShapefile, ...
+        'GridCellSizeM',opt.GridCellSizeM,'CoverageRule',field_coverage, ...
+        'MarginWidthM',field_margin_m, ...
+        'FeatureIndices',opt.FieldFeatureIndices, ...
+        'PolygonIndex',opt.FieldPolygonIndex, ...
+        'FieldDEM',opt.FieldDEM,'DEMResolutionM',opt.DEMResolutionM);
+elseif has_field_topology
+    topo = load_field_grid_topology(opt.FieldTopologyFile);
+elseif R.use_subdomains
     if ~isempty(opt.GridNx); nx = opt.GridNx; end
     if ~isempty(opt.GridNy); ny = opt.GridNy; end
     topo = Build_Cell_Topology(g.field_side_m,g.margin_width_m,nx,ny);
 else
     topo = Build_Single_Cell_Topology(g.field_side_m^2);
 end
+if uses_field_grid
+    nx = topo.main_grid_nx; ny = topo.main_grid_ny;
+    if ~strcmp(R.layout,'whole_field') && all(strcmp(topo.cell_region,'main'))
+        error('Run_One_Subfield:MarginRequired', ...
+            'The %s layout needs a field grid with a margin band.',R.layout);
+    end
+end
+%% The 2-D frame's two field switches follow what this run was given:
+%% topography exactly when the grid carries a DEM, per-cell soils exactly
+%% when a cell table is supplied. Without either the frame is the flat,
+%% uniform frame bit for bit.
+OPT_DEM = double(isfield(topo,'topography_attached') && topo.topography_attached);
+OPT_CELL_INPUTS = double(~isempty(opt.CellAgronomicFile));
 parallel_workers = resolve_parallel_workers(opt.ParallelWorkers,topo.N_cells);
 run_provenance.matlab_version = version;
 run_provenance.matlab_release = version('-release');
@@ -418,6 +547,21 @@ run_provenance.last_application_year = last_application_year;
 run_provenance.biogeo_overrides = opt.BiogeoOverrides;
 run_provenance.dissolution_factor = opt.DissolutionFactor;
 run_provenance.saturation_exponent = saturation_exponent;
+%% Recorded only on a field grid or with per-cell soils, so a plot run's
+%% provenance keeps its field set.
+if uses_field_grid
+    run_provenance.field_grid_build = topo.field_grid_build;
+    run_provenance.field_topology_file = opt.FieldTopologyFile;
+    if has_field_topology
+        run_provenance.field_topology_file_sha256 = file_sha256(opt.FieldTopologyFile);
+    end
+    run_provenance.opt_dem = OPT_DEM;
+end
+if OPT_CELL_INPUTS == 1
+    run_provenance.opt_cell_inputs = OPT_CELL_INPUTS;
+    run_provenance.cell_agronomic_file = opt.CellAgronomicFile;
+    run_provenance.cell_agronomic_file_sha256 = file_sha256(opt.CellAgronomicFile);
+end
 
 base_param = fullfile(Parameter_Directory,[char(MOD_PARAM_input.MOD_PARAM) '.m']);
 is_main = strcmp(topo.cell_region,'main');
@@ -444,7 +588,55 @@ for c = 1:topo.N_cells
         ColCfg(c).ERW_PARAM = ERW_PARAM_control;
     end
 end
-if R.use_subdomains
+%% Per-cell soil (OPT_CELL_INPUTS). Resolve validates the table against
+%% the grid and closes the texture budget; Configure clones each column's
+%% MOD and ERW rows and overwrites PH, Psan, Pcla, Porg and CEC_tot_in.
+%% Unlike v1.0 no per-cell spin-up state is handed over: every cell starts
+%% from the same spin-up pools, with its own soil. The new ColCfg fields
+%% exist only on this path, so ColCfg keeps its shape on every other run.
+if OPT_CELL_INPUTS == 1
+    CellAgronomicInputs = Resolve_Cell_Agronomic_Inputs(topo, ...
+        readtable(opt.CellAgronomicFile,'VariableNamingRule','preserve'));
+    ERW_cell_rows = cell(topo.N_cells,1);
+    for c = 1:topo.N_cells
+        ERW_cell_rows{c} = ColCfg(c).ERW_PARAM;
+    end
+    CellInputs = Configure_Cell_Agronomic_Inputs(MOD_PARAM_input, ...
+        vertcat(ERW_cell_rows{:}),CellAgronomicInputs);
+    for c = 1:topo.N_cells
+        ColCfg(c).MOD_PARAM = CellInputs(c).MOD_PARAM;
+        ColCfg(c).ERW_PARAM = CellInputs(c).ERW_PARAM;
+        ColCfg(c).agronomic_identity = CellInputs(c).agronomic_identity;
+    end
+    fprintf('Cell soil inputs: %d columns from %s\n', ...
+        topo.N_cells,opt.CellAgronomicFile);
+end
+if uses_field_grid
+    field_area = topo.cell_overlap_area_m2(:);
+    field_missed_m2 = 0;
+    if isfield(topo,'field_missed_area_m2')
+        field_missed_m2 = topo.field_missed_area_m2;
+    end
+    fprintf(['Domain: %d columns of %.3g m on a field grid (%.2f deg): ' ...
+        '%.0f m2 main + %.0f m2 margin (%g m wide)\n'], ...
+        topo.N_cells,topo.cell_size_m,topo.grid_rotation_degrees, ...
+        sum(field_area(is_main)),sum(field_area(~is_main)),topo.buffer_width_m);
+    fprintf(['Grid: %.0f m2 simulated, %.0f m2 of it outside the domain ' ...
+        'polygon; %.0f m2 of the polygon in dropped squares\n'], ...
+        sum(topo.cell_area_m2),sum(topo.cell_area_m2)-sum(field_area), ...
+        field_missed_m2);
+    if OPT_DEM == 1
+        fprintf(['Topography: relief %.2f m, slope %.1f-%.1f%% (mean ' ...
+            '%.1f%%), %d outlet cell(s)\n'], ...
+            max(topo.cell_z_m)-min(topo.cell_z_m),100*min(topo.cell_slope), ...
+            100*max(topo.cell_slope),100*mean(topo.cell_slope), ...
+            sum(topo.cell_is_outlet));
+    else
+        fprintf('Topography: none (flat field grid)\n');
+    end
+    fprintf('Rock on: %d main cell(s), %d margin cell(s)\n', ...
+        sum([ColCfg(is_main).apply_rock]),sum([ColCfg(~is_main).apply_rock]));
+elseif R.use_subdomains
     fprintf('Domain: %d columns, %.0f m2 main + %.0f m2 margin (%g m wide)\n', ...
         topo.N_cells,sum(topo.cell_area_m2(is_main)), ...
         sum(topo.cell_area_m2(~is_main)),g.margin_width_m);
@@ -479,6 +671,14 @@ if ~isempty(opt.Scenario)
 end
 if ~isempty(opt.CalciteCase)
     ckpt_tag = sprintf('%s__case%d',ckpt_tag,opt.CalciteCase);
+end
+%% A field-grid run, and a topographic or per-cell-soil one, never shares a
+%% checkpoint or a result file with a plot run or with each other.
+if uses_field_grid
+    ckpt_tag = sprintf('%s__%s',ckpt_tag,field_run_tag(topo));
+end
+if OPT_CELL_INPUTS == 1
+    ckpt_tag = sprintf('%s__%s',ckpt_tag,cell_soil_tag(opt.CellAgronomicFile));
 end
 if ~isempty(opt.CECpHSensitivity)
     ckpt_tag = sprintf('%s__dcec%s',ckpt_tag,number_tag(opt.CECpHSensitivity));
@@ -596,8 +796,13 @@ if opt.SaveResults
     if ~isempty(opt.CalciteCase)
         tag = sprintf('%s__case%d',tag,opt.CalciteCase);
     end
-    if R.use_subdomains && (~isempty(opt.GridNx) || ~isempty(opt.GridNy))
+    if uses_field_grid
+        tag = sprintf('%s__%s',tag,field_run_tag(topo));
+    elseif R.use_subdomains && (~isempty(opt.GridNx) || ~isempty(opt.GridNy))
         tag = sprintf('%s__grid%dx%d',tag,nx,ny);
+    end
+    if OPT_CELL_INPUTS == 1
+        tag = sprintf('%s__%s',tag,cell_soil_tag(opt.CellAgronomicFile));
     end
     if ~isempty(opt.CECpHSensitivity)
         tag = sprintf('%s__dcec%s',tag,number_tag(opt.CECpHSensitivity));
@@ -781,4 +986,103 @@ if isnan(value)
 else
     tag = number_tag(value);
 end
+end
+
+function file_name = validate_optional_file_name(value,name)
+if ~(ischar(value) || (isstring(value) && isscalar(value)))
+    error('Run_One_Subfield:BadOptions', ...
+        '%s must be a character vector or scalar string.',name);
+end
+file_name = char(value);
+if isempty(file_name)
+    return
+end
+if ~isfile(file_name)
+    error('Run_One_Subfield:MissingInputFile', ...
+        '%s does not exist: %s',name,file_name);
+end
+[~,attributes] = fileattrib(file_name);
+file_name = attributes.Name;
+end
+
+function validate_optional_index_vector(value,name)
+if isempty(value); return; end
+if ~(isnumeric(value) && isvector(value) && all(isfinite(value)) && ...
+        all(value == fix(value)) && all(value >= 1) && ...
+        numel(unique(value)) == numel(value))
+    error('Run_One_Subfield:BadOptions', ...
+        '%s must contain unique positive integers.',name);
+end
+end
+
+function topo = load_field_grid_topology(file_name)
+%% A grid saved by Build_Field_Grid_Topology. Its build record names the
+%% result exactly as a run built from the same inputs would be named.
+S = load(file_name,'topo');
+if ~isfield(S,'topo') || ~isstruct(S.topo) || ~isscalar(S.topo)
+    error('Run_One_Subfield:BadFieldTopologyFile', ...
+        '%s holds no topology struct named topo.',file_name);
+end
+topo = S.topo;
+required = {'N_cells','N_edges','edge_a','edge_b','cell_area_m2', ...
+    'cell_overlap_area_m2','cell_region','cell_size_m','main_grid_nx', ...
+    'main_grid_ny','buffer_width_m','grid_rotation_degrees','field_grid_build'};
+missing = required(~isfield(topo,required));
+if ~isempty(missing)
+    error('Run_One_Subfield:BadFieldTopologyFile', ...
+        '%s is not a field grid (missing %s); build it with Build_Field_Grid_Topology.', ...
+        file_name,strjoin(missing,', '));
+end
+if topo.N_cells < 2
+    error('Run_One_Subfield:BadFieldTopologyFile', ...
+        '%s holds a one-cell grid; a sub-field run needs a lateral graph.',file_name);
+end
+end
+
+function tag = field_run_tag(topo)
+%% v1.0's field grid tag (shapefile, cell width, polygon, features), with
+%% the margin and the DEM spacing; the coverage rule only when it is not
+%% the majority rule. The shapefile name is cut to 24 characters, since a
+%% result name must stay within 255.
+build = topo.field_grid_build;
+[~,shape_name] = fileparts(build.shapefile);
+shape_name = regexprep(shape_name,'[^A-Za-z0-9]+','_');
+shape_name = shape_name(1:min(end,24));
+tag = sprintf('field_%s__cell%sm__polygon%02d',shape_name, ...
+    number_tag(build.cell_size_m),build.polygon_index);
+if ~isempty(build.feature_indices)
+    parts = arrayfun(@(x) sprintf('%d',x),build.feature_indices, ...
+        'UniformOutput',false);
+    tag = sprintf('%s__features%s',tag,strjoin(parts,'_'));
+end
+if build.margin_width_m > 0
+    tag = sprintf('%s__margin%s',tag,number_tag(build.margin_width_m));
+end
+if ~isempty(build.dem_files)
+    tag = sprintf('%s__dem%s',tag,number_tag(build.dem_resolution_m));
+end
+if ~(ischar(build.coverage_rule) && strcmp(build.coverage_rule,'majority'))
+    tag = sprintf('%s__cov%s',tag,strrep(sprintf('%g',build.coverage_rule),'.','p'));
+end
+end
+
+function tag = cell_soil_tag(file_name)
+hex = file_sha256(file_name);
+tag = ['cellsoil_' hex(1:12)];
+end
+
+function hex = file_sha256(file_name)
+fid = fopen(file_name,'rb');
+if fid < 0
+    error('Run_One_Subfield:FileRead','Cannot read %s',file_name);
+end
+md = javaMethod('getInstance','java.security.MessageDigest','SHA-256');
+while true
+    bytes = fread(fid,64*2^20,'*uint8');
+    if isempty(bytes); break; end
+    md.update(typecast(bytes,'int8'));
+end
+fclose(fid);
+raw = typecast(md.digest(),'uint8');
+hex = lower(reshape(dec2hex(raw,2).',1,[]));
 end

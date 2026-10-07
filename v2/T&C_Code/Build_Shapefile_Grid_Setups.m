@@ -1,16 +1,31 @@
 function setups = Build_Shapefile_Grid_Setups( ...
-        shape_file,cell_size_m,feature_indices,coverage_rule)
+        shape_file,cell_size_m,feature_indices,coverage_rule,margin_width_m)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Build one independent full-grid setup per connected polygon region.
 %% coverage_rule: a fraction (default 0.95) or 'majority'
 %% (Build_Projected_Field_Topology).
+%% margin_width_m (this tree, not v1.0): a positive width grids each region
+%% with a margin band around it (Build_Margin_Field_Topology, majority rule
+%% only); 0 or empty is v1.0's field grid unchanged.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if nargin < 2; cell_size_m = []; end
 if nargin < 3; feature_indices = []; end
 if nargin < 4; coverage_rule = []; end
+if nargin < 5 || isempty(margin_width_m); margin_width_m = 0; end
+if ~(isnumeric(margin_width_m) && isscalar(margin_width_m) && ...
+        isfinite(margin_width_m) && margin_width_m >= 0)
+    error('Build_Shapefile_Grid_Setups:BadMargin', ...
+        'margin_width_m must be a finite nonnegative width in metres.');
+end
+if margin_width_m > 0 && ~((ischar(coverage_rule) || ...
+        (isstring(coverage_rule) && isscalar(coverage_rule))) && ...
+        strcmp(char(coverage_rule),'majority'))
+    error('Build_Shapefile_Grid_Setups:MarginNeedsMajority', ...
+        'A margin band is gridded under the majority rule only.');
+end
 cache_key = setup_cache_key(shape_file,cell_size_m,feature_indices, ...
-    coverage_rule);
+    coverage_rule,margin_width_m);
 persistent cache_keys cache_values
 if ~isempty(cache_keys)
     cache_index = find(strcmp(cache_keys,cache_key),1);
@@ -33,9 +48,15 @@ sort_key = zeros(numel(field_regions),3);
 for k = 1:numel(field_regions)
     region = field_regions{k};
     source_feature_indices = region_feature_indices{k};
-    setup_cell{k} = Build_Projected_Field_Topology( ...
-        region,cell_size_m,metadata,source_feature_indices, ...
-        coverage_rule);
+    if margin_width_m > 0
+        setup_cell{k} = Build_Margin_Field_Topology( ...
+            region,cell_size_m,metadata,source_feature_indices, ...
+            margin_width_m);
+    else
+        setup_cell{k} = Build_Projected_Field_Topology( ...
+            region,cell_size_m,metadata,source_feature_indices, ...
+            coverage_rule);
+    end
     [center_x,center_y] = centroid(region);
     sort_key(k,:) = [min(source_feature_indices) center_x center_y];
 end
@@ -56,14 +77,14 @@ end
 end
 
 function key = setup_cache_key(shape_file,cell_size_m,feature_indices, ...
-    coverage_rule)
+    coverage_rule,margin_width_m)
 [shape_directory,shape_name] = fileparts(shape_file);
 components = cellfun(@(extension) fullfile(shape_directory, ...
     [shape_name extension]),{'.shp','.shx','.dbf','.prj'}, ...
     'UniformOutput',false);
-runtime_identity = sprintf('cell_size=%s;features=%s;coverage=%s', ...
+runtime_identity = sprintf('cell_size=%s;features=%s;coverage=%s;margin=%s', ...
     mat2str(cell_size_m,17),mat2str(feature_indices,17), ...
-    mat2str(coverage_rule,17));
+    mat2str(coverage_rule,17),mat2str(margin_width_m,17));
 key = ERW_Checkpoint_Fingerprint(0,0,runtime_identity,components{:});
 end
 
