@@ -55,3 +55,16 @@ The controller submits one validation element (`day`, twelve CPUs, 96 GB, 4 h: t
 * Slurm output: `runtime/Field_2D/slurm_<array job>_<element>.out|err`.
 
 Compare with `Base_2D`: the same run on the 12-column plot. A flat grid of the same field (no `FieldDEM`) separates the effect of the grid from that of the topography.
+
+## Figures
+
+`v2/plotting` maps any result cell by cell (no display needed; PNG, FIG, CSV and MAT go to `v2/figures/field_maps/<result>`):
+
+```bash
+matlab -batch "addpath('v2/plotting'); f = '<result>.mat'; \
+  Plot_Field_Layout(f,'Visible','off'); \
+  Plot_Field_Maps(f,'Variables',{'N2O','NO3_leaching','NEE','pH_bulk','lateral_water'},'Interval','year','Visible','off'); \
+  Plot_Field_Maps(f,'Variables',{'N2O','pH_bulk'},'Interval','season','Reference','<control result>.mat','Visible','off')"
+```
+
+`Plot_Field_Layout` draws the squares, the margin band, the vegetation and feedstock of each square and, on a DEM grid, elevation with contours, the overland flow paths, the outlets, slope and wetness index. `Plot_Field_Maps` draws the chosen variables (`Field_Cell_Variables('list')`) per year, growing season, season, month, week, day, N-day block, date range or snapshot date, with the field-mean series above the maps, optionally as the difference from another run on the same grid or as a GIF.
