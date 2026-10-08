@@ -483,6 +483,9 @@ hist = E.hist;
 day = ERW_Particle_History('open',hist,max(dm_start,2)+g0-1,max(0,dm_end-max(dm_start,2)+1));
 bulk_pH_params_2d = cst.bulk_pH_params;
 bulk_pH_params_2d.suppress_no_converge_warning = true;
+%% The frame keeps no ERW_data (ERW_function's first output), so under
+%% TC_ERW_KERNEL=fast or mex the step does not build it.
+bulk_pH_params_2d.skip_erw_data = true;
 erw_window_days = (dm_end-max(dm_start,2)+1)*dtw;
 d_erw = ERW_Normalize_TC_Daily_Deltas( ...
     [dCa; dMg; dK; dSi; dPO4; dNO3; dNH4],erw_window_days);

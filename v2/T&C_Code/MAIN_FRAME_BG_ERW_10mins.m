@@ -1014,6 +1014,9 @@ for i=2:NN
                 rock_app = sum(ERW_TC_const.M_rock_add(1:dt_m)>0);
                 bulk_pH_params_erw = ERW_const.bulk_pH_params;
                 bulk_pH_params_erw.suppress_no_converge_warning = true;
+                %% ERW_data_ittn is never read, so under TC_ERW_KERNEL=fast
+                %% or mex the step does not build it.
+                bulk_pH_params_erw.skip_erw_data = true;
 
               [ERW_data_ittn, ERW_TC_ittn, ERW_biogeochem_ittn, ERW_weathering_ittn, ERW_plant_ittn, ERW_var_ittn, ERW_const_ittn]=...
                 ERW_function(...

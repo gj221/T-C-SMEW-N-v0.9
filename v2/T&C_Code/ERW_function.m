@@ -810,9 +810,28 @@ H_anchor = H0;
 % root inside the physical pH interval is required.
 pH_scan = linspace(1e-8,14-1e-8,281);
 H_scan = 10.^(-pH_scan) * conv_mol;
-R_scan = nan(size(H_scan));
-for ii = 1:numel(H_scan)
-    R_scan(ii) = charge_res_fn(H_scan(ii));
+%%% The 'fast' and 'mex' kernels (ERW_Chemistry_Kernel_Mode) evaluate
+%%% charge_res_fn's expression at the same points in the same order and
+%%% return the scan and the bisection's final variables bit for bit, so
+%%% everything below, ERW_data included, is unchanged.  The mode is read
+%%% where it is used, so the default path adds no variable to ERW_data.
+switch ERW_Chemistry_Kernel_Mode(bulk_pH_params)
+    case 'matlab'
+        R_scan = nan(size(H_scan));
+        for ii = 1:numel(H_scan)
+            R_scan(ii) = charge_res_fn(H_scan(ii));
+        end
+    case 'fast'
+        %% lo_r, iter, mid_H, R_mid and ii are read only by ERW_data's who().
+        [R_scan,lo_H,hi_H,lo_r,iter,mid_H,R_mid] = ERW_Charge_Root_Kernel( ...
+            H_scan,k1,k2,k_w,CO2_w0,Alk_tot,R_alk0,soil_water_l,Al_w0, ...
+            Al_CEC_scale,K1,K2,K3,K4); %#ok<ASGLU>
+        ii = numel(H_scan); %#ok<NASGU>
+    case 'mex'
+        [R_scan,lo_H,hi_H,lo_r,iter,mid_H,R_mid] = ERW_Charge_Root_Kernel_mex( ...
+            H_scan,k1,k2,k_w,CO2_w0,Alk_tot,R_alk0,soil_water_l,Al_w0, ...
+            Al_CEC_scale,K1,K2,K3,K4); %#ok<ASGLU>
+        ii = numel(H_scan); %#ok<NASGU>
 end
 valid_scan = isfinite(R_scan);
 sign_change = find(valid_scan(1:end-1) & valid_scan(2:end) & ...
@@ -820,6 +839,7 @@ sign_change = find(valid_scan(1:end-1) & valid_scan(2:end) & ...
 sign_change = sign_change([true,diff(sign_change) > 1]);
 
 if numel(sign_change) == 1
+    if strcmp(ERW_Chemistry_Kernel_Mode(bulk_pH_params),'matlab')
     lo_H = H_scan(sign_change);
     hi_H = H_scan(sign_change+1);
     % Refine with bisection (bracketed, guaranteed convergent)
@@ -837,6 +857,7 @@ if numel(sign_change) == 1
         else
             hi_H = mid_H;
         end
+    end
     end
     H_robust = 0.5*(lo_H + hi_H);
     H0_2 = H_robust;
@@ -953,10 +974,24 @@ if scheme_is_appelo && al_pin
     gas_exchange = [D/Z_CO2*1000,CO2_atm,dtw];
     finite_al = struct('Al_tot',Al_tot,'Al_CEC_scale',Al_CEC_scale, ...
         'K_AlOH3',K_AlOH3,'K1',K1,'K2',K2,'K3',K3,'K4',K4);
+    %%% Under 'fast' or 'mex' the same solve runs through
+    %%% ERW_Appelo_Seed_Kernel, which returns this state bit for bit; it
+    %%% takes al3_fn as the constants of al3_pin_fn and needs the constant
+    %%% exchanger capacity, the only one Appelo admits.
+    if strcmp(ERW_Chemistry_Kernel_Mode(bulk_pH_params),'matlab') || ...
+            cec_is_pH_dependent
     reduced = ERW_Appelo_Mass_Conserving_State(Alk_tot,IC_tot, ...
         [Ca_tot,Mg_tot,K_tot,Na_tot],soil_water_l,n*Zrw*1000,s, ...
         carbonate,CEC_tot,appelo,gas_exchange, ...
         @(Hp) al3_pin_fn(Hp)/Al_CEC_scale,H_anchor,finite_al,CEC_at_H);
+    else
+    reduced = ERW_Appelo_Seed(ERW_Chemistry_Kernel_Mode(bulk_pH_params), ...
+        Alk_tot,IC_tot, ...
+        [Ca_tot,Mg_tot,K_tot,Na_tot],soil_water_l,n*Zrw*1000,s, ...
+        carbonate,CEC_tot,appelo,gas_exchange, ...
+        @(Hp) al3_pin_fn(Hp)/Al_CEC_scale,H_anchor,finite_al,CEC_at_H, ...
+        K_AlOH3,Al_CEC_scale);
+    end
     if reduced.is_valid
         Al_den_reduced = reduced.H^4+reduced.H^3*K1+reduced.H^2*K1*K2+ ...
             reduced.H*K1*K2*K3+K1*K2*K3*K4;
@@ -1366,10 +1401,22 @@ end
 %% save variables
 % save vairables at current time step
 ERW_data = struct();
+%%% One eval per variable costs about a third of the step.  'fast' and 'mex'
+%%% read every variable in one eval and build the same struct, field for
+%%% field, its own partial copy in ERW_data.ERW_data included
+%%% (erw_workspace_struct), and build nothing for a caller that keeps no
+%%% ERW_data (bulk_pH_params.skip_erw_data, set by both frames).
+if strcmp(ERW_Chemistry_Kernel_Mode(bulk_pH_params),'matlab')
 vars = who();
 
 for ind_vars =1:length(vars)
     ERW_data.(vars{ind_vars})=eval(vars{ind_vars});
+end
+elseif ~(isfield(bulk_pH_params,'skip_erw_data') && ...
+        isequal(bulk_pH_params.skip_erw_data,true))
+    vars = who();
+    erw_data_values = eval(['{' sprintf('%s;',vars{:}) '}']);
+    ERW_data = erw_workspace_struct(vars,erw_data_values);
 end
 
 % could group variables by:
@@ -2033,6 +2080,22 @@ function [W_CaCO3,W_MgCO3] = carb_W(CaCO3,MgCO3,Omega_CaCO3,Omega_MgCO3,s,Zrw,r_
         W_MgCO3 = r_MgCO3*Zrw.*(1-Omega_MgCO3); % precipitation
     end
 
+end
+
+function S = erw_workspace_struct(names,values)
+%%% The struct ERW_function_at_I's field-by-field loop builds from who():
+%%% the fields in names' order with values' entries.  The loop meets
+%%% ERW_data itself on its way, and stores the struct built so far, so
+%%% that entry is the struct of the fields before it.
+self = find(strcmp(names,'ERW_data'),1);
+if ~isempty(self)
+    partial = struct();
+    for k = 1:self-1
+        partial.(names{k}) = values{k};
+    end
+    values{self} = partial;
+end
+S = cell2struct(values,names,1);
 end
 
 function I = ERW_Incoming_Ionic_Strength(Ca_tot,Mg_tot,K_tot,Na_tot,An_tot, ...

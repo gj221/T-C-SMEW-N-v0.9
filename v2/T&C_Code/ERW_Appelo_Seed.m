@@ -1,0 +1,43 @@
+function state = ERW_Appelo_Seed(mode,Alk_tot,IC_tot,cation_tot, ...
+    soil_water_l,bulk_volume_l,s,carbonate,CEC_tot,appelo,gas,al3_fn, ...
+    H_anchor,finite_al,cec_fn,al3_K_AlOH3,al3_Al_CEC_scale)
+%%% ERW_Appelo_Mass_Conserving_State through the kernel the run selected.
+%%%
+%%% The arguments are ERW_Appelo_Mass_Conserving_State's, followed by the
+%%% two constants of ERW_function's al3_fn (the conditioned K_AlOH3 and
+%%% Al_CEC_scale of al3_pin_fn).  'fast' runs ERW_Appelo_Seed_Kernel in
+%%% MATLAB and 'mex' its compiled form; both return the original's state
+%%% bit for bit.  Where the original stops with an error (a scan with no
+%%% sign change) the original runs, so the error is its own.  The kernel
+%%% assumes ERW_function's forms of the inputs: a constant exchanger
+%%% capacity (cec_fn(H) = CEC_tot) and the Al(OH)3 pin al3_fn; any other
+%%% call goes to the original.
+
+if ~(ischar(mode) && any(strcmp(mode,{'fast','mex'}))) || ...
+        numel(carbonate) ~= 5 || ~isstruct(finite_al) || ~isscalar(finite_al) || ...
+        ~all(isfield(finite_al,{'Al_tot','Al_CEC_scale','K_AlOH3','K1','K2','K3','K4'}))
+    state = ERW_Appelo_Mass_Conserving_State(Alk_tot,IC_tot,cation_tot, ...
+        soil_water_l,bulk_volume_l,s,carbonate,CEC_tot,appelo,gas,al3_fn, ...
+        H_anchor,finite_al,cec_fn);
+    return
+end
+conv_mol = carbonate(5);
+pH_scan = [1e-8:0.25:13.75,14-1e-8];
+H_scan = 10.^(-pH_scan)*conv_mol;
+finite_al_vec = [finite_al.Al_tot,finite_al.Al_CEC_scale,finite_al.K_AlOH3, ...
+    finite_al.K1,finite_al.K2,finite_al.K3,finite_al.K4];
+if strcmp(mode,'mex')
+    [state,status] = ERW_Appelo_Seed_Kernel_mex(H_scan,Alk_tot,IC_tot, ...
+        cation_tot,soil_water_l,bulk_volume_l,s,carbonate,CEC_tot,appelo,gas, ...
+        al3_K_AlOH3,al3_Al_CEC_scale,finite_al_vec,true);
+else
+    [state,status] = ERW_Appelo_Seed_Kernel(H_scan,Alk_tot,IC_tot, ...
+        cation_tot,soil_water_l,bulk_volume_l,s,carbonate,CEC_tot,appelo,gas, ...
+        al3_K_AlOH3,al3_Al_CEC_scale,finite_al_vec,true);
+end
+if status == 0
+    state = ERW_Appelo_Mass_Conserving_State(Alk_tot,IC_tot,cation_tot, ...
+        soil_water_l,bulk_volume_l,s,carbonate,CEC_tot,appelo,gas,al3_fn, ...
+        H_anchor,finite_al,cec_fn);
+end
+end
