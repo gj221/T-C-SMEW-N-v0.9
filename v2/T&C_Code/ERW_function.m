@@ -1767,10 +1767,17 @@ end
 %% dominant per-step cost.  The relaxed tolerances are still orders of
 %% magnitude below the gate, and any candidate that stalls above the gate
 %% falls through the unchanged x0_alt / capped-fallback / error chain.
-opts_trr = optimoptions('lsqnonlin','Display','off','Algorithm','trust-region-reflective', ...
-    'FunctionTolerance', 1e-10, 'StepTolerance', 1e-10, ...
-    'OptimalityTolerance', 1e-10, 'MaxIterations', 200, ...
-    'MaxFunctionEvaluations', 100000);
+%% The options never change, so they are built once per MATLAB process
+%% (once per thread worker) instead of on every call: optimoptions costs
+%% about as much as a short solve, and this runs at every 10-minute step.
+persistent opts_trr_cached
+if isempty(opts_trr_cached)
+    opts_trr_cached = optimoptions('lsqnonlin','Display','off','Algorithm','trust-region-reflective', ...
+        'FunctionTolerance', 1e-10, 'StepTolerance', 1e-10, ...
+        'OptimalityTolerance', 1e-10, 'MaxIterations', 200, ...
+        'MaxFunctionEvaluations', 100000);
+end
+opts_trr = opts_trr_cached;
 % Single TR-R lsqnonlin attempt (standard RTM practice)
 try
     sol_try = lsqnonlin(eq_scaled, min(max(real(x0), lb), ub), lb, ub, opts_trr);

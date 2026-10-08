@@ -25,13 +25,25 @@ end
 
 cec_per_L = CEC_tot/soil_water_l;
 X = cation_tot(:).'/soil_water_l;             %% Ca Mg K Na [umol L-1]
+%% Terms that depend on H alone are evaluated once, before the bisection,
+%% with the expressions the site-sum evaluation used inside it; only rho
+%% changes from one trial f_H to the next.
+H_terms = [];
+if ~isempty(finite_al)
+    H_terms.Al_factor = 1 + finite_al.K1/H + finite_al.K1*finite_al.K2/H^2 + ...
+        finite_al.K1*finite_al.K2*finite_al.K3/H^3 + ...
+        finite_al.K1*finite_al.K2*finite_al.K3*finite_al.K4/H^4;
+    H_terms.Al3_sat_scaled = 10^(finite_al.K_AlOH3-12)*H^3*finite_al.Al_CEC_scale;
+end
 lo = 0;
 hi = 1;
 for ii = 1:60
     fh = 0.5*(lo+hi);
-    [gap,f_try,c_try,Al3_try,solid_try,residual_try] = ...
-        local_site_gap(fh,H,X,Al3,cec_per_L,CEC_tot,soil_water_l, ...
-        alpha,K_Na_H,K_K_H,K_Ca_H2,K_Mg_H2,K_Al_H3,finite_al); %#ok<ASGLU>
+    %% The bisection reads only the site sum. The finite-Al equilibrium
+    %% (dissolved Al3+, solid and inventory residual) does not enter it and
+    %% is evaluated once, at the converged f_H below.
+    gap = local_site_gap(fh,H,X,Al3,cec_per_L,CEC_tot,soil_water_l, ...
+        alpha,K_Na_H,K_K_H,K_Ca_H2,K_Mg_H2,K_Al_H3,finite_al,H_terms,false);
     if ~isfinite(gap)
         return
     elseif gap > 0
@@ -43,7 +55,7 @@ end
 
 [gap,f_vec,conc_vec,Al3,AlOH3_solid,Al_residual] = ...
     local_site_gap(0.5*(lo+hi),H,X,Al3,cec_per_L,CEC_tot,soil_water_l, ...
-    alpha,K_Na_H,K_K_H,K_Ca_H2,K_Mg_H2,K_Al_H3,finite_al);
+    alpha,K_Na_H,K_K_H,K_Ca_H2,K_Mg_H2,K_Al_H3,finite_al,H_terms,true);
 if ~isfinite(gap) || abs(gap) > 1e-12
     f_vec(:) = NaN;
     conc_vec(:) = NaN;
@@ -52,7 +64,7 @@ end
 
 function [gap,f_vec,conc_vec,Al3,AlOH3_solid,Al_residual] = ...
     local_site_gap(fh,H,X,Al3,cec_per_L,CEC_tot,soil_water_l,alpha, ...
-    K_Na_H,K_K_H,K_Ca_H2,K_Mg_H2,K_Al_H3,finite_al)
+    K_Na_H,K_K_H,K_Ca_H2,K_Mg_H2,K_Al_H3,finite_al,H_terms,with_equilibrium)
 
 rho = (fh/H)*10^(alpha*fh);
 A = [K_Ca_H2*rho^2,K_Mg_H2*rho^2,K_K_H*rho,K_Na_H*rho];
@@ -65,19 +77,19 @@ if isempty(finite_al)
     Al_residual = 0;
 else
     [f_Al,Al3,AlOH3_solid,Al_residual] = ...
-        local_finite_al(H,rho,CEC_tot,soil_water_l,K_Al_H3,finite_al);
+        local_finite_al(H,rho,CEC_tot,soil_water_l,K_Al_H3,finite_al, ...
+        H_terms,with_equilibrium);
 end
 f_vec = [f4,f_Al,fh];
 gap = sum(f_vec)-1;
 end
 
 function [f_Al,Al3,AlOH3_solid,Al_residual] = ...
-    local_finite_al(H,rho,CEC_tot,soil_water_l,K_Al_H3,finite_al)
+    local_finite_al(H,rho,CEC_tot,soil_water_l,K_Al_H3,finite_al, ...
+    H_terms,with_equilibrium)
 
-Al_factor = 1 + finite_al.K1/H + finite_al.K1*finite_al.K2/H^2 + ...
-    finite_al.K1*finite_al.K2*finite_al.K3/H^3 + ...
-    finite_al.K1*finite_al.K2*finite_al.K3*finite_al.K4/H^4;
-Al3_sat_scaled = 10^(finite_al.K_AlOH3-12)*H^3*finite_al.Al_CEC_scale;
+Al_factor = H_terms.Al_factor;
+Al3_sat_scaled = H_terms.Al3_sat_scaled;
 exchange_factor = K_Al_H3*rho^3;
 f_sat = exchange_factor*Al3_sat_scaled/finite_al.Al_CEC_scale;
 Al_sat = Al3_sat_scaled*Al_factor*soil_water_l + ...
@@ -89,6 +101,12 @@ elseif isfinite(Al_sat) && Al_sat <= finite_al.Al_tot
 else
     f_Al = finite_al.Al_tot/(finite_al.Al_CEC_scale*Al_factor* ...
         soil_water_l/exchange_factor + CEC_tot*finite_al.Al_CEC_scale/3);
+end
+if ~with_equilibrium
+    Al3 = NaN;
+    AlOH3_solid = NaN;
+    Al_residual = NaN;
+    return
 end
 [Al3_scaled,AlOH3_solid,Al_residual] = ERW_Al_Equilibrium_Target( ...
     H,f_Al,finite_al.Al_tot,soil_water_l,CEC_tot, ...

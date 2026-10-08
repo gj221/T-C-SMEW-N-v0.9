@@ -839,7 +839,17 @@ if opt.SaveResults
     result_file = fullfile(fl_save,sprintf('TC_2D_run%02d_%s.mat',R.id,tag));
     tmp_result = [tempname(fl_save) '.mat'];
     try
-        save(tmp_result,'-v7.3');
+        if FULL_RECORDS
+            save(tmp_result,'-v7.3');
+        else
+            %% A daily-store result (package y): the stores, the hourly field
+            %% means, the final state and the run's inputs and metadata. The
+            %% hourly windows and the daily arrays outside the stores are in
+            %% Final_state, in order; under their own names a reader would
+            %% take a window for the whole run.
+            result_vars = setdiff(who,[{'cleanup'} HOURLY_NAMES DAILY_STATE_ONLY]);
+            save(tmp_result,result_vars{:},'-v7.3');
+        end
         movefile(tmp_result,result_file,'f');
     catch ME
         if isfile(tmp_result); delete(tmp_result); end

@@ -8,7 +8,7 @@
 function [ERW_biogeochem,ERW_plant,ERW_weathering,ERW_const,ERW_var, ERW_biogeochem_varnames,ERW_weathering_varnames,ERW_plant_varnames,ERW_const_varnames,ERW_var_varnames,ERW_all] = ...
     ERW_MOD_PARAM_excel...
     (t_input, TT_m_input,ERW_TC_const_input, ERW_biogeochem_input,...
-    excel_input,opt_ERW_preprocessing)
+    excel_input,opt_ERW_preprocessing,n_alloc_input)
 
 t = t_input;
 if numel(t) > 1
@@ -20,6 +20,18 @@ else
 end
 if ~(isfinite(dtw_init) && dtw_init > 0)
     error('ERW_MOD_PARAM_excel:badTime', 'ERW time step must be finite and positive.');
+end
+%% Rows preallocated for the state records: the whole ERW grid unless the
+%% caller asks for fewer. The 2-D daily-block layout asks for two, keeps
+%% row 1 as the initial state and reads row 2 as the value an unwritten row
+%% holds. Only row 1 is computed here, so the length changes no value.
+n_alloc = numel(t);
+if nargin >= 7 && ~isempty(n_alloc_input)
+    n_alloc = n_alloc_input;
+end
+if ~(isscalar(n_alloc) && n_alloc == fix(n_alloc) && n_alloc >= 1 && n_alloc <= numel(t))
+    error('ERW_MOD_PARAM_excel:badAllocation', ...
+        'The number of preallocated ERW rows must be a whole number between 1 and the grid length.');
 end
 
 % excel_input.opt_TC_biochem: 
@@ -35,128 +47,128 @@ end
     % 0 = no addition.
 
 %% Preallocating the variables
-pH = zeros(length(t), 1);
-H = zeros(length(t), 1);
-D = zeros(length(t), 1);
-Dw = zeros(length(t), 1);
+pH = zeros(n_alloc, 1);
+H = zeros(n_alloc, 1);
+D = zeros(n_alloc, 1);
+Dw = zeros(n_alloc, 1);
 
-Ca_tot = zeros(length(t), 1);
-Ca = zeros(length(t), 1);
-UP_Ca = zeros(length(t), 1);
+Ca_tot = zeros(n_alloc, 1);
+Ca = zeros(n_alloc, 1);
+UP_Ca = zeros(n_alloc, 1);
 
-Omega_CaCO3 = zeros(length(t), 1);
-CaCO3 = zeros(length(t), 1);
-W_CaCO3 = zeros(length(t), 1);
-W_CaCO3_rock = zeros(length(t), 1);
+Omega_CaCO3 = zeros(n_alloc, 1);
+CaCO3 = zeros(n_alloc, 1);
+W_CaCO3 = zeros(n_alloc, 1);
+W_CaCO3_rock = zeros(n_alloc, 1);
 
-Mg_tot = zeros(length(t), 1);
-Mg = zeros(length(t), 1);
-UP_Mg = zeros(length(t), 1);
+Mg_tot = zeros(n_alloc, 1);
+Mg = zeros(n_alloc, 1);
+UP_Mg = zeros(n_alloc, 1);
 
-Omega_MgCO3 = zeros(length(t), 1);
-MgCO3 = zeros(length(t), 1);
-W_MgCO3 = zeros(length(t), 1);
+Omega_MgCO3 = zeros(n_alloc, 1);
+MgCO3 = zeros(n_alloc, 1);
+W_MgCO3 = zeros(n_alloc, 1);
 
-K_tot = zeros(length(t), 1);
-UP_K = zeros(length(t), 1);
+K_tot = zeros(n_alloc, 1);
+UP_K = zeros(n_alloc, 1);
 
-Na_tot = zeros(length(t), 1);
-Na = zeros(length(t), 1);
+Na_tot = zeros(n_alloc, 1);
+Na = zeros(n_alloc, 1);
 
-Si = zeros(length(t), 1);
-Si_tot = zeros(length(t), 1);
-UP_Si = zeros(length(t), 1);
+Si = zeros(n_alloc, 1);
+Si_tot = zeros(n_alloc, 1);
+UP_Si = zeros(n_alloc, 1);
 
-PO4 = zeros(length(t), 1);
-PO4_tot = zeros(length(t), 1);
-P_weathering_release = zeros(length(t), 1);
+PO4 = zeros(n_alloc, 1);
+PO4_tot = zeros(n_alloc, 1);
+P_weathering_release = zeros(n_alloc, 1);
 
-NO3 = zeros(length(t), 1);
-NO3_tot = zeros(length(t), 1);
+NO3 = zeros(n_alloc, 1);
+NO3_tot = zeros(n_alloc, 1);
 
-NH4 = zeros(length(t), 1);
-NH4_tot = zeros(length(t), 1);
+NH4 = zeros(n_alloc, 1);
+NH4_tot = zeros(n_alloc, 1);
 
-K = zeros(length(t), 1);
+K = zeros(n_alloc, 1);
 
-An = zeros(length(t), 1);
-An_tot = zeros(length(t), 1);
-R_alk = zeros(length(t), 1);
-Alk_tot = zeros(length(t), 1);
-Alk = zeros(length(t), 1);
+An = zeros(n_alloc, 1);
+An_tot = zeros(n_alloc, 1);
+R_alk = zeros(n_alloc, 1);
+Alk_tot = zeros(n_alloc, 1);
+Alk = zeros(n_alloc, 1);
 
-CO2_air = zeros(length(t), 1);
-IC_tot = zeros(length(t), 1);
-CO2_w = zeros(length(t), 1);
-HCO3 = zeros(length(t), 1);
-CO3 = zeros(length(t), 1);
-DIC = zeros(length(t), 1);
-Fs = zeros(length(t), 1);
-ADV = zeros(length(t), 1);
-DIC_rain = zeros(length(t), 1);
+CO2_air = zeros(n_alloc, 1);
+IC_tot = zeros(n_alloc, 1);
+CO2_w = zeros(n_alloc, 1);
+HCO3 = zeros(n_alloc, 1);
+CO3 = zeros(n_alloc, 1);
+DIC = zeros(n_alloc, 1);
+Fs = zeros(n_alloc, 1);
+ADV = zeros(n_alloc, 1);
+DIC_rain = zeros(n_alloc, 1);
 
-AlOH = zeros(length(t), 1);
-AlOH2 = zeros(length(t), 1);
-AlOH3 = zeros(length(t), 1);
-AlOH4 = zeros(length(t), 1);
+AlOH = zeros(n_alloc, 1);
+AlOH2 = zeros(n_alloc, 1);
+AlOH3 = zeros(n_alloc, 1);
+AlOH4 = zeros(n_alloc, 1);
 
-Al_w = zeros(length(t), 1);
-Al   = zeros(length(t), 1);
-Al_tot = zeros(length(t), 1);
-Al_w_sat = zeros(length(t), 1);
-AlOH3_solid = zeros(length(t), 1);
-Omega_AlOH3 = zeros(length(t), 1);
-Al_inventory_residual = nan(length(t), 1);
-charge_residual = nan(length(t), 1);
-dAlk_sil = zeros(length(t), 1);
-dAlk_carb = zeros(length(t), 1);
-dAlk_check = zeros(length(t), 1);
-dAlk_total = zeros(length(t), 1);
-gamma_i = nan(length(t), 5);
-pH_conc = zeros(length(t), 1);
-ionic_str = zeros(length(t), 1);
-activity_I = zeros(length(t), 1);
-gamma_mono = zeros(length(t), 1);
-pCO2_atm = zeros(length(t), 1);
-activity_passes = zeros(length(t), 1);
+Al_w = zeros(n_alloc, 1);
+Al   = zeros(n_alloc, 1);
+Al_tot = zeros(n_alloc, 1);
+Al_w_sat = zeros(n_alloc, 1);
+AlOH3_solid = zeros(n_alloc, 1);
+Omega_AlOH3 = zeros(n_alloc, 1);
+Al_inventory_residual = nan(n_alloc, 1);
+charge_residual = nan(n_alloc, 1);
+dAlk_sil = zeros(n_alloc, 1);
+dAlk_carb = zeros(n_alloc, 1);
+dAlk_check = zeros(n_alloc, 1);
+dAlk_total = zeros(n_alloc, 1);
+gamma_i = nan(n_alloc, 5);
+pH_conc = zeros(n_alloc, 1);
+ionic_str = zeros(n_alloc, 1);
+activity_I = zeros(n_alloc, 1);
+gamma_mono = zeros(n_alloc, 1);
+pCO2_atm = zeros(n_alloc, 1);
+activity_passes = zeros(n_alloc, 1);
 
-M_rock = zeros(length(t), 1);
-SA = zeros(length(t), 1);
-EW = zeros(length(t), 1);
+M_rock = zeros(n_alloc, 1);
+SA = zeros(n_alloc, 1);
+EW = zeros(n_alloc, 1);
 
-plant_H = zeros(length(t), 1);
+plant_H = zeros(n_alloc, 1);
 
-f_Ca = zeros(length(t), 1);
-f_Mg = zeros(length(t), 1);
-f_K = zeros(length(t), 1);
-f_Na = zeros(length(t), 1);
-f_Al = zeros(length(t), 1);
-f_H = zeros(length(t), 1);
+f_Ca = zeros(n_alloc, 1);
+f_Mg = zeros(n_alloc, 1);
+f_K = zeros(n_alloc, 1);
+f_Na = zeros(n_alloc, 1);
+f_Al = zeros(n_alloc, 1);
+f_H = zeros(n_alloc, 1);
 f_CEC_size = 6;
-f_CEC = zeros(length(t),f_CEC_size);
+f_CEC = zeros(n_alloc,f_CEC_size);
 
-fsolve_errors = zeros(length(t),16);
+fsolve_errors = zeros(n_alloc,16);
 
 
-pk1 = zeros(length(t),1);
-pk2 = zeros(length(t), 1);
-pk_w = zeros(length(t), 1);
-pk_nh3 = zeros(length(t), 1);
-k1 = zeros(length(t), 1);
-k2 = zeros(length(t), 1);
-k_w = zeros(length(t), 1);
-k_nh3 = zeros(length(t), 1);
-k_H = zeros(length(t), 1);
+pk1 = zeros(n_alloc,1);
+pk2 = zeros(n_alloc, 1);
+pk_w = zeros(n_alloc, 1);
+pk_nh3 = zeros(n_alloc, 1);
+k1 = zeros(n_alloc, 1);
+k2 = zeros(n_alloc, 1);
+k_w = zeros(n_alloc, 1);
+k_nh3 = zeros(n_alloc, 1);
+k_H = zeros(n_alloc, 1);
 
-T_K = zeros(length(t), 1);
+T_K = zeros(n_alloc, 1);
 
-Leak_Na = zeros(length(t), 1);
-Leak_Al = zeros(length(t), 1);
-Leak_An = zeros(length(t), 1);
-Leak_DIC = zeros(length(t), 1);
+Leak_Na = zeros(n_alloc, 1);
+Leak_Al = zeros(n_alloc, 1);
+Leak_An = zeros(n_alloc, 1);
+Leak_DIC = zeros(n_alloc, 1);
 
-An_uptake = zeros(length(t), 1);
-Na_uptake = zeros(length(t), 1);
+An_uptake = zeros(n_alloc, 1);
+Na_uptake = zeros(n_alloc, 1);
 
 fsolve_options = optimoptions('fsolve','Display','off');
 
@@ -278,7 +290,7 @@ rho_bulk = rsd_bio*1e3; % soil dry mass bulk density [g/ m3]
 
 % CEC 
 [CEC_tot_in, cec_diag] = ERW_Resolve_CEC(CEC_tot_in);
-CEC_tot = CEC_tot_in*1e-5*rho_bulk*Zrw*conv_mol*ones(length(t), 1); % [umol_c] 
+CEC_tot = CEC_tot_in*1e-5*rho_bulk*Zrw*conv_mol*ones(n_alloc, 1); % [umol_c] 
 
 % pH
 pH(1)= pH_in;
@@ -536,23 +548,23 @@ end
     E_w = zeros(number_min,1);
     E_OH = zeros(number_min,1);
     
-    k_diss_H_t = zeros(length(t), number_min);
-    k_diss_w_t = zeros(length(t), number_min);
-    k_diss_OH_t = zeros(length(t), number_min);
-    Omega = zeros(length(t), number_min);
-    M_min = zeros(length(t), number_min);
-    rock_f = zeros(length(t), number_min);
-    Wr = zeros(length(t), number_min);
-    EW = zeros(length(t), number_min);
+    k_diss_H_t = zeros(n_alloc, number_min);
+    k_diss_w_t = zeros(n_alloc, number_min);
+    k_diss_OH_t = zeros(n_alloc, number_min);
+    Omega = zeros(n_alloc, number_min);
+    M_min = zeros(n_alloc, number_min);
+    rock_f = zeros(n_alloc, number_min);
+    Wr = zeros(n_alloc, number_min);
+    EW = zeros(n_alloc, number_min);
     
     n_d_cl = length(d_in);
 
     if n_d_cl >= 1
-        d = zeros(length(t), n_d_cl, num_rock_app);
-        delta_d = zeros(length(t), n_d_cl, num_rock_app);
-        lamb = zeros(length(t), n_d_cl, num_rock_app);
-        SSA = zeros(length(t), n_d_cl, num_rock_app);
-        psd = zeros(length(t), n_d_cl, num_rock_app);
+        d = zeros(n_alloc, n_d_cl, num_rock_app);
+        delta_d = zeros(n_alloc, n_d_cl, num_rock_app);
+        lamb = zeros(n_alloc, n_d_cl, num_rock_app);
+        SSA = zeros(n_alloc, n_d_cl, num_rock_app);
+        psd = zeros(n_alloc, n_d_cl, num_rock_app);
         a = zeros(1, num_rock_app);
     end
 
@@ -576,20 +588,20 @@ else
     E_w = zeros(number_min,1);
     E_OH = zeros(number_min,1);
     
-    k_diss_H_t = zeros(length(t), number_min);
-    k_diss_w_t = zeros(length(t), number_min);
-    k_diss_OH_t = zeros(length(t), number_min);
-    Omega = zeros(length(t), number_min);
-    M_min = zeros(length(t), number_min);
-    rock_f = zeros(length(t), number_min);
-    Wr = zeros(length(t), number_min);
-    EW = zeros(length(t), number_min);
+    k_diss_H_t = zeros(n_alloc, number_min);
+    k_diss_w_t = zeros(n_alloc, number_min);
+    k_diss_OH_t = zeros(n_alloc, number_min);
+    Omega = zeros(n_alloc, number_min);
+    M_min = zeros(n_alloc, number_min);
+    rock_f = zeros(n_alloc, number_min);
+    Wr = zeros(n_alloc, number_min);
+    EW = zeros(n_alloc, number_min);
 
-    d = zeros(length(t), number_min);
-    delta_d = zeros(length(t), number_min);
-    lamb = zeros(length(t), number_min);
-    SSA = zeros(length(t), number_min);
-    psd = zeros(length(t), number_min);
+    d = zeros(n_alloc, number_min);
+    delta_d = zeros(n_alloc, number_min);
+    lamb = zeros(n_alloc, number_min);
+    SSA = zeros(n_alloc, number_min);
+    psd = zeros(n_alloc, number_min);
 
     psd_perc_in = 0;
     rock_f_in = 0;
@@ -604,7 +616,7 @@ end
 %% other parameters
 % temperature and gas constants 
 R = 8.314; % [J mol-1 K-1]: universal gas constant
-T_ref = 25*ones(length(t),1)+273.15; % [K]: temperature standard conditions
+T_ref = 25*ones(n_alloc,1)+273.15; % [K]: temperature standard conditions
 
 % soil CO2 diffusivity
 D_0 = 1.6e-5*3600*24; %free-air diffusion [m2/d]
@@ -1074,7 +1086,7 @@ bulk_pH_params.DIC_field_umol_L = DIC(1);
     CEC_tot(1), rho_bulk, Zrw, conv_mol, bulk_pH_params, Al_CEC_scale);
 bulk_pH_params.H_prev = bulk_pH_diag.H;
 bulk_pH_params.H_prev_valid = true;
-ERW_biogeochem.pH_bulk = nan(length(t), 1);
+ERW_biogeochem.pH_bulk = nan(n_alloc, 1);
 ERW_biogeochem.pH_bulk(1) = pH_bulk_raw;
 
 % structure containing weathering variables

@@ -28,7 +28,15 @@ function varargout = ERW_Particle_History(action,varargin)
 %% others hold the rows set at initialisation and the last row of every
 %% ERW day, at their latest values, and weath.particle_rows gives each
 %% one's row on the ten-minute grid.
-%%   [H,weath] = ERW_Particle_History('start',weath,weath_names,keep_days)
+%%
+%% A multi-square run keeps no row of a dropped block (keep_rows false):
+%% no reader uses them, the model reads only the previous row and each
+%% application's first row, and at ~125 MB per basalt square over 35 years
+%% they were most of a field run's particle record. The run then assembles
+%% the initial rows and the rows of the blocks still held, its final state.
+%% n_rows gives the length of the ten-minute grid when weath was
+%% allocated with fewer rows than that (the 2-D daily-block layout).
+%%   [H,weath] = ERW_Particle_History('start',weath,weath_names,keep_days,keep_rows,n_rows)
 %%   day = ERW_Particle_History('open',H,first_row,n_rows)
 %%   v   = ERW_Particle_History('row',H,day,weath,name,r)    row r, 1 x classes x apps
 %%   F   = ERW_Particle_History('first',H,day,name)          psd or lamb
@@ -97,9 +105,11 @@ switch action
 end
 end
 
-function [H,weath] = start(weath,weath_names,keep_days)
+function [H,weath] = start(weath,weath_names,keep_days,keep_rows,n_rows)
 if nargin < 2; weath_names = fieldnames(weath); end
 if nargin < 3 || isempty(keep_days); keep_days = 3; end
+if nargin < 4 || isempty(keep_rows); keep_rows = true; end
+if nargin < 5; n_rows = []; end
 if ~(isnumeric(keep_days) && isscalar(keep_days) && isfinite(keep_days) && ...
         keep_days >= 1 && keep_days == fix(keep_days))
     error('ERW_Particle_History:BadKeepDays', ...
@@ -111,6 +121,7 @@ keep = cellfun(@(n) isfield(weath,n) && any(strcmp(weath_names,n)) && ...
 H.names = candidates(keep);
 H.blocks = {};
 H.keep_days = keep_days;
+H.keep_rows = logical(keep_rows);
 H.size = struct();
 H.initial = struct();
 H.initial_rows = struct();
@@ -125,6 +136,9 @@ H.dropped = zeros(0,2);
 for k = 1:numel(H.names)
     name = H.names{k};
     H.size.(name) = size(weath.(name));
+    if ~isempty(n_rows)
+        H.size.(name)(1) = n_rows;
+    end
     rows = find(any(reshape(weath.(name),size(weath.(name),1),[]),2));
     H.initial_rows.(name) = rows;
     H.initial.(name) = weath.(name)(rows,:,:);
@@ -216,9 +230,15 @@ end
 
 function H = drop_oldest(H)
 %% Drop the oldest whole block: keep its last written row at its latest
-%% value, and record the rows it wrote as no longer kept whole.
+%% value (unless the run keeps no rows), and record the rows it wrote as
+%% no longer kept whole.
 block = H.blocks{1};
 rows = block.first + find(block.written) - 1;
+if isfield(H,'keep_rows') && ~H.keep_rows
+    H.dropped = add_range(H.dropped,rows);
+    H.blocks(1) = [];
+    return
+end
 r = rows(end);
 values = cell(1,numel(H.names));
 for q = 1:numel(H.names)
