@@ -62,7 +62,7 @@ if ~(isprop(R1,'ProjectedCRS') && ~isempty(R1.ProjectedCRS))
          'portal in a projected (UTM) CRS.'], files{1});
 end
 src_crs = R1.ProjectedCRS;
-[tgt_crs,tgt_epsg,bounds_xy] = resolve_target(topo_or_crs,src_crs,opt);
+[tgt_crs,tgt_epsg,bounds_xy,anchor_xy] = resolve_target(topo_or_crs,src_crs,opt);
 reproject = ~same_crs(src_crs,tgt_crs);
 crop_margin_m = 100;                       % box-filter offsets + reprojection slack
 cx = bounds_xy([1 2 2 1]); cy = bounds_xy([3 3 4 4]);
@@ -175,8 +175,20 @@ if reproject
     end
 end
 
-xt = (bounds_xy(1)+out_res/2) : out_res : bounds_xy(2);
-yt = (bounds_xy(3)+out_res/2) : out_res : bounds_xy(4);
+if isempty(anchor_xy)
+    xt = (bounds_xy(1)+out_res/2) : out_res : bounds_xy(2);
+    yt = (bounds_xy(3)+out_res/2) : out_res : bounds_xy(4);
+else
+    %% For a topology the pixel centres sit on the square centres.
+    %% Attach_Topography_To_Topology samples the attributes at the square
+    %% centres, so a lattice offset by half a square would give each
+    %% square the blend of the four pixels it straddles (a window twice
+    %% the square's width) instead of the area mean of its own DEM.
+    xt = anchor_xy(1) + out_res*(ceil((bounds_xy(1)+out_res/2-anchor_xy(1))/out_res) : ...
+        floor((bounds_xy(2)-anchor_xy(1))/out_res));
+    yt = anchor_xy(2) + out_res*(ceil((bounds_xy(3)+out_res/2-anchor_xy(2))/out_res) : ...
+        floor((bounds_xy(4)-anchor_xy(2))/out_res));
+end
 if numel(xt) < 3 || numel(yt) < 3
     error('Load_Field_DEM:TinyExtent', ...
         'Clip window is %g x %g m; check BBoxLatLon / topology bounds.', ...
@@ -243,8 +255,9 @@ fprintf(['Load_Field_DEM: %d tile(s) -> %d x %d at %.2f m, %.1f%% NaN ' ...
 end
 
 %% =======================================================================
-function [tgt_crs,tgt_epsg,bounds_xy] = resolve_target(topo_or_crs,src_crs,opt)
+function [tgt_crs,tgt_epsg,bounds_xy,anchor_xy] = resolve_target(topo_or_crs,src_crs,opt)
 tgt_epsg = [];
+anchor_xy = [];
 if isempty(topo_or_crs)
     tgt_crs = src_crs;
 elseif isa(topo_or_crs,'projcrs')
@@ -271,6 +284,7 @@ elseif isstruct(topo_or_crs) && isfield(topo_or_crs,'cell_xc_projected_m')
         half = topo_or_crs.cell_size_m;
     end
     bounds_xy = [min(x) max(x) min(y) max(y)] + (opt.BufferM+half)*[-1 1 -1 1];
+    anchor_xy = [min(x) min(y)];
 else
     error('Load_Field_DEM:NoExtent', ...
         'Pass a topology struct with projected cell centres or a BBoxLatLon.');
