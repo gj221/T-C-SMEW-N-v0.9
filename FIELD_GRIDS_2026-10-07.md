@@ -25,6 +25,19 @@ save('<name>.mat','topo');
 
 The file goes beside the deployed root (never inside it). `runtime/Field_2D` runs the five-year runs 1 to 9 with the calibrated Base_1D set on that grid; see its README. Deploy as a new root, regenerate the equivalence baseline (`regen_equiv_1d.sbatch`), then submit `runtime/Field_2D/submit_field_2d.sh` with `TC_FIELD_TOPOLOGY`, `TC_FIELD_MEM` and `TC_FIELD_TIME`. Its validation element runs the complete audit before any production element starts.
 
+## The Kantola grids (2026-10-08)
+
+The fields are the two 3.8 ha maize/soybean trial fields around the `MaizeBasalt` and `MaizeNoBasalt` towers.
+
+* **Boundaries**: measured on NAIP (25 Jul 2017, 1 m) and reduced to the Sentinel-2 10 m grid by the majority rule. Inside both, Sentinel-2 shows the trial rotation for 2016-2020 (soy, maize, maize, soy, maize). The shapefiles are in `Model case study data/Maps/Energy Farm_IL` (NAD83 / UTM 16N, the DEM's frame).
+* **Squares and margin**: 20 m squares with a 20 m margin, one lime-spreader pass.
+* **Basalt grid**: 81 squares (49 main, 32 margin), relief 4.15 m.
+* **Control grid**: 90 squares (56 main, 34 margin), relief 1.86 m.
+* **Grid files**: each field has a DEM grid and a flat grid of the same squares (`kantola_<field>_<dem|flat>_20m.mat`).
+* **Cost**: about 27-30 h and up to about 200 GiB per five-year run.
+
+`runtime/Field_2D/README.md` gives the convergence ladder, the table and the resources.
+
 ## Field figures (2026-10-08)
 
 `v2/plotting` draws any 2-D result cell by cell, on the plot grid or a field grid, flat or with a DEM:
