@@ -30,16 +30,17 @@ The file goes beside the deployed root (never inside it). `runtime/Field_2D` run
 The fields are the two 3.8 ha maize/soybean trial fields around the `MaizeBasalt` and `MaizeNoBasalt` towers.
 
 * **Boundaries**: measured on NAIP (25 Jul 2017, 1 m) and reduced to the Sentinel-2 10 m grid by the majority rule. Inside both, Sentinel-2 shows the trial rotation for 2016-2020 (soy, maize, maize, soy, maize). The shapefiles are in `Model case study data/Maps/Energy Farm_IL` (NAD83 / UTM 16N, the DEM's frame).
-* **Squares and margin**: 20 m squares with a 20 m margin, one lime-spreader pass.
+* **The 95 % rule** (Greg): the squares cover the whole field, and no square lies more than 5 % outside it.
+* **Squares and margin**: 10 m squares, with the 20 m margin (one lime-spreader pass) as the outer two rings.
 * **v1.0's cell-count workflow**:
+  * The boundary fit leaves 10 m as the coarsest width meeting the rule, since each boundary has a 10 m step.
   * The terrain's correlation length (536 and 265 m) exceeds the fields, so heterogeneity demands no finer grid. There are no soil samples at Kantola.
-  * The 95 % coverage calibration gives 20 and 27.1 m.
-  * The margin caps both fields at 20 m.
-* **Basalt grid**: 81 squares (49 main, 32 margin), relief 4.19 m.
-* **Control grid**: 90 squares (56 main, 34 margin), relief 1.95 m.
+* **Basalt grid**: 340 squares (208 main, 132 margin), relief 4.30 m.
+* **Control grid**: 369 squares (229 main, 140 margin), relief 2.12 m.
 * **DEM averaging**: `Load_Field_DEM` now lays its pixel centres on the square centres. Before, each square took a window twice its width.
-* **Grid files**: each field has a DEM grid and a flat grid of the same squares (`kantola_<field>_<dem|flat>_20m.mat`).
-* **Cost**: about 27-30 h and up to about 200 GiB per five-year run.
+* **Grid files**: each field has a DEM grid and a flat grid of the same squares (`kantola_<field>_<dem|flat>_10m.mat`).
+* **Cost**: about 3.2-3.5 days and an estimated 0.5-0.8 TB per five-year run with 32 ERW workers.
+* **New campaign options**: `runtime/Field_2D` takes `TC_FIELD_WORKERS` (the ERW pool) and `TC_FIELD_RUNS` (a subset of runs 1-9), so a pilot run sizes the rest.
 
 `runtime/Field_2D/README.md` gives the convergence ladder, the table and the resources.
 

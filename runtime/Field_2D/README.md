@@ -10,9 +10,9 @@ A grid is a MAT file holding `topo`, saved by `Build_Field_Grid_Topology` on a m
 
 ```matlab
 topo = Build_Field_Grid_Topology('kantola_basalt_10m.shp', ...
-    'GridCellSizeM',20,'MarginWidthM',20, ...
+    'GridCellSizeM',10,'MarginWidthM',20, ...
     'FieldDEM','.../DEM/Energy Farm_IL');      % omit FieldDEM for a flat grid
-save('kantola_basalt_dem_20m.mat','topo');
+save('kantola_basalt_dem_10m.mat','topo');
 ```
 
 * **Squares**: v1.0's majority rule (`Build_Projected_Field_Topology`, `'majority'`): a square is simulated when more than half of it lies in the field, on the rotation and offset that minimise the misrepresented area. `v2/interpolation/Run_Topographic_Grid_Convergence` steps 20, 10, 5, 3.5, 2.5, 1.5 and 1 m and reports, per terrain statistic, the coarsest width from which every finer step changes it by less than 5 %.
@@ -27,34 +27,35 @@ Copy the file to Bouchet **beside** the deployed root (a validated root never ga
 The two 3.8 ha maize/soybean trial fields of Kantola et al. (2023), each with its eddy-covariance tower (`MaizeBasalt`, `MaizeNoBasalt`):
 
 * **Boundaries**: their 10 m boundaries are kept in `Model case study data/Maps/Energy Farm_IL`, with a README and a preview. They are the field edges measured on NAIP (25 Jul 2017, 1 m), reduced to the Sentinel-2 10 m grid by the majority rule. Sentinel-2 confirms them: 2016-2020 crops of soy, maize, maize, soy, maize inside both. The grids are in NAD83 / UTM 16N, the DEM's frame.
-* **Squares and margin**: 20 m squares and a 20 m margin, one lime-spreader pass (about 60 ft), so the margin is the outer ring of squares.
+* **The 95 % rule** (Greg): the squares cover the whole field, and no square lies more than 5 % outside it.
+* **Squares and margin**: 10 m squares. The 20 m margin, one lime-spreader pass (about 60 ft), is the outer two rings of squares.
 * **Width (v1.0's workflow)**:
+  * *Boundary fit* (`v2/interpolation/Run_Cell_Size_Analysis`): with every square at least 95 % inside, only 10, 5 and 2.5 m squares cover the whole field, and 10 m is the coarsest. Each boundary has one 10 m step. At 20 m the squares leave 4.7 % (basalt) and 7.9 % (control) of the fields out.
   * *Heterogeneity* (`v2/interpolation/Run_Field_Length_Scales`, `'SampleFile','none'`): Kantola has no georeferenced soil samples, so there is no soil range. The 1 m lidar's detrended-elevation range is 536 m (basalt) and 265 m (control), longer than the fields (184 and 192 m), so the terrain demands no finer grid.
-  * *Boundary fit*: the 95 % coverage calibration gives 20 m (basalt) and 27.1 m (control).
-  * *Margin*: the squares must tile the 20 m margin, so both fields take 20 m.
-  * *Capture*: the squares cover 95.3 % and 94.9 % of the fields (`v2/interpolation/Run_Cell_Size_Analysis`). Covering more than 98 % would take 10 m squares (340 and 369).
-  * *Convergence ladder*: no joint width. On the basalt field slope and relief stay within 5 % from 20 m down; TWI keeps falling as the 1 m lidar resolves microtopography, on both fields.
-* **DEM**: each square's elevation is the mean of the 400 lidar pixels inside it (`Load_Field_DEM` lays its pixel centres on the square centres).
+  * *Convergence ladder*: no joint width. TWI keeps falling as the 1 m lidar resolves microtopography, on both fields.
+* **DEM**: each square's elevation is the mean of the 100 lidar pixels inside it, checked square by square (`Load_Field_DEM` lays its pixel centres on the square centres).
 
-| grid file | squares (main + margin) | simulated | field left out | relief | mean slope | outlets |
-|---|---|---|---|---|---|---|
-| `kantola_basalt_dem_20m` | 81 (49 + 32) | 32,400 m2 | 1,600 m2 | 4.19 m | 2.2 % | 1 |
-| `kantola_control_dem_20m` | 90 (56 + 34) | 35,000 m2 | 1,900 m2 | 1.95 m | 0.95 % | 3 |
+| grid file | squares (main + margin) | field covered | relief | mean slope | outlets |
+|---|---|---|---|---|---|
+| `kantola_basalt_dem_10m` | 340 (208 + 132) | 100 % | 4.30 m | 2.3 % | 2 |
+| `kantola_control_dem_10m` | 369 (229 + 140) | 100 % | 2.12 m | 1.0 % | 3 |
 
-* **Flat twins**: `kantola_basalt_flat_20m` and `kantola_control_flat_20m` hold the same squares and labels without topography.
-* **Field left out**: the strip along one edge that is exactly half a square wide, which the majority rule drops.
+* **Flat twins**: `kantola_basalt_flat_10m` and `kantola_control_flat_10m` hold the same squares and labels without topography.
 
 ## Resources
 
-The hourly T&C loop is serial over columns, so time and memory grow with the number of squares; the daily ERW step runs on twelve workers.
+The hourly T&C loop is serial over columns, so time and memory grow with the number of squares. The daily ERW step runs on `TC_FIELD_WORKERS` workers (default 12).
 
 * **Measured, five years:**
   * one column: 2 h 14 min and 3.1 GB;
   * the 12-column plot: about 6 h, peaks of 18-27 GiB.
 * **Per column:** the daily ERW chemistry takes about 2.1 h, and the serial hourly step about 0.16 h.
-* **An N-square grid:** therefore takes about N x 0.33 h with twelve workers, and about 1.4-2.2 GiB per square.
-* **The Kantola grids:** that is 27-30 h and 110-200 GiB. Submit them with `TC_FIELD_MEM=256G TC_FIELD_TIME=3-00:00:00`.
-* **Concurrency:** the week partition lets one user hold 1.5 TB at once, so five such elements run together.
+* **An N-square grid with W workers:** about N x (0.16 + 2.1/W) h, and about 1.4-2.2 GiB per square (an estimate the pilot measures).
+* **The Kantola 10 m grids, with 32 workers:** about 76 h (basalt) and 83 h (control), and 480-810 GiB.
+* **Pilot first:**
+  * Submit run 2 alone (basalt on the whole field, every square treated, the heaviest in memory): `TC_FIELD_RUNS=2 TC_FIELD_WORKERS=32 TC_FIELD_MEM=800G TC_FIELD_TIME=6-00:00:00`.
+  * Then size runs 1 to 9 from its `MaxRSS` and elapsed time, and submit them with `TC_FIELD_STAGE=resume TC_FIELD_RUNS=1-9` and the same `TC_FIELD_WORKERS`. Run 2 is skipped as finished.
+* **Concurrency:** the week partition lets one user hold 1.5 TB at once.
 * **Overruns:** an element that times out or runs out of memory keeps its two-hourly checkpoint. Resume it with `TC_FIELD_STAGE=resume`, raising the limit first.
 
 ## Submission
@@ -62,13 +63,18 @@ The hourly T&C loop is serial over columns, so time and memory grow with the num
 From the checkout root, after the equivalence baseline has been regenerated for this deployment:
 
 ```bash
-TC_FIELD_TOPOLOGY=/full/path/beside/the/root/kantola_basalt_dem_20m.mat \
-TC_FIELD_MEM=256G TC_FIELD_TIME=3-00:00:00 \
+TC_FIELD_TOPOLOGY=/full/path/beside/the/root/kantola_basalt_dem_10m.mat \
+TC_FIELD_RUNS=2 TC_FIELD_WORKERS=32 TC_FIELD_MEM=800G TC_FIELD_TIME=6-00:00:00 \
 MATLAB_MODULE=MATLAB/2025a TC_BOUCHET_ACCOUNT=<pi account> \
 bash runtime/Field_2D/submit_field_2d.sh
 ```
 
-The controller submits one validation element (`day`, twelve CPUs, 96 GB, 4 h: the complete audit, the Linux portability checks and a one-day run of the grid across the first application) and the production array (`week`, runs 1 to 9), which starts only after the validation passes. `TC_FIELD_STAGE=resume` continues after a timeout or node loss: finished runs are kept, interrupted ones resume from their two-hourly checkpoints, and the controller lists any stale run lock to remove first.
+* `TC_FIELD_RUNS` (default `1-9`): the Slurm array of runs to submit, such as `2`, `1-9`, or `1-9%2` to hold two at a time.
+* `TC_FIELD_WORKERS` (default 12, from 2 to 64): the daily ERW pool and the CPUs of every element. It enters the validation stamp, so a resume keeps it.
+
+The controller submits one validation element and the production array.
+* **Validation:** `day`, `TC_FIELD_WORKERS` CPUs, 96 GB, 6 h. It runs the complete audit, the Linux portability checks and a one-day run of the grid across the first application.
+* **Production:** `week`, the runs of `TC_FIELD_RUNS`. It starts only after the validation passes. `TC_FIELD_STAGE=resume` continues after a timeout or node loss: finished runs are kept, interrupted ones resume from their two-hourly checkpoints, and the controller lists any stale run lock to remove first.
 
 ## Files
 
