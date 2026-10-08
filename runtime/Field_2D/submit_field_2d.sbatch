@@ -21,7 +21,8 @@
 # the controller sets --mem and --time from TC_FIELD_MEM and TC_FIELD_TIME,
 # so the directives above are only the defaults.
 #
-# Twelve workers for the daily ERW columns; see the task.
+# TC_FIELD_WORKERS (default 12, set by the controller) workers for the daily
+# ERW columns, one CPU each; see the task.
 
 set -euo pipefail
 umask 027
@@ -71,10 +72,16 @@ sha256sum \
     'runtime/Base_1D/Campaign_Parameters.m' \
     "$TC_FIELD_TOPOLOGY"
 
-export TC_PARALLEL_WORKERS=12
+workers="${TC_FIELD_WORKERS:-12}"
+if [[ ! "$workers" =~ ^[1-9][0-9]*$ ]] || (( workers < 2 || workers > 64 )); then
+    echo "TC_FIELD_WORKERS must be a whole number from 2 to 64." >&2
+    exit 2
+fi
+export TC_FIELD_WORKERS="$workers"
+export TC_PARALLEL_WORKERS="$workers"
 topology_name="$(basename "$TC_FIELD_TOPOLOGY" .mat)"
 export TC_CAMPAIGN_TAG="Field_2D__${topology_name}"
-export TC_NUMERICAL_IDENTITY='cpumodel=9575f;matlab_release=2025a;single_comp_thread=1;parallel_workers=12'
+export TC_NUMERICAL_IDENTITY="cpumodel=9575f;matlab_release=2025a;single_comp_thread=1;parallel_workers=${workers}"
 export TC_CKPT_MINUTES=120
 unset TC_CKPT_FORCE_RESUME || true
 export OMP_NUM_THREADS=1
@@ -104,8 +111,8 @@ export TEMP="$scratch_dir/tmp"
 # all writing the same status file, checkpoint and result path.
 if [[ "${SLURM_JOB_NUM_NODES:-0}" != "1" || \
       "${SLURM_NTASKS:-0}" != "1" || \
-      "${SLURM_CPUS_PER_TASK:-0}" -lt 12 ]]; then
-    echo "Validation and production require one node, one task and at least twelve CPUs." >&2
+      "${SLURM_CPUS_PER_TASK:-0}" -lt "$workers" ]]; then
+    echo "Validation and production require one node, one task and at least $workers CPUs." >&2
     exit 5
 fi
 

@@ -13,6 +13,10 @@
 #   bash runtime/Field_2D/submit_field_2d.sh
 # TC_FIELD_MEM and TC_FIELD_TIME have no default: they scale with the
 # grid's cell count (see the README), so they are chosen per grid.
+# TC_FIELD_WORKERS (default 12) sets the daily ERW pool and the CPUs of
+# every element; it enters the validation stamp, so a resume must keep it.
+# TC_FIELD_RUNS (default 1-9) is the Slurm array of runs to submit, such as
+# 2 for a pilot or 1-9%2 to hold two at a time; finished runs are skipped.
 # Stages (TC_FIELD_STAGE): fresh (default; result and log trees must be
 # empty) or resume (after TIMEOUT or node loss; refuses while any job of
 # this campaign is queued and while a run lock remains).
@@ -47,6 +51,16 @@ if [[ ! "$TC_FIELD_MEM" =~ ^[1-9][0-9]*G$ ]]; then
 fi
 if [[ ! "$TC_FIELD_TIME" =~ ^[0-9]+-[0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
     echo "TC_FIELD_TIME must read D-HH:MM:SS. No jobs were submitted." >&2
+    exit 2
+fi
+workers="${TC_FIELD_WORKERS:-12}"
+if [[ ! "$workers" =~ ^[1-9][0-9]*$ ]] || (( workers < 2 || workers > 64 )); then
+    echo "TC_FIELD_WORKERS must be a whole number from 2 to 64. No jobs were submitted." >&2
+    exit 2
+fi
+runs="${TC_FIELD_RUNS:-1-9}"
+if [[ ! "$runs" =~ ^[1-9](-[1-9])?(,[1-9](-[1-9])?)*(%[1-9])?$ ]]; then
+    echo "TC_FIELD_RUNS must be a Slurm array of runs 1 to 9, such as 2, 1-9 or 1-9%2. No jobs were submitted." >&2
     exit 2
 fi
 
@@ -225,14 +239,15 @@ submit_job() {
     submitted_jobs+=("$submitted_id")
 }
 
-export_common="ALL,TC_FIELD_CONTROLLER_TOKEN=FIELD2D_V1,TC_FIELD_TOPOLOGY=$topology_file"
+export_common="ALL,TC_FIELD_CONTROLLER_TOKEN=FIELD2D_V1,TC_FIELD_TOPOLOGY=$topology_file,TC_FIELD_WORKERS=$workers"
 submit_job validation_job \
-    --partition=day --array=1 --ntasks=1 --cpus-per-task=12 --mem=96G --time=04:00:00 \
+    --partition=day --array=1 --ntasks=1 --cpus-per-task="$workers" --mem=96G --time=06:00:00 \
     --job-name="Field2Dcheck_${topology_name}" \
     --export="$export_common,TC_VALIDATE_ONLY=1" "$campaign_batch"
 submit_job production_job \
     --dependency="afterok:${validation_job}" --kill-on-invalid-dep=yes \
-    --array='1-9' --partition=week --mem="$TC_FIELD_MEM" --time="$TC_FIELD_TIME" \
+    --array="$runs" --partition=week --cpus-per-task="$workers" \
+    --mem="$TC_FIELD_MEM" --time="$TC_FIELD_TIME" \
     --job-name="Field2D_${topology_name}" \
     --export="$export_common" "$campaign_batch"
 
@@ -241,8 +256,8 @@ graph_complete=1
 trap - ERR HUP INT TERM
 
 printf 'Campaign: %s\n' "$tag"
-printf 'Validation: %s (day, 4 h)\n' "$validation_job"
-printf 'Production: runs 1-9 %s (week, %s, %s each), eligible after the validation passes\n' \
-    "$production_job" "$TC_FIELD_MEM" "$TC_FIELD_TIME"
+printf 'Validation: %s (day, %d CPUs, 6 h)\n' "$validation_job" "$workers"
+printf 'Production: runs %s %s (week, %d CPUs, %s, %s each), eligible after the validation passes\n' \
+    "$runs" "$production_job" "$workers" "$TC_FIELD_MEM" "$TC_FIELD_TIME"
 printf 'Monitor: sacct -j %s,%s -X --format=JobID%%16,JobName%%30,State%%12,Elapsed,MaxRSS,NodeList%%16\n' \
     "$validation_job" "$production_job"

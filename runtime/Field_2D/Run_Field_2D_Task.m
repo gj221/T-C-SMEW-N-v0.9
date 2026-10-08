@@ -66,13 +66,16 @@ if run_id > 9
         'SLURM_ARRAY_TASK_ID must select run 1 through 9.');
 end
 allocated_cpus = read_positive_integer('SLURM_CPUS_PER_TASK');
-%% The daily ERW columns run on a pool; the hourly loop is serial over
-%% columns whatever the pool, so the worker count sets only the ERW share
-%% of the run time. It is part of the stamp and of the provenance.
+%% The daily ERW columns run on a pool of TC_FIELD_WORKERS, the
+%% controller's choice (default 12); the hourly loop is serial over columns
+%% whatever the pool, so the worker count sets only the ERW share of the
+%% run time. It is part of the stamp and of the provenance.
+field_workers = read_positive_integer('TC_FIELD_WORKERS');
 workers = Resolve_2D_Parfor_Workers(n_columns);
-if workers ~= min(12,n_columns)
+if workers ~= min(field_workers,n_columns)
     error('Bouchet_Kantola_Field2D:BadWorkerCount', ...
-        'TC_PARALLEL_WORKERS must be 12 for this campaign.');
+        'TC_PARALLEL_WORKERS must equal TC_FIELD_WORKERS (%d) for this campaign.', ...
+        field_workers);
 end
 if allocated_cpus < workers
     error('Bouchet_Kantola_Field2D:InsufficientCpus', ...
