@@ -63,7 +63,12 @@ jobs, so times are rough):
   and, after `Build_ERW_Chemistry_Mex` in a test copy (MinGW 13.2, 43 s),
   for `mex`. That is 600 reduced solves with roots at pore pH 3.50-9.45
   (12 out-of-scan errors raised identically), 200 charge scans, all seven
-  outputs of the 23 fixture variants, and three 12-step chains.
+  outputs of the 23 fixture variants, and three 12-step chains. At the
+  build job's size, `(3000,48)`, it passed too in 115 s: 3000 solves with
+  roots at pore pH 3.50-13.91 (57 errors identical), 1000 scans, the 23
+  variants and three 48-step chains, as on Bouchet for x.
+- **Step times** (`erw_kernel_benchmark(9)`, sum of five medians): y's
+  original code 880 ms, `fast` 57 ms (15.4x), `mex` 34 ms (25.7x).
 - **`mex` in a run:** `Run_One_Subfield` stops a 4-worker run with
   `Run_One_Subfield:MexOnThreadPool` before it starts, and runs a serial
   one-column day under `mex`.
