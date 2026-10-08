@@ -130,6 +130,7 @@ checkpoint identity (`records=full|daily`).
   ERW chemistry step" (`TC_ERW_KERNEL=fast`, bit-identical, about 11 times
   faster per ERW step on Bouchet) are a patch on x that applies to y with
   small manual merges in `ERW_function.m` and `ERW_Daily_Step_2D.m`.
+  Package z is y with them (`ERW_KERNELS_2026-10-08.md`).
 
 ## 4. Checkpoints and results
 

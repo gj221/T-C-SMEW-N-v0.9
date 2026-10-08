@@ -18,6 +18,77 @@ workers, and the 2-D frame runs its daily ERW columns on such a pool. So
 the field-grid campaign would use `fast`. `mex` serves 1-D runs and serial
 2-D runs (`TC_PARALLEL_WORKERS` 0 or 1).
 
+## Package z: the kernels on package y
+
+The change was built and checked on package x (the sections below). Package
+z puts it on package y, whose squares share the thread pool in every loop.
+The kernel commit applies to y as it is, except two files merged by hand.
+Every line added or removed is byte for byte the one x's commit adds or
+removes:
+
+- **`ERW_function.m`:** y changed only `solve_erw_branch`, where the
+  `lsqnonlin` options are now built once per process. That is clear of the
+  three dispatch points and the helper. The file mixes CRLF and LF lines,
+  and the merge keeps each line's ending.
+- **`ERW_Daily_Step_2D.m`:** y rewrote it for daily blocks. The three lines
+  still follow `suppress_no_converge_warning`, before the step's one
+  `ERW_function` call.
+- **`ERW_Appelo_State_At_H.m`:** y has its own bit-identical edit (the
+  pH-only terms once, the Al(OH)3 equilibrium only at the converged f_H).
+  On z, `test_erw_chemistry_kernels` compares `fast` with that edited
+  original, so a pass checks y's edit as well.
+
+z adds:
+
+- **`run_provenance.erw_kernel`** (`Run_One_Subfield`): `matlab`, `fast` or
+  `mex`, read from `TC_ERW_KERNEL` when the run starts. `mex` with a thread
+  pool stops there (`Run_One_Subfield:MexOnThreadPool`). A `mex` run checks
+  its MEX files there too, not at the first step.
+- **`compare_erw_kernels.m`:** two runs of one root under two kernels,
+  every saved value compared, inside structs and cells too. A daily-store
+  result keeps most of its numbers in `ERW_daily`, `Final_state` and
+  `Field_hourly`. `compare_u_v` lists a struct that differs without failing.
+- **`compare_erw_kernels.sbatch`, for y:** the runs take the Base_1D set,
+  and run 2 keeps daily stores as the field runs will. With `X_ROOT` set,
+  x runs both as well and each fast run is compared with x's
+  (`compare_x_y.m`).
+- **`compare_x_y.sbatch`:** `CMP_Y_KERNEL=fast` runs y's side with the
+  fast kernels.
+
+Checked locally on z (R2026a, 8 October; the laptop ran three other MATLAB
+jobs, so times are rough):
+
+- **`checkcode`:** no new message in the edited files.
+- **`test_erw_chemistry_kernels`:** passed against y's code, for `fast`
+  and, after `Build_ERW_Chemistry_Mex` in a test copy (MinGW 13.2, 43 s),
+  for `mex`. That is 600 reduced solves with roots at pore pH 3.50-9.45
+  (12 out-of-scan errors raised identically), 200 charge scans, all seven
+  outputs of the 23 fixture variants, and three 12-step chains.
+- **`mex` in a run:** `Run_One_Subfield` stops a 4-worker run with
+  `Run_One_Subfield:MexOnThreadPool` before it starts, and runs a serial
+  one-column day under `mex`.
+- **13 more tests** that read or call the edited files pass, five of them
+  again under `fast`. `test_campaign_resume_provenance` took 131 s, and
+  68 s under `fast`.
+- **Run 2** on the 12-column plot, 3 days from 9 November 2016, daily
+  stores, 4 thread workers, `fast`:
+  - against x (serial), `compare_x_y`: PASS; every daily output and the
+    final state are identical;
+  - against y's original code on 4 workers, `compare_erw_kernels`: 332 of
+    342 variables identical and the provenance alike. Of the rest, 8 hold
+    run times and result paths, and one is the checkpoint fingerprint,
+    which hashes the two trees' different code;
+  - time loop 0.026 h, against 0.068 h for y's code on 4 workers and
+    0.220 h for x's, serial.
+- **Run 11** (one column, full records), 3 days from 9 November 2016,
+  `fast`, against x: `compare_x_y` PASS, 558 of 571 variables identical
+  and the other 13 different by design (times, paths, provenance, code
+  identity). Time loop 0.007 h, against 0.020 h for x.
+- **`compare_erw_kernels` catches** a one-ulp change planted in `ERW`,
+  `ERW_daily` and `Final_state`.
+
+On Bouchet, package z follows `RUNBOOK_2026-09-24.md`, section 0z.
+
 ## Where the time went
 
 This is a profile of one step in isolation: the step-22053 fixture of
@@ -177,12 +248,16 @@ Edited:
   mode at `matlab` the original statements run unchanged.
 - `ERW_Daily_Step_2D.m` and `MAIN_FRAME_BG_ERW_10mins.m`: the
   `skip_erw_data` flag, three lines each.
+- `v2/run/Run_One_Subfield.m` (package z): `run_provenance.erw_kernel`,
+  and the refusal of `mex` with a thread pool.
 
 At the package root:
 
 - `build_erw_mex.sbatch`
-- `compare_erw_kernels.sbatch`
+- `compare_erw_kernels.sbatch` (in z, for y's records and with `X_ROOT`)
+- `compare_erw_kernels.m` (package z)
 - `erw_kernel_benchmark.m`
+- `compare_x_y.sbatch` (package y; z adds `CMP_Y_KERNEL`)
 
 The campaign fingerprints hash `*.m`, so the new sources enter them. The
 MEX files (`*_mex.mexa64`) and their manifest do not. Checkpoints hash all
@@ -212,19 +287,21 @@ of `v2/T&C_Code/*.m` and not the mode, so a run may resume across modes.
    ```
 
 3. **Full model, before switching production: passed on 8 October**
-   (above). It is a model run, so a later package repeats it only with your
-   approval. Look for `Numeric model variables that differ (must be none):
-   none` and an identical ERW column in each comparison, plus the wall
-   times.
+   (above), on x with `compare_u_v`. It is a model run, so a later package
+   repeats it only with your approval. In package z each comparison ends
+   with `PASS: every saved value is identical under both kernels.`, each
+   comparison with x (`X_ROOT`) with `PASS: y reproduces x`, and the job
+   with `ALL PASS`; the `finished in` lines give the wall times
+   (`RUNBOOK_2026-09-24.md`, section 0z, has the commands).
 
    ```bash
-   sbatch --account=pi_np363 compare_erw_kernels.sbatch
+   sbatch --account=pi_np363 --export=ALL,X_ROOT=<x root> compare_erw_kernels.sbatch
    ```
 
 4. **Production.** Run `export TC_ERW_KERNEL=fast` before the campaign
-   controller; it submits with `--export=ALL`. Recording the mode in
-   `run_provenance` and asserting it in the campaign task is left to the
-   campaign integration.
+   controller; it submits with `--export=ALL`. Package z records the mode
+   in `run_provenance.erw_kernel`; asserting it in the campaign task is left
+   to the campaign integration.
 
 ## If a later release does not reproduce bit for bit
 

@@ -1,5 +1,24 @@
 # T&C-SMEW-N v0.9
 
+Package z is package y with restructured kernels for the ERW chemistry
+step (`ERW_KERNELS_2026-10-08.md`). `TC_ERW_KERNEL` selects them: unset or
+`matlab` runs the original code, `fast` restructured MATLAB kernels that
+do the same floating-point operations in the same order, and `mex` the
+same kernels compiled with MATLAB Coder in the deployed root
+(`build_erw_mex.sbatch`). All three compute every value bit for bit
+alike. On Bouchet, against package x's code, `fast` ran the ten-minute
+step about 11 times faster and a one-column year 4.8 times faster; `mex`
+ran the step about 21 times faster. MATLAB runs no MEX function on a
+thread-pool worker, and the squares of a 2-D run share a thread pool, so
+the field runs use `fast`; `mex` serves one-column and serial runs, and
+`Run_One_Subfield` refuses it with a pool. Each result records its kernel
+in `run_provenance.erw_kernel`. No equation, parameter or solver setting
+changes, and a run that sets nothing runs y's code. `compare_erw_kernels.sbatch`
+runs the same runs under each kernel, and in x, and checks every saved
+value; `compare_x_y.sbatch` can run y's side with `CMP_Y_KERNEL=fast`
+(`RUNBOOK_2026-09-24.md`, section 0z). The paragraph below describes y,
+which z contains.
+
 Package y is package x with the records of a multi-square run kept daily
 and its squares computed in parallel, for the 35-year runs on the 10 m
 Kantola grids (`FIELD_RECORDS_DAILY_2026-10-08.md`). No equation,
