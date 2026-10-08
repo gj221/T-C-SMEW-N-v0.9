@@ -205,6 +205,73 @@ E3 = ERW_Particle_History('assemble',struct('weath',unchanged,'hist',no_blocks))
 assert(~isfield(E3,'hist') && isequal(E3.weath,single_application), ...
     'A column without particle histories must assemble unchanged.');
 
+%% A multi-square run (keep_rows false: the 2-D daily blocks) keeps no row
+%% of a dropped day, and keeps a single application's arrays here too,
+%% since its weathering state is one day's block. The reads ERW_function
+%% makes are still those of the full arrays, and the assembled rows are
+%% the initial rows and the last row of each day still held.
+for napp_b = [1 2]
+    full_b = struct();
+    for k = 1:numel(names)
+        full_b.(names{k}) = zeros(nn,ncl,napp_b);
+        full_b.(names{k})(1,:,1) = k + [0.1 0.2 0.3];
+    end
+    first_block = struct();
+    for k = 1:numel(names)
+        first_block.(names{k}) = full_b.(names{k})(1:6,:,:);
+    end
+    [Hb,wb] = ERW_Particle_History('start',first_block,fieldnames(first_block), ...
+        keep_days,false,nn);
+    assert(isequal(sort(Hb.names),sort(names)) && ~any(isfield(wb,names)), ...
+        'A daily-block run must keep every particle history (%d applications).',napp_b);
+    days_b = {2:6, 7:11, 12:16, 17:21, 22:26, 27:31};
+    for w = 1:numel(days_b)
+        rows = days_b{w};
+        day = ERW_Particle_History('open',Hb,rows(1),numel(rows));
+        for r = rows
+            for k = {'psd','d','lamb','SSA'}
+                assert(isequal(ERW_Particle_History('row',Hb,day,wb,k{1},r-1), ...
+                    full_b.(k{1})(r-1,:,:)), ...
+                    'Daily blocks: previous row of %s at row %d differs.',k{1},r);
+            end
+            for k = {'psd','lamb'}
+                first = ERW_Particle_History('first',Hb,day,k{1});
+                for a = 1:napp_b
+                    assert(isequal(first(find(first(:,end,a)>0,1),:,a), ...
+                        full_b.(k{1})(find(full_b.(k{1})(:,end,a)>0,1),:,a)), ...
+                        'Daily blocks: initial %s of application %d at row %d differs.',k{1},a,r);
+                end
+            end
+            out = struct();
+            for k = 1:numel(names)
+                v = zeros(1,ncl,napp_b);
+                v(1,:,1) = rand(1,ncl);
+                if napp_b > 1 && r >= 13; v(1,:,2) = rand(1,ncl); end
+                out.(names{k}) = v;
+                full_b.(names{k})(r,:,:) = v;
+            end
+            day = ERW_Particle_History('write',Hb,day,out,r);
+            Hb = ERW_Particle_History('track',Hb,day,out,r,wb);
+        end
+        Hb = ERW_Particle_History('close',Hb,day);
+    end
+    try
+        ERW_Particle_History('row',Hb,ERW_Particle_History('open',Hb,nn+1,0),wb,'psd',11);
+        error('test_erw_particle_history:MissingError','A dropped row of a daily-block run was read.');
+    catch ME
+        assert(strcmp(ME.identifier,'ERW_Particle_History:RowNotKept'), ...
+            'A daily-block run keeps no row of a dropped day.');
+    end
+    Eb = ERW_Particle_History('assemble',struct('weath',wb,'hist',Hb));
+    held = [1; 26; 31];
+    assert(isequal(Eb.weath.particle_rows,held), ...
+        'A daily-block run assembles its initial rows and the last row of each day held.');
+    for k = 1:numel(names)
+        assert(isequal(Eb.weath.(names{k}),full_b.(names{k})(held,:,:)), ...
+            'Daily blocks: assembled %s differs from the full history.',names{k});
+    end
+end
+
 %% The daily step and the frame use it; ERW_function is unchanged.
 step = fileread(fullfile(code_dir,'ERW_Daily_Step_2D.m'));
 frame = fileread(fullfile(code_dir,'MAIN_FRAME_BG_ERW_2D.m'));

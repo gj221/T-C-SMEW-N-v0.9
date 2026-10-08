@@ -66,8 +66,9 @@ function E = ERW_Daily_Step_2D(E, cfg, p, i, j, NN, NNd, Datam, ~, CO2_in, ...
 %%   the values its rows finally hold.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if nargin < 33 || isempty(hour_first); hour_first = 1; end
-if nargin < 34 || isempty(full_records); full_records = true; end
+%% hour_first and full_records are the 32nd and 33rd inputs.
+if nargin < 32 || isempty(hour_first); hour_first = 1; end
+if nargin < 33 || isempty(full_records); full_records = true; end
 E.has_update = false;
 %% The two daily rows of P_c.
 r_prev = 1;

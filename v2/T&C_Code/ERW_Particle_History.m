@@ -33,7 +33,10 @@ function varargout = ERW_Particle_History(action,varargin)
 %% no reader uses them, the model reads only the previous row and each
 %% application's first row, and at ~125 MB per basalt square over 35 years
 %% they were most of a field run's particle record. The run then assembles
-%% the initial rows and the rows of the blocks still held, its final state.
+%% the initial rows and the last row of each block still held, its final
+%% state. Its ten-minute state is itself one day's block (ERW_Daily_Step_2D),
+%% so it keeps a column with a single application here too, where a
+%% full-record run leaves that column's whole arrays in weath.
 %% n_rows gives the length of the ten-minute grid when weath was
 %% allocated with fewer rows than that (the 2-D daily-block layout).
 %%   [H,weath] = ERW_Particle_History('start',weath,weath_names,keep_days,keep_rows,n_rows)
@@ -117,7 +120,7 @@ if ~(isnumeric(keep_days) && isscalar(keep_days) && isfinite(keep_days) && ...
 end
 candidates = {'psd','d','lamb','SSA','delta_d'};
 keep = cellfun(@(n) isfield(weath,n) && any(strcmp(weath_names,n)) && ...
-    size(weath.(n),3) > 1,candidates);
+    (size(weath.(n),3) > 1 || (~keep_rows && size(weath.(n),3) == 1)),candidates);
 H.names = candidates(keep);
 H.blocks = {};
 H.keep_days = keep_days;
@@ -135,7 +138,7 @@ H.n_kept = 0;
 H.dropped = zeros(0,2);
 for k = 1:numel(H.names)
     name = H.names{k};
-    H.size.(name) = size(weath.(name));
+    H.size.(name) = [size(weath.(name),1) size(weath.(name),2) size(weath.(name),3)];
     if ~isempty(n_rows)
         H.size.(name)(1) = n_rows;
     end
