@@ -221,3 +221,37 @@ and `test_bouchet_2d_parallel_configuration` (three loops),
 `test_margin_prairie_calcite_placement`, `test_parallel_erw_equivalence`
 and `test_2d_topographic_smoke` read 12-column records and run with full
 records.
+
+## 9. Run locally (8 October, R2026a on the Windows laptop)
+
+Nothing was run on Bouchet. On a copy of the package:
+
+- **x against y**: run 2 (basalt) for 3 days from 9 November 2016 on the
+  12-column plot, across the application of 10 November: `compare_x_y`
+  PASS. Of the 280 variables both results hold, 267 are identical and the
+  other 13 are run times, where the result went, provenance, code
+  identities and the last loop counter. The 7 hourly-derived stores, the
+  hourly field means (72 hours), the final state (hours 23-72, daily rows
+  3-4) and all 48 square-days of ERW summaries equal the same reductions
+  of x's records.
+- **y with full records** (4 workers) against x (serial): all 590 shared
+  variables identical but those and the worker count, every hourly array
+  and every ten-minute ERW record among them.
+- **y on 4 workers** against y serial: identical in all 325 variables
+  compared.
+- **y stopped** after the checkpoint of hour 40 **and resumed**: identical
+  to the uninterrupted run.
+- **The audit list** (`run_post_legacy_equation_audit_tests`) and
+  `test_plot_configuration_figures`, with a locally built equivalence
+  baseline: 104 of 104 pass, `test_2d_driver_equivalence` among them.
+- `test_2d_parfor_equivalence`: PASS (serial and 4 workers exactly equal,
+  the daily stores reproduce the full records in 321 variables and 48 ERW
+  days; 705 s serial, 256 s on 4 workers).
+- `checkcode` on every edited file reports none of the messages
+  `test_bouchet_linux_portability` rejects, and its backslash scan passes.
+
+These runs found two defects of y itself, fixed before the build: the
+daily ERW step read its records layout as missing and kept the whole
+ten-minute grid (`nargin` checked one input too high), and in daily blocks
+a single application's particle-size arrays were read from the block
+instead of the history.
