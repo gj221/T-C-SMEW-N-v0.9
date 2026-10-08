@@ -72,6 +72,8 @@ check('a dissolved species is carried with that lateral water', ...
     sum(abs(Dom.lateral.NO3_buf_to_main),'omitnan') > 0);
 check('subsurface lateral sub-steps stayed bounded', ...
     max(Dom.lateral.sub_steps_max) < 5000);
+[ok,detail] = cell_ledger_closes(Dom.lateral,topo.cell_area_m2);
+check('the per-cell lateral ledger closes and records the redistribution',ok,detail);
 
 %% Surface routing: assert conservation whenever runoff was generated.
 if runoff_total_m3 > 1e-9
@@ -182,6 +184,8 @@ check('field-origin exports are bounded by the totals', ...
     all(DomP.exit_mass_surface_erw_field_umol <= DomP.exit_mass_surface_erw_umol+1e-6));
 check('the polygon grid keeps pore pH finite', ...
     all(isfinite(DomP.PH_pore_d(DomP.PH_pore_d ~= 0))));
+[ok,detail] = cell_ledger_closes(DomP.lateral,ptopo.cell_area_m2);
+check('the per-cell lateral ledger closes on the polygon grid',ok,detail);
 
 fprintf('  ---------------------------------------\n');
 fprintf('  %d passed, %d failed\n\n', n_pass, n_fail);
@@ -247,6 +251,23 @@ for cc_ = 1:topo.N_cells
     runoff_total_m3 = runoff_total_m3 + ...
         sum((Rh(:,1,cc_) + Rd(:,1,cc_))/1000) * topo.cell_area_m2(cc_);
 end
+end
+
+function [ok,detail] = cell_ledger_closes(lat,A)
+%% Water and NO3 moved between cells are conserved: each day the cell
+%% gains sum to zero, and half their absolute sum cannot exceed the day's
+%% net redistribution (water_net_m3), which sums the same gains hourly.
+ok = false; detail = 'no per-cell ledger';
+if ~isfield(lat,'water_cell_net_mm') || ~isfield(lat,'NO3_cell_net_g_m2'); return; end
+w = lat.water_cell_net_mm.*A(:).'/1000;          %% [m3]
+n = lat.NO3_cell_net_g_m2.*A(:).';               %% [g N]
+w_gap = max(abs(sum(w,2))./max(1e-12,sum(abs(w),2)));
+n_gap = max(abs(sum(n,2))./max(1e-12,sum(abs(n),2)));
+bound = all(0.5*sum(abs(w),2) <= lat.water_net_m3 + 1e-9*max(1,lat.water_net_m3));
+moved = any(w(:) ~= 0);
+ok = w_gap < 1e-9 && n_gap < 1e-9 && bound && moved;
+detail = sprintf('water closure %.2g, NO3 closure %.2g, bound %d, moved %d', ...
+    w_gap,n_gap,bound,moved);
 end
 
 function ok = raises(fcn,identifier)

@@ -635,6 +635,14 @@ if OPT_DEM == 1
     lateral_diag.water_edge_abs_m3      = zeros(NNd,1);
     lateral_diag.water_net_m3           = zeros(NNd,1);
 end
+%% Each cell's net subsurface lateral gain per day (positive = received
+%% from its neighbours), water [mm] and NO3 [g N m-2], for the field maps
+%% (Plot_Field_Maps 'lateral_water', 'lateral_NO3'). Kept on a field grid
+%% or with topography only, so the plot runs keep Domain.lateral's fields.
+if field_grid || OPT_DEM == 1
+    lateral_diag.water_cell_net_mm      = zeros(NNd,N_col);
+    lateral_diag.NO3_cell_net_g_m2      = zeros(NNd,N_col);
+end
 
 j = 1;
 tic;
@@ -1374,6 +1382,14 @@ for i = i_resume:NN
 
         %% Return the advected mass to its T&C pools [gX/m2].
         dM_area = squeeze(sum(dM_cell,2)) ./ A_cell;
+        if isfield(lateral_diag,'water_cell_net_mm')
+            Q_gain = accumarray(topo.edge_b(:),sum(ldiag.Q_edge,2),[N_col 1]) - ...
+                accumarray(topo.edge_a(:),sum(ldiag.Q_edge,2),[N_col 1]);  %% m3/h
+            lateral_diag.water_cell_net_mm(j,:) = lateral_diag.water_cell_net_mm(j,:) + ...
+                (1000*Q_gain*dth./A_cell).';
+            lateral_diag.NO3_cell_net_g_m2(j,:) = lateral_diag.NO3_cell_net_g_m2(j,:) + ...
+                dM_area(:,i_lateral_NO3).';
+        end
         P_cells = Biogeo_Lateral_Pools(P_cells,dM_area);
         P(j,:,:) = reshape(P_cells.',1,79,N_col);
         transported = unique([lateral_pool_idx{:}]);
@@ -1694,11 +1710,13 @@ if OPT_DEM == 1
     fprintf('Overland: %.4g m3 water left at the outlet(s)\n', ...
         sum(exit_water_surface_m3));
 end
-if field_grid
+if field_grid || topography_attached
     %% Exports that originated inside the polygon (v1.0). Routed runoff
     %% leaves through the OUTLET cell, often a partial perimeter cell, so
     %% with topography its field share is the routed tracer, not that
-    %% cell's own overlap fraction.
+    %% cell's own overlap fraction. On the plot grid every overlap fraction
+    %% is 1 and these equal the totals; they are kept for any DEM run so
+    %% its exports read the same on either grid.
     Domain.exit_water_field_vert_m3 = sum(exit_water_vert_m3.*field_fraction);
     if topography_attached
         Domain.exit_water_field_surface_m3 = exit_water_field_surface_m3;
@@ -1709,6 +1727,8 @@ if field_grid
     end
     Domain.exit_water_field_total_m3 = Domain.exit_water_field_vert_m3 + ...
         Domain.exit_water_field_surface_m3;
+end
+if field_grid
     Domain.cell_overlap_area_m2 = A_field;
     Domain.cell_overlap_fraction = field_fraction;
     Domain.field_aggregation = 'polygon_overlap_area';
