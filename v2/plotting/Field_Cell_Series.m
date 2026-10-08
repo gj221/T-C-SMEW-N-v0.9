@@ -15,6 +15,13 @@ function value = Field_Cell_Series(res,spec)
 %% steps after the last full row are left out. Large arrays are read
 %% through matfile, a slice of pools or a block of cells at a time, so a
 %% field grid of thousands of cells does not have to fit in memory whole.
+%%
+%% A multi-square result of package y keeps no hourly records: the step
+%% series the table maps are saved already combined into the same daily
+%% rows (O_d, ZWT_d, Lk_d, f_d, q_runon_d, Rh_d, Rd_d; MAIN_FRAME_BG_ERW_2D,
+%% DAILY STORES), and are read from there. A result that holds the hourly
+%% record (package x, one-column runs) is read from the record as before;
+%% the two agree to rounding.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if ~res.has_series
@@ -28,7 +35,7 @@ switch spec.source
     case 'pool'
         value = pool_sum(res,spec.index);
     case 'hourly'
-        value = steps_to_days(res,spec.name,1,[],spec.hourly,spec.rate);
+        value = step_series(res,spec.name,spec.hourly,spec.rate);
     case 'lateral'
         value = lateral_ledger(res,spec.name);
     case 'derived'
@@ -151,8 +158,7 @@ switch name
     case {'WFPS','theta_bio'}
         X = biogeochemical_layer_water(res,strcmp(name,'WFPS'));
     case 'runoff'
-        X = steps_to_days(res,'Rh',1,[],'sum',false) + ...
-            steps_to_days(res,'Rd',1,[],'sum',false);
+        X = step_series(res,'Rh','sum',false) + step_series(res,'Rd','sum',false);
     otherwise
         error('Field_Cell_Series:UnknownDerived','No derived quantity "%s".',name);
 end
@@ -172,8 +178,14 @@ end
 function X = biogeochemical_layer_water(res,as_wfps)
 %% Depth-weighted water content [-] or WFPS [%] of the biogeochemical
 %% layer from the hourly moisture O [NN x ms x N], as
-%% Daily_WFPS_From_Hourly computes it for one column.
-require(res,{'O','PAR'});
+%% Daily_WFPS_From_Hourly computes it for one column, or from its daily
+%% means O_d [NNd x layers x N] (package y).
+from_store = ~has_variable(res,'O') && has_variable(res,'O_d');
+if from_store
+    require(res,{'O_d','PAR'});
+else
+    require(res,{'O','PAR'});
+end
 L = load(res.file,'PAR');
 PAR = L.PAR;
 if ~iscell(PAR) || numel(PAR) ~= res.N_cells
@@ -193,7 +205,57 @@ for c = 1:res.N_cells
     n_layer = max(n_layer,find(bio > 0,1,'last'));
 end
 weights = cellfun(@(w) w(1:n_layer),weights,'UniformOutput',false);
-X = steps_to_days(res,'O',1:n_layer,weights,'mean',false);
+if ~from_store
+    X = steps_to_days(res,'O',1:n_layer,weights,'mean',false);
+    return
+end
+sz = saved_size(res,'O_d');
+if sz(1) ~= res.NNd || sz(2) < n_layer || prod(sz(3:end)) ~= res.N_cells
+    error('Field_Cell_Series:ShapeMismatch', ...
+        'O_d is %s; expected %d days x %d layers x %d cells.', ...
+        mat2str(sz),res.NNd,n_layer,res.N_cells);
+end
+L = load(res.file,'O_d');
+O_d = reshape(double(L.O_d),sz(1),sz(2),res.N_cells);
+X = zeros(res.NNd,res.N_cells);
+for c = 1:res.N_cells
+    X(:,c) = O_d(:,1:n_layer,c)*weights{c}(:);
+end
+end
+
+%% =======================================================================
+function X = step_series(res,name,how,is_rate)
+%% A step series combined into daily rows: from the hourly record when the
+%% result holds it, else from the daily store package y keeps in its place
+%% (name_d), which combines the same hours the same way.
+store = [name '_d'];
+if has_variable(res,name) || ~has_variable(res,store)
+    X = steps_to_days(res,name,1,[],how,is_rate);
+    return
+end
+switch name
+    case {'O','ZWT'};           kept = {'mean',false};
+    case {'Lk','f','q_runon'};  kept = {'sum',true};
+    case {'Rh','Rd'};           kept = {'sum',false};
+    otherwise;                  kept = {};
+end
+if isempty(kept) || ~strcmp(kept{1},how) || kept{2} ~= logical(is_rate)
+    error('Field_Cell_Series:NoHourlyRecord', ...
+        ['%s keeps daily stores, not the hourly %s, and %s does not ' ...
+        'combine its hours as asked (%s%s).'],res.name,name,store,how, ...
+        ternary(is_rate,' of a rate',''));
+end
+X = daily_variable(res,store);
+end
+
+%% =======================================================================
+function tf = has_variable(res,name)
+tf = ismember(name,{res.variables.name});
+end
+
+%% =======================================================================
+function out = ternary(cond,a,b)
+if cond; out = a; else; out = b; end
 end
 
 %% =======================================================================

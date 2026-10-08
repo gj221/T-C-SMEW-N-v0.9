@@ -14,7 +14,9 @@ function spec = Field_Cell_Variables(key)
 %%   units        units of a WINDOW value, after scale
 %%   source       'daily'    saved [NNd x 1 x N_col] daily series
 %%                'pool'     columns of the daily pool matrix P, summed
-%%                'hourly'   saved [NN x 1 x N_col] step series
+%%                'hourly'   saved [NN x 1 x N_col] step series, or the
+%%                           daily store <name>_d a multi-square run of
+%%                           package y keeps in its place
 %%                'lateral'  per-cell daily ledger in lateral_diag
 %%                'derived'  computed in Field_Cell_Series
 %%   name         saved variable, or the derived quantity

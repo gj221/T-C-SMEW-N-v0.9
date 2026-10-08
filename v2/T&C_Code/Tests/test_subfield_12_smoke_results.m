@@ -31,9 +31,22 @@ for k = 1:numel(RM)
         error('test_subfield_12_smoke_results:MissingResult', ...
             'Missing smoke result: %s',file);
     end
-    S = load(file,'R','N_col','MOD_PARAM_input','topo','ColCfg', ...
+    wanted = {'R','N_col','MOD_PARAM_input','topo','ColCfg', ...
         'P','O','Oice','V','Tdp','PH_d','N2Oflx','LEAK_NO3', ...
-        'Rh','Rd','Lk','dth','Domain','lateral_diag');
+        'Rh','Rd','Lk','dth','Domain','lateral_diag', ...
+        'Final_state','Rh_d','Rd_d','Lk_d','Hourly_tail','PH_bulk_d'};
+    S = load(file,wanted{ismember(wanted,who('-file',file))});
+    %% A multi-square result of package y keeps no hourly records: the last
+    %% hours are in its final state, and every hour's runoff and drainage
+    %% in the daily stores and the hours after the last daily step. Its
+    %% daily pH is PH_bulk_d, which PH_d repeats row for row.
+    daily_store = ~isfield(S,'O');
+    if daily_store
+        for f = {'O','Oice','V','Tdp'}
+            S.(f{1}) = S.Final_state.hourly.(f{1});
+        end
+        S.PH_d = S.PH_bulk_d;
+    end
 
     %% Assert the depth the matrix configured, not a literal. Pinning 2500
     %% here encoded the depth that diluted DOC per gram of soil and starved
@@ -76,8 +89,15 @@ for k = 1:numel(RM)
         all(S.PH_d > 0 & S.PH_d < 14,'all') && min_NO3 >= -1e-12;
 
     area = S.topo.cell_area_m2(:);
-    surface_expected = squeeze(sum((S.Rh+S.Rd)/1000,1)).*area;
-    vertical_expected = squeeze(sum((S.Lk/1000)*S.dth,1)).*area;
+    if daily_store
+        surface_expected = squeeze((sum(S.Rh_d+S.Rd_d,1,'omitnan') + ...
+            S.Hourly_tail.Rh + S.Hourly_tail.Rd)/1000).*area;
+        vertical_expected = squeeze((sum(S.Lk_d,1,'omitnan') + ...
+            S.Hourly_tail.Lk)/1000).*area;
+    else
+        surface_expected = squeeze(sum((S.Rh+S.Rd)/1000,1)).*area;
+        vertical_expected = squeeze(sum((S.Lk/1000)*S.dth,1)).*area;
+    end
     water_boundary_ok = water_boundary_ok && ...
         max(abs(S.Domain.exit_water_surface_m3(:)-surface_expected(:))) < 1e-9 && ...
         max(abs(S.Domain.exit_water_vert_m3(:)-vertical_expected(:))) < 1e-9 && ...

@@ -83,6 +83,32 @@ check(abs(summary.pre_application_bulk_pH-6.2) < 1e-12 && ...
     abs(summary.post_application_bulk_pH-6.3) < 1e-12, ...
     'calibration samples sparse daily bulk pH on the ERW time grid');
 
+%% The same column as a multi-square result of package y keeps it: no
+%% ten-minute records, the t = 0 row and each ERW call's summary.
+fixture_daily = [tempname '.mat'];
+cleanup_daily = onCleanup(@() delete_if_present(fixture_daily));
+names = {'pH_bulk','f_Na','f_K','f_Ca','f_Mg','f_H','f_Al'};
+calls = [2 144; 145 288];
+Ey = struct('res',6,'dm_end',144);
+D = struct('n',2,'rows',calls,'j',[2; 3]);
+f_sum = E.bg.f_Ca+E.bg.f_Mg+E.bg.f_K+E.bg.f_Na+E.bg.f_Al+E.bg.f_H;
+D.max.f_sum = [max(abs(f_sum(2:144)-1)); max(abs(f_sum(145:288)-1))];
+for k = 1:numel(names)
+    Ey.daily_initial.bg.(names{k}) = E.bg.(names{k})(1);
+    D.end.(names{k}) = E.bg.(names{k})(calls(:,2));
+end
+ERW = {Ey}; ERW_daily = {D};
+save(fixture_daily,'Date','ERW','ERW_daily');
+summary_daily = Kantola_Bulk_pH_Model_Summary( ...
+    fixture_daily,datenum(2016,11,10),'pre_application');
+same = true;
+for f = setdiff(fieldnames(summary),{'exchange_closure_max'})'
+    same = same && isequal(summary_daily.(f{1}),summary.(f{1}));
+end
+check(same && abs(summary_daily.exchange_closure_max - ...
+    summary.exchange_closure_max) < 1e-15, ...
+    'a daily-store result gives the same calibration samples');
+
 fprintf('  ---------------------------------------\n');
 fprintf('  %d passed, 0 failed\n',n_pass);
 
