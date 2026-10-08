@@ -1,4 +1,4 @@
-function [bad,report] = Daily_Store_Check(X,Y,ignore)
+function [bad,report] = Daily_Store_Check(X,Y,ignore,rename)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% The saved outputs of a 2-D run of package y (Y) against the same run
 %% kept with full records (X: package x, or package y with
@@ -22,13 +22,18 @@ function [bad,report] = Daily_Store_Check(X,Y,ignore)
 %%     against the same rows of X.
 %% A full-record Y holds X's arrays themselves, compared whole.
 %%
-%%   [bad,report] = Daily_Store_Check(X,Y,ignore)
+%%   [bad,report] = Daily_Store_Check(X,Y,ignore,rename)
+%%
+%% rename = {x_root, y_root} compares text after X's root is replaced by
+%% Y's, so paths into either tree (the parameter files of ColCfg, the
+%% directories) compare by what they point to.
 %%
 %% bad lists the differences (empty when Y reproduces X); report holds
 %% the counts and the variables found on one side only.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if nargin < 3; ignore = {}; end
+if nargin < 4; rename = {}; end
 if ~isfield(Y,'FULL_RECORDS')
     error('Daily_Store_Check:NotY','Y is not a result of package y (no FULL_RECORDS).');
 end
@@ -45,12 +50,12 @@ names = setdiff(intersect(fieldnames(X),fieldnames(Y)),{'ERW'});
 n_same = 0; ignored = {};
 for k = 1:numel(names)
     n = names{k};
-    if same_value(X.(n),Y.(n))
+    if same_value(X.(n),Y.(n),rename)
         n_same = n_same + 1;
     elseif any(strcmp(n,ignore))
         ignored{end+1} = n; %#ok<AGROW>
     else
-        bad{end+1} = sprintf('%s [%s]',n,what_differs(X.(n),Y.(n))); %#ok<AGROW>
+        bad{end+1} = sprintf('%s [%s]',n,what_differs(X.(n),Y.(n),rename)); %#ok<AGROW>
     end
 end
 x_only = setdiff(fieldnames(X),fieldnames(Y));
@@ -304,7 +309,9 @@ end
 function bad = block_fields(Sx,Sy,first,last,full_records,tag,particle)
 %% Rows first:last of X against Y's block (the whole arrays with full
 %% records). Particle-class histories are kept as rows on the grid
-%% (particle_rows): each Y row must equal X's row of the same grid index.
+%% (particle_rows): each Y row must equal X's row of the same grid index,
+%% read from X's kept rows or, for a column X keeps whole (a single
+%% application), from its whole array.
 bad = {};
 by_rows = isfield(Sx,'particle_rows') || isfield(Sy,'particle_rows');
 for f = union(fieldnames(Sx),fieldnames(Sy))'
@@ -324,11 +331,18 @@ for f = union(fieldnames(Sx),fieldnames(Sy))'
     end
 end
 if by_rows
-    if ~isfield(Sx,'particle_rows') || ~isfield(Sy,'particle_rows')
-        bad{end+1} = [tag '.particle_rows (one side only)'];
+    if ~isfield(Sy,'particle_rows')
+        bad{end+1} = [tag '.particle_rows (X only)'];
         return
     end
-    [found,where] = ismember(Sy.particle_rows,Sx.particle_rows);
+    if isfield(Sx,'particle_rows')
+        [found,where] = ismember(Sy.particle_rows,Sx.particle_rows);
+    elseif ~full_records && isfield(Sx,'psd')
+        where = Sy.particle_rows;
+        found = where >= 1 & where <= size(Sx.psd,1);
+    else
+        found = false;
+    end
     if ~all(found) || (full_records && ~isequal(Sy.particle_rows,Sx.particle_rows))
         bad{end+1} = [tag '.particle_rows'];
         return
@@ -343,10 +357,11 @@ if by_rows
 end
 end
 
-function s = what_differs(a,b)
+function s = what_differs(a,b,rename)
+if nargin < 3; rename = {}; end
 if isstruct(a) && isstruct(b) && isscalar(a) && isscalar(b)
     f = union(fieldnames(a),fieldnames(b));
-    d = f(cellfun(@(n) ~isfield(a,n) || ~isfield(b,n) || ~same_value(a.(n),b.(n)),f));
+    d = f(cellfun(@(n) ~isfield(a,n) || ~isfield(b,n) || ~same_value(a.(n),b.(n),rename),f));
     s = ['fields ' strjoin(d',' ')];
 elseif isnumeric(a) && isnumeric(b) && isequal(size(a),size(b))
     dd = abs(double(a(:))-double(b(:)));
@@ -359,17 +374,22 @@ else
 end
 end
 
-function tf = same_value(a,b)
+function tf = same_value(a,b,rename)
 %% isequaln, except that function handles compare by their text and the
-%% values they captured: two loaded copies of one anonymous function are
-%% never isequaln.
+%% values they captured (two loaded copies of one anonymous function are
+%% never isequaln), and text compares after rename{1} becomes rename{2}.
+if nargin < 3; rename = {}; end
 if isequaln(a,b); tf = true; return; end
 tf = false;
+if ~isempty(rename) && (ischar(a) || isstring(a)) && strcmp(class(a),class(b))
+    tf = isequaln(strrep(a,rename{1},rename{2}),b);
+    return
+end
 if isa(a,'function_handle') && isa(b,'function_handle')
     if ~strcmp(func2str(a),func2str(b)); return; end
     fa = functions(a); fb = functions(b);
     if isfield(fa,'workspace') ~= isfield(fb,'workspace'); return; end
-    tf = ~isfield(fa,'workspace') || same_value(fa.workspace,fb.workspace);
+    tf = ~isfield(fa,'workspace') || same_value(fa.workspace,fb.workspace,rename);
     return
 end
 if ~strcmp(class(a),class(b)) || ~isequal(size(a),size(b)); return; end
@@ -378,13 +398,13 @@ if isstruct(a)
     if ~isempty(setxor(names,fieldnames(b))); return; end
     for k = 1:numel(a)
         for q = 1:numel(names)
-            if ~same_value(a(k).(names{q}),b(k).(names{q})); return; end
+            if ~same_value(a(k).(names{q}),b(k).(names{q}),rename); return; end
         end
     end
     tf = true;
 elseif iscell(a)
     for k = 1:numel(a)
-        if ~same_value(a{k},b{k}); return; end
+        if ~same_value(a{k},b{k},rename); return; end
     end
     tf = true;
 end

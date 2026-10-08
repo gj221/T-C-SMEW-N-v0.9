@@ -1,4 +1,4 @@
-function ok = compare_x_y(path_x,path_y)
+function ok = compare_x_y(path_x,path_y,x_root,y_root)
 %% A run of package y against the same run of package x (compare_x_y.sbatch).
 %%
 %% Package y computes every number as x does and keeps less: a multi-square
@@ -7,10 +7,13 @@ function ok = compare_x_y(path_x,path_y)
 %% (v2/T&C_Code) checks each y output against the same reduction of x's
 %% records and every variable both hold, all with isequaln; a full-record
 %% y result (TC_FULL_RECORDS=1) is compared with x's arrays whole. Run
-%% times, paths, provenance and code identities differ by design and are
-%% listed apart. It only reads.
+%% times, the results' locations, provenance and code identities differ by
+%% design and are listed apart; paths into the two trees compare by what
+%% they point to (x's root read as y's). It only reads.
 %%
 %%   ok = compare_x_y('<scratch>/x','<scratch>/y')    folders or result files
+%%   ok = compare_x_y(...,x_root,y_root)              the roots, if not the
+%%                                                    ones the runs recorded
 %%
 %% Package y's v2/T&C_Code must be on the path.
 
@@ -28,13 +31,28 @@ if ~isfield(Y,'FULL_RECORDS')
 end
 fprintf('y keeps %s records.\n',ternary(Y.FULL_RECORDS,'full','daily-store'));
 
-%% What differs between the two trees by design: run times, the results'
-%% paths, the provenance (code digests, times) and the code identities the
-%% checkpoint fingerprints carry.
+%% What differs between the two trees by design: run times, where each
+%% result went (the options and the result and checkpoint paths), the
+%% provenance (code digests, times), the code identities the checkpoint
+%% fingerprints carry, and the loop counter the two drivers leave last.
 by_design = {'run_provenance','Computational_Time','ERW_ckpt_last_toc', ...
     'ERW_ckpt_fingerprint','ERW_ckpt_runtime_identity','ERW_execution_identity', ...
-    'ERW_ckpt_file','ERW_ckpt_tmp','result_file','tmp_result','ckpt_dir'};
-[bad,r] = Daily_Store_Check(X,Y,by_design);
+    'ERW_ckpt_file','ERW_ckpt_tmp','result_file','tmp_result','ckpt_dir', ...
+    'fl_save','opt','varargin','k'};
+%% The roots: v2 is current_directory in Run_One_Subfield.
+if nargin < 4
+    x_root = ''; y_root = '';
+    if isfield(X,'current_directory') && isfield(Y,'current_directory')
+        x_root = fileparts(X.current_directory);
+        y_root = fileparts(Y.current_directory);
+    end
+end
+rename = {};
+if ~isempty(x_root) && ~isempty(y_root)
+    rename = {char(x_root),char(y_root)};
+    fprintf('Paths compared with %s read as %s\n',rename{1},rename{2});
+end
+[bad,r] = Daily_Store_Check(X,Y,by_design,rename);
 
 fprintf('Variables both hold: %d, identical: %d\n',r.n_both,r.n_same);
 fprintf('Differ by design (times, paths, provenance, code identity): %s\n', ...
