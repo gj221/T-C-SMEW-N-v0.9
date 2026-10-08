@@ -515,6 +515,18 @@ run_provenance.blas = regexprep(strtrim(evalc('version -blas')),'\s+',' ');
 run_provenance.max_threads = maxNumCompThreads;
 run_provenance.parallel_workers = parallel_workers;
 run_provenance.numerical_identity = getenv('TC_NUMERICAL_IDENTITY');
+%% The ERW chemistry kernels the steps run (TC_ERW_KERNEL): matlab, the
+%% original code, or fast or mex, which compute the same numbers bit for
+%% bit. Checkpoints do not pin it, so the segments before a resume keep
+%% their own in execution_segments. MATLAB runs no MEX function on a
+%% thread-based worker, so mex with a pool stops here, not at the first day.
+run_provenance.erw_kernel = ERW_Chemistry_Kernel_Mode([]);
+if strcmp(run_provenance.erw_kernel,'mex') && parallel_workers > 0
+    error('Run_One_Subfield:MexOnThreadPool', ...
+        ['TC_ERW_KERNEL=mex cannot run on the %d thread-pool workers of ' ...
+         'this run; TC_ERW_KERNEL=fast computes the same numbers there.'], ...
+        parallel_workers);
+end
 %% The campaign gate that this process passed before it started.  Filename
 %% wildcards cannot tell which code produced a MAT, so the stamp travels
 %% with the result and a later job can reject anything validated

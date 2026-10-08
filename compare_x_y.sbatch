@@ -32,6 +32,11 @@
 # runs write to scratch (CMP_DIR); nothing is written inside either root
 # except this job's output file beside it.
 #
+# CMP_Y_KERNEL=fast runs y's side with the restructured ERW chemistry
+# kernels (TC_ERW_KERNEL=fast, the field campaign's setting; a root from
+# package z on), so the job checks y's records and the kernels against x
+# at once. Unset, y runs the original code, as x does.
+#
 # Resources. A day of the plot takes x about 12 s (6 h for five years), so
 # the year runs take about 1.5 h. x holds about 1.2 MB of records per
 # square and day, so its 40-day grid run keeps ~16 GiB and the comparison
@@ -50,6 +55,7 @@ ndays="${CMP_NDAYS:-40}"
 year_days="${CMP_YEAR_DAYS:-400}"
 start_date="${CMP_START:-2016-11-01}"
 workers="${CMP_WORKERS:-32}"
+y_kernel="${CMP_Y_KERNEL:-}"
 out="${CMP_DIR:-/nfs/roberts/scratch/pi_np363/${USER:-$(id -un)}/compare_x_y_${SLURM_JOB_ID}}"
 out="${out%/}"
 
@@ -83,6 +89,15 @@ if [[ ! "$start_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
     echo "CMP_START must be yyyy-mm-dd." >&2
     exit 2
 fi
+# mex cannot run on the thread-pool workers every run here uses.
+case "$y_kernel" in
+    ""|matlab|fast) ;;
+    *) echo "CMP_Y_KERNEL must be unset, matlab or fast." >&2; exit 2 ;;
+esac
+if [[ -n "$y_kernel" && ! -f "$y_root/v2/T&C_Code/ERW_Chemistry_Kernel_Mode.m" ]]; then
+    echo "CMP_Y_KERNEL needs the kernel switch (package z on); $y_root has none." >&2
+    exit 2
+fi
 case "$out/" in
     "$y_root"/*|"$x_root"/*) echo "Keep CMP_DIR outside both trees: $out" >&2; exit 2 ;;
 esac
@@ -92,7 +107,7 @@ module purge
 module load "${MATLAB_MODULE:-MATLAB/2025a}"
 export TC_CKPT_MINUTES=0 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 unset TC_CKPT_FORCE_RESUME TC_FULL_RECORDS TC_PARALLEL_WORKERS TC_VALIDATION_FINGERPRINT \
-    TC_SWEEP_LAYOUT TC_SWEEP_CASE_ID ERW_DEBUG_CANDIDATES || true
+    TC_SWEEP_LAYOUT TC_SWEEP_CASE_ID ERW_DEBUG_CANDIDATES TC_ERW_KERNEL || true
 
 # MATLAB deadlocks on a shared preferences directory, and an NFS one is
 # worse: each MATLAB gets its own prefs and temp on node-local scratch.
@@ -111,6 +126,7 @@ echo "x:    $x_root"
 echo "y:    $y_root"
 echo "grid: $grid"
 echo "run 2 from $start_date: $ndays days (plot, grid), $year_days days (year); results in $out"
+echo "y's ERW chemistry kernels: ${y_kernel:-matlab (the original code)}"
 hostname
 sha256sum "$x_root/v2/T&C_Code/MAIN_FRAME_BG_ERW_2D.m" "$y_root/v2/T&C_Code/MAIN_FRAME_BG_ERW_2D.m" "$grid"
 
@@ -123,6 +139,7 @@ run_one() {  # name root workers full_records days [grid]
     mkdir -p "$out/$name" "$scratch_dir/$name/prefs" "$scratch_dir/$name/tmp"
     (
         if [[ "$full" == 1 ]]; then export TC_FULL_RECORDS=1; fi
+        if [[ "$root" == "$y_root" && -n "$y_kernel" ]]; then export TC_ERW_KERNEL="$y_kernel"; fi
         export MATLAB_PREFDIR="$scratch_dir/$name/prefs" TMPDIR="$scratch_dir/$name/tmp"
         matlab -singleCompThread -batch \
             "addpath(fullfile('$root','runtime','Base_1D')); P = Campaign_Parameters; cd(fullfile('$root','v2','run')); Run_One_Subfield(2,'StartDate','$start_date','NDays',$days,'AppeloAlpha',P.AppeloAlpha,'AppeloLogKH',P.AppeloLogKH,'KNmaxd',P.KNmaxd,'Kbot',P.Kbot,'ParallelWorkers',$nw$grid_option,'ResultDirectory','$out/$name')"
@@ -174,7 +191,7 @@ compare_one year_x year_y year || status=1
 compare_one grid_x grid_y grid || status=1
 echo
 if (( status == 0 )); then
-    echo "ALL PASS: y reproduces x on the plot (40 days, and with full records), over a year of two applications, and on the 10 m grid."
+    echo "ALL PASS: y${y_kernel:+ (TC_ERW_KERNEL=$y_kernel)} reproduces x on the plot (40 days, and with full records), over a year of two applications, and on the 10 m grid."
 else
     echo "NOT ALL PASS: see the CHECK lines above and the run logs in $out" >&2
 fi
