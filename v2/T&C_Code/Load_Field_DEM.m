@@ -313,7 +313,9 @@ end
 function e = epsg_of(crs)
 e = NaN;
 try
-    m = regexp(char(wktstring(crs)),'ID\["EPSG",(\d+)\]','tokens');
+    %% Brackets as one-character sets, not escapes: deployed source holds
+    %% no backslashes (test_bouchet_linux_portability).
+    m = regexp(char(wktstring(crs)),'ID[[]"EPSG",([0-9]+)[]]','tokens');
     if ~isempty(m); e = str2double(m{end}{1}); end
 catch
 end
