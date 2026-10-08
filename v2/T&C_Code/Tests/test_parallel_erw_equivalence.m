@@ -21,6 +21,11 @@ old_parallel_workers = getenv('TC_PARALLEL_WORKERS');
 cleanup = onCleanup(@() restore_test_environment(parallel_dir,serial_dir, ...
     old_checkpoint_minutes,old_parallel_workers)); %#ok<NASGU>
 setenv('TC_CKPT_MINUTES','0');
+%% These checks read the run's full hourly and ten-minute records, which
+%% a multi-square run keeps only when asked (package y).
+old_records = getenv('TC_FULL_RECORDS');
+records_cleanup = onCleanup(@() setenv('TC_FULL_RECORDS',old_records)); %#ok<NASGU>
+setenv('TC_FULL_RECORDS','1');
 setenv('TC_PARALLEL_WORKERS','');
 
 parallel_file = Run_One_Subfield(2,'StartDate','2016-11-10','NDays',1, ...

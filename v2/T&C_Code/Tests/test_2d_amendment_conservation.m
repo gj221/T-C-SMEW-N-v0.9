@@ -23,6 +23,11 @@ old_ckpt = getenv('TC_CKPT_MINUTES');
 old_workers = getenv('TC_PARALLEL_WORKERS');
 cleanup = onCleanup(@() restore(result_dir,old_ckpt,old_workers)); %#ok<NASGU>
 setenv('TC_CKPT_MINUTES','0');
+%% These checks read the run's full hourly and ten-minute records, which
+%% a multi-square run keeps only when asked (package y).
+old_records = getenv('TC_FULL_RECORDS');
+records_cleanup = onCleanup(@() setenv('TC_FULL_RECORDS',old_records)); %#ok<NASGU>
+setenv('TC_FULL_RECORDS','1');
 setenv('TC_PARALLEL_WORKERS','');
 
 result_file = Run_One_Subfield(8,'StartDate',datenum(2016,11,5), ...

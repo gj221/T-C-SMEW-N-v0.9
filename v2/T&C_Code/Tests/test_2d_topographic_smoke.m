@@ -244,6 +244,9 @@ ColCfg = repmat(struct( ...
     'PFT_OVERRIDE','', 'last_application_year',2019, 'biogeo_overrides',[], ...
     'saturation_exponent',1, 'apply_rock',apply_rock), topo.N_cells, 1); %#ok<NASGU>
 
+%% The runoff total below sums the hourly records over the whole run,
+%% which a multi-square run keeps only when asked (package y).
+FULL_RECORDS = true;                                          %#ok<NASGU>
 old = cd(code); cleanup = onCleanup(@() cd(old));
 MAIN_FRAME_BG_ERW_2D;
 runoff_total_m3 = 0;

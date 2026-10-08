@@ -13,6 +13,11 @@ old_checkpoint_minutes = getenv('TC_CKPT_MINUTES');
 cleanup = onCleanup(@() restore_test_environment( ...
     result_dir,old_checkpoint_minutes)); %#ok<NASGU>
 setenv('TC_CKPT_MINUTES','0');
+%% These checks read the run's full hourly and ten-minute records, which
+%% a multi-square run keeps only when asked (package y).
+old_records = getenv('TC_FULL_RECORDS');
+records_cleanup = onCleanup(@() setenv('TC_FULL_RECORDS',old_records)); %#ok<NASGU>
+setenv('TC_FULL_RECORDS','1');
 
 result_file = Run_One_Subfield(9,'StartDate','2016-11-09','NDays',3, ...
     'AppeloAlpha',1.3,'ParallelWorkers',6,'ResultDirectory',result_dir);
