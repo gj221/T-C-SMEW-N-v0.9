@@ -1,5 +1,27 @@
 # T&C-SMEW-N v0.9
 
+Package y is package x with the records of a multi-square run kept daily
+and its squares computed in parallel, for the 35-year runs on the 10 m
+Kantola grids (`FIELD_RECORDS_DAILY_2026-10-08.md`). No equation,
+parameter or solver setting changes, and every computed value is x's, bit
+for bit. A one-column run keeps x's full records, so the 1-D campaigns
+and tools are unchanged. A run of several squares keeps the last 50 hours
+of each hourly array and one day of ten-minute chemistry, and saves daily
+stores per square (the daily arrays the readers use, daily means and
+totals of the hourly water fluxes, one summary per ERW day), hourly field
+means of the tower fluxes and its final state, instead of the whole
+workspace (`TC_FULL_RECORDS=1` keeps the full records). The daily
+vegetation and biogeochemistry, the hourly vertical physics and the daily
+ERW chemistry run square by square on the thread pool; lateral transfer
+stays serial. The field maps and the bulk-pH summary read the daily
+stores. `Load_Field_DEM` loses the backslashes that made x fail the
+portability gate of the field campaign. `compare_x_y.sbatch` runs x and y
+side by side on the plot (40 days, and 400 days across two applications)
+and on the basalt grid and checks every output (`RUNBOOK_2026-09-24.md`,
+section 0y). The paragraph below describes w;
+package x added v1.0's DEM topography, lateral transfer and field grids to
+it (`FIELD_GRIDS_2026-10-07.md`, `runtime/Field_2D/README.md`).
+
 Package w is package v with one guard relaxed (`ROUNDOFF_NEGATIVE_2026-10-05.md`):
 `ERW_Ionic_Strength` counts a concentration within 1e-10 umol-conv/L below
 zero as zero instead of stopping the run. A 35-year 2-D uncertainty run

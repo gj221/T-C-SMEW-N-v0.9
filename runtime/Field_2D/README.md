@@ -44,7 +44,9 @@ The two 3.8 ha maize/soybean trial fields of Kantola et al. (2023), each with it
 
 ## Resources
 
-The hourly T&C loop is serial over columns, so time and memory grow with the number of squares. The daily ERW step runs on `TC_FIELD_WORKERS` workers (default 12).
+**Package y** (`FIELD_RECORDS_DAILY_2026-10-08.md`) runs the daily vegetation and biogeochemistry, the hourly vertical physics and the daily ERW chemistry of the squares on the `TC_FIELD_WORKERS` pool, and keeps 50 hours of hourly records, one day of ten-minute chemistry and daily stores per square instead of every row; its results hold the stores and the final state. The figures below were measured or projected for package x, where only the ERW step ran on the pool and every record was kept: for y they are upper bounds until its pilot is measured.
+
+The hourly T&C loop of package x is serial over columns, so time and memory grow with the number of squares. The daily ERW step runs on `TC_FIELD_WORKERS` workers (default 12).
 
 * **Measured, five years:**
   * one column: 2 h 14 min and 3.1 GB;
@@ -70,7 +72,7 @@ bash runtime/Field_2D/submit_field_2d.sh
 ```
 
 * `TC_FIELD_RUNS` (default `1-9`): the Slurm array of runs to submit, such as `2`, `1-9`, or `1-9%2` to hold two at a time.
-* `TC_FIELD_WORKERS` (default 12, from 2 to 64): the daily ERW pool and the CPUs of every element. It enters the validation stamp, so a resume keeps it.
+* `TC_FIELD_WORKERS` (default 12, from 2 to 64): the pool (the daily ERW step; in package y also the daily and hourly work of the squares) and the CPUs of every element. It enters the validation stamp, so a resume keeps it.
 
 The controller submits one validation element and the production array.
 * **Validation:** `day`, `TC_FIELD_WORKERS` CPUs, 96 GB, 6 h. It runs the complete audit, the Linux portability checks and a one-day run of the grid across the first application.

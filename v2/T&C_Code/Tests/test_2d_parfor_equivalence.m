@@ -66,12 +66,12 @@ assert(serial.NN > serial.HOURLY_WINDOW, ...
 amended = cellfun(@(E) any(E.TC_const.M_rock_add(2:end) > 0),full.ERW);
 assert(any(amended),'No square received rock inside the run.');
 
-%% What may differ: the run's timing, its worker count and the identities
-%% and paths that carry them.
+%% What may differ: the run's timing, its worker count, where it saved,
+%% and the identities and paths that carry them.
 timing = {'Computational_Time','run_provenance','ERW_ckpt_last_toc', ...
     'ERW_ckpt_runtime_identity','ERW_execution_identity','ERW_ckpt_fingerprint', ...
     'ERW_ckpt_file','ERW_ckpt_tmp','ckpt_dir','tmp_result','result_file', ...
-    'parallel_workers','opt'};
+    'fl_save','opt','varargin','parallel_workers','parallel_pool_created'};
 names = union(fieldnames(serial),fieldnames(parallel));
 for k = 1:numel(names)
     name = names{k};
@@ -83,8 +83,9 @@ for k = 1:numel(names)
     end
 end
 
-%% The daily-store run against the same run with full records.
-records = [timing {'FULL_RECORDS','NH'}];
+%% The daily-store run against the same run with full records, which
+%% differ in the layout and in the hourly window's row indices.
+records = [timing {'FULL_RECORDS','records_choice','NH','si','sp','pd','hw'}];
 [bad,report] = Daily_Store_Check(full,serial,records);
 assert(isempty(bad), ...
     'The daily stores do not reproduce the full records:\n  %s',strjoin(bad,'\n  '));

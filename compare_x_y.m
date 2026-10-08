@@ -34,11 +34,12 @@ fprintf('y keeps %s records.\n',ternary(Y.FULL_RECORDS,'full','daily-store'));
 %% What differs between the two trees by design: run times, where each
 %% result went (the options and the result and checkpoint paths), the
 %% provenance (code digests, times), the code identities the checkpoint
-%% fingerprints carry, and the loop counter the two drivers leave last.
+%% fingerprints carry, the worker count when the two runs had different
+%% pools, and the loop counter the two drivers leave last.
 by_design = {'run_provenance','Computational_Time','ERW_ckpt_last_toc', ...
     'ERW_ckpt_fingerprint','ERW_ckpt_runtime_identity','ERW_execution_identity', ...
     'ERW_ckpt_file','ERW_ckpt_tmp','result_file','tmp_result','ckpt_dir', ...
-    'fl_save','opt','varargin','k'};
+    'fl_save','opt','varargin','parallel_workers','parallel_pool_created','k'};
 %% The roots: v2 is current_directory in Run_One_Subfield.
 if nargin < 4
     x_root = ''; y_root = '';
