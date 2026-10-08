@@ -26,7 +26,10 @@ function out = Run_Field_Length_Scales(shape_file, dem_source, varargin)
 %% Name/value options
 %%   'FeatureIndices'  polygon features to include (default all)
 %%   'SampleFile'      soil-sample workbook (default: the Bruce Farm
-%%                     agronomic workbook resolved by Bruce_Farm_Input_File)
+%%                     agronomic workbook resolved by Bruce_Farm_Input_File);
+%%                     'none' for a site without georeferenced soil samples
+%%                     (Kantola): L_soil is then NaN and the width rests on
+%%                     L_terr and the coverage rule
 %%   'SampleSheet'     workbook sheet (default 2, the whole-grower sheet
 %%                     that reaches the control polygons)
 %%   'Attributes'      {cellstr} of sample columns to fit (default the
@@ -56,34 +59,39 @@ h_coverage = min(arrayfun(@(s) s.cell_size_m, setups));   % smallest that passes
 
 %% --- L_soil: fit a variogram to each measured attribute -----------
 sample_file = opt.SampleFile;
-if isempty(sample_file)
-    sample_file = Bruce_Farm_Input_File(fullfile('Whole farm','Data', ...
-        'RJ_msft_yale_geochem - agronomic.xlsx'));
-end
-points = Read_Sample_Points(sample_file,opt.SampleSheet,'lng (X)','lat (Y)');
-attrs = opt.Attributes;
-if isempty(attrs)
-    %% The same names Krige_Cell_Agronomic_Values' default map knows, so
-    %% the two auto-detectors in this module agree on what the site's
-    %% attributes are called (the workbook says 'Cation Exchange
-    %% Capacity' and 'Organic Matter'; the catalogue export 'CEC Value',
-    %% 'Organic Matter (%)', 'Sand Mass (%)', 'Clay Mass (%)').
-    candidates = {'pH','pH Value','pH_BL','Bulk pH', ...
-        'sand','clay','sand_pct','clay_pct','Sand Mass (%)','Clay Mass (%)', ...
-        'Percent Sand','Percent Clay', ...
-        'OM','OM_pct','organic matter','Organic Matter (%)', ...
-        'CEC','CEC_meq','CEC Value','Cation Exchange Capacity'};
-    attrs = candidates(ismember(lower(candidates), lower(points.Properties.VariableNames)));
-    %% case-insensitive resolve back to the real column names
-    for a = 1:numel(attrs)
-        hit = find(strcmpi(points.Properties.VariableNames,attrs{a}),1);
-        attrs{a} = points.Properties.VariableNames{hit};
+skip_soil = (ischar(sample_file) || isstring(sample_file)) && ...
+    strcmpi(char(sample_file),'none');
+attrs = {};
+if ~skip_soil
+    if isempty(sample_file)
+        sample_file = Bruce_Farm_Input_File(fullfile('Whole farm','Data', ...
+            'RJ_msft_yale_geochem - agronomic.xlsx'));
     end
-end
-if isempty(attrs)
-    error('Run_Field_Length_Scales:NoAttributes', ...
-        ['Could not auto-detect soil attribute columns in %s. Pass ' ...
-         '''Attributes'' explicitly.'], sample_file);
+    points = Read_Sample_Points(sample_file,opt.SampleSheet,'lng (X)','lat (Y)');
+    attrs = opt.Attributes;
+    if isempty(attrs)
+        %% The same names Krige_Cell_Agronomic_Values' default map knows, so
+        %% the two auto-detectors in this module agree on what the site's
+        %% attributes are called (the workbook says 'Cation Exchange
+        %% Capacity' and 'Organic Matter'; the catalogue export 'CEC Value',
+        %% 'Organic Matter (%)', 'Sand Mass (%)', 'Clay Mass (%)').
+        candidates = {'pH','pH Value','pH_BL','Bulk pH', ...
+            'sand','clay','sand_pct','clay_pct','Sand Mass (%)','Clay Mass (%)', ...
+            'Percent Sand','Percent Clay', ...
+            'OM','OM_pct','organic matter','Organic Matter (%)', ...
+            'CEC','CEC_meq','CEC Value','Cation Exchange Capacity'};
+        attrs = candidates(ismember(lower(candidates), lower(points.Properties.VariableNames)));
+        %% case-insensitive resolve back to the real column names
+        for a = 1:numel(attrs)
+            hit = find(strcmpi(points.Properties.VariableNames,attrs{a}),1);
+            attrs{a} = points.Properties.VariableNames{hit};
+        end
+    end
+    if isempty(attrs)
+        error('Run_Field_Length_Scales:NoAttributes', ...
+            ['Could not auto-detect soil attribute columns in %s. Pass ' ...
+             '''Attributes'' explicitly.'], sample_file);
+    end
 end
 
 %% One variogram PER POLYGON and attribute.  Project_Sample_Points returns
@@ -124,8 +132,10 @@ end
 per_attribute = cell2table(rows, ...
     'VariableNames',{'attribute','polygon','n_samples','range_m','note'});
 if ~isfinite(L_soil)
-    warning('Run_Field_Length_Scales:NoSoilRange', ...
-        'No attribute yielded a variogram range; L_soil left as NaN.');
+    if ~skip_soil
+        warning('Run_Field_Length_Scales:NoSoilRange', ...
+            'No attribute yielded a variogram range; L_soil left as NaN.');
+    end
     L_soil = NaN;
 end
 
@@ -176,7 +186,8 @@ if ~isempty(opt.ComputeCapCells)
     end
 end
 
-out = struct('L_soil_m',L_soil,'L_terr_m',L_terr,'dem_native_m',dem_native, ...
+out = struct('soil_samples',~skip_soil, ...
+    'L_soil_m',L_soil,'L_terr_m',L_terr,'dem_native_m',dem_native, ...
     'h_target_m',h_target,'h_coverage_min_m',h_coverage, ...
     'h_recommended_m',h_rec,'nyquist_k',opt.NyquistK, ...
     'per_attribute',per_attribute,'soil_variograms',soil_variograms, ...
@@ -185,7 +196,11 @@ out = struct('L_soil_m',L_soil,'L_terr_m',L_terr,'dem_native_m',dem_native, ...
 fprintf('\n=== Field length scales: %s ===\n', shape_file);
 disp(per_attribute);
 fprintf('  field extent (sqrt area)            %6.1f m\n', field_extent);
-fprintf('  L_soil (shortest RESOLVED range)    %s\n', range_note(L_soil,field_extent));
+if skip_soil
+    fprintf('  L_soil (shortest RESOLVED range)       none (no soil samples at this site)\n');
+else
+    fprintf('  L_soil (shortest RESOLVED range)    %s\n', range_note(L_soil,field_extent));
+end
 fprintf('  L_terr (DEM microtopo range)        %s\n', range_note(L_terr,field_extent));
 fprintf('  DEM native spacing                  %6.2f m\n', dem_native);
 fprintf('  95%% per-cell coverage calibration    %6.2f m\n', h_coverage);
