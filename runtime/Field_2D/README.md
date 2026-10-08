@@ -28,14 +28,18 @@ The two 3.8 ha maize/soybean trial fields of Kantola et al. (2023), each with it
 
 * **Boundaries**: their 10 m boundaries are kept in `Model case study data/Maps/Energy Farm_IL`, with a README and a preview. They are the field edges measured on NAIP (25 Jul 2017, 1 m), reduced to the Sentinel-2 10 m grid by the majority rule. Sentinel-2 confirms them: 2016-2020 crops of soy, maize, maize, soy, maize inside both. The grids are in NAD83 / UTM 16N, the DEM's frame.
 * **Squares and margin**: 20 m squares and a 20 m margin, one lime-spreader pass (about 60 ft), so the margin is the outer ring of squares.
-* **Width**: the convergence ladder gives no joint width.
-  * On the basalt field, slope and relief stay within 5 % from 20 m down.
-  * TWI keeps falling as the 1 m lidar resolves microtopography, on both fields, so it never converges.
+* **Width (v1.0's workflow)**:
+  * *Heterogeneity* (`v2/interpolation/Run_Field_Length_Scales`, `'SampleFile','none'`): Kantola has no georeferenced soil samples, so there is no soil range. The 1 m lidar's detrended-elevation range is 536 m (basalt) and 265 m (control), longer than the fields (184 and 192 m), so the terrain demands no finer grid.
+  * *Boundary fit*: the 95 % coverage calibration gives 20 m (basalt) and 27.1 m (control).
+  * *Margin*: the squares must tile the 20 m margin, so both fields take 20 m.
+  * *Capture*: the squares cover 95.3 % and 94.9 % of the fields (`v2/interpolation/Run_Cell_Size_Analysis`). Covering more than 98 % would take 10 m squares (340 and 369).
+  * *Convergence ladder*: no joint width. On the basalt field slope and relief stay within 5 % from 20 m down; TWI keeps falling as the 1 m lidar resolves microtopography, on both fields.
+* **DEM**: each square's elevation is the mean of the 400 lidar pixels inside it (`Load_Field_DEM` lays its pixel centres on the square centres).
 
 | grid file | squares (main + margin) | simulated | field left out | relief | mean slope | outlets |
 |---|---|---|---|---|---|---|
-| `kantola_basalt_dem_20m` | 81 (49 + 32) | 32,400 m2 | 1,600 m2 | 4.15 m | 2.2 % | 1 |
-| `kantola_control_dem_20m` | 90 (56 + 34) | 35,000 m2 | 1,900 m2 | 1.86 m | 0.95 % | 3 |
+| `kantola_basalt_dem_20m` | 81 (49 + 32) | 32,400 m2 | 1,600 m2 | 4.19 m | 2.2 % | 1 |
+| `kantola_control_dem_20m` | 90 (56 + 34) | 35,000 m2 | 1,900 m2 | 1.95 m | 0.95 % | 3 |
 
 * **Flat twins**: `kantola_basalt_flat_20m` and `kantola_control_flat_20m` hold the same squares and labels without topography.
 * **Field left out**: the strip along one edge that is exactly half a square wide, which the majority rule drops.
