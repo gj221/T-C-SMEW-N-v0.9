@@ -1,12 +1,14 @@
 # The 35-year runs on the 10 m field grids, 8 October 2026
 
-Package z is package y (`FIELD_RECORDS_DAILY_2026-10-08.md`) with the
+Package aa is package z (package y, `FIELD_RECORDS_DAILY_2026-10-08.md`,
+with the ERW chemistry kernels, `ERW_KERNELS_2026-10-08.md`) with the
 campaign side of the 108 35-year runs on the 10 m Kantola grids: 36
 central runs and the 72 lower and upper runs of the uncertainty ensemble.
 No equation, parameter, input or solver setting changes. One model-tree
 file changes (`v2/run/Run_One_Subfield.m`), in how it names a result or
 checkpoint that would not fit in a file name; every name that fits is
-unchanged.
+unchanged. The runs use z's fast kernels (`TC_ERW_KERNEL=fast`), which
+compute every value as y's code does, bit for bit.
 
 ## 1. The runs
 
@@ -79,14 +81,16 @@ every earlier campaign keep their names. Run 9 of the upper set reads
   first ERW day also builds each square's whole-run ten-minute timetable
   on its worker, a passing peak of about one timetable per worker that no
   measurement yet bounds; the pilot's MaxRSS covers it.
-* **Time.** No 35-year field run of y has been timed on Bouchet. Package
-  x's one-column five-year run took 2 h 14 min, 4.4 s a square and day;
-  y does that work for every square in its three parallel loops, so a run
-  is about 5,800 CPU-hours on 369 squares: about 7.5 days on 32 workers or
-  4 on 64 if the loops scale, more for the serial lateral transfer. The
-  108 runs are about 0.6 million CPU-hours; with `TC_ERW_KERNEL=fast`
-  (session "Compile the ERW chemistry", 11 times faster per ERW step on
-  Bouchet, not in z) about a fifth of that.
+* **Time.** No 35-year field run has been timed on Bouchet. Package x's
+  one-column five-year run took 2 h 14 min, 4.4 s a square and day, about
+  nine tenths of it the ERW chemistry; y does that work for every square in
+  its three parallel loops, so with y's own kernels a run is about 5,800
+  CPU-hours on 369 squares (7.5 days on 32 workers if the loops scale) and
+  the 108 runs about 0.6 million. z's fast kernels run the ERW step 11
+  times faster on Bouchet (15 times on y locally), a one-column year 4.8
+  times faster and a 12-square three-day run on four workers 2.6 times, so
+  a field run should take roughly 1.5 to 3 days on 32 workers and the 108
+  runs 0.1 to 0.2 million CPU-hours. The pilot measures it.
 * **Partition.** The `day` partition by default: 1500 CPUs and 20 TB per
   user, so about 46 runs of 32 workers at once, against 96 CPUs per user on
   `week`. Pieces are 24 hours; a run requeues itself half an hour before
@@ -171,9 +175,18 @@ Run locally (R2026a, this PC; no model runs):
   element would have read run 2 alone. It now reaches the jobs through the
   environment `--export=ALL` passes on.
 
-On Bouchet, before production: the equivalence baseline for this root,
+The campaign side was written on y and moved onto z (`git rebase` of the
+six commits onto z's 3436327: the driver and the audit list merged
+without conflict; the README, RUNBOOK and pin lists keep both packages'
+entries), then given the kernel gate; the checks above were run again on
+the merged tree (`ERW_KERNELS_2026-10-08.md` for the kernels themselves).
+
+On Bouchet, before production: z's checks (RUNBOOK section 0z: the MEX
+build, the kernel comparison and the comparison with x under the fast
+kernels, which replaces y's 0y), the equivalence baseline for this root,
 then the pilot; every campaign's validation runs the complete audit with
-the two new tests and one day of its grid.
+the two new tests and z's kernel test, and one day of its grid under the
+kernel it will run.
 
 ## 6. Files
 
@@ -188,11 +201,18 @@ package root, and the two tests.
 
 Changed: `v2/run/Run_One_Subfield.m` (the bound, before both names are
 formed), `v2/T&C_Code/Tests/run_post_legacy_equation_audit_tests.m` (the
-two tests), both pin lists (the new campaign files, the tests and
+two tests), `v2/plotting/Plot_Uncertainty.m` (titles from the summary's
+label), both pin lists (the new campaign files, the tests and
 `Bounded_File_Tag.m`), `runtime/Uncertainty_1D/README.md` (the summary),
-this note, `README.md` and `RUNBOOK_2026-09-24.md` (section 0z).
+this note, `README.md` and `RUNBOOK_2026-09-24.md` (section 0aa).
 
-Not in z: the restructured ERW kernels (`TC_ERW_KERNEL=fast`), ported to
-y in a session of their own; the two meet in `Run_One_Subfield.m` (z's
-bound, the kernel mode in the provenance) and in the audit list, and the
-field tasks would take the kernel gate the field campaign gets.
+The kernel gate: both field controllers take `TC_ERW_KERNEL` (matlab, the
+default, or fast; mex is refused before anything is submitted, since
+MATLAB runs no MEX function on a thread pool) and pass it to every
+element; the batch files check it again, and the tasks log it and check
+that each result, and each validation smoke, records it in
+`run_provenance.erw_kernel`. As z decided, the kernel is in neither the
+validation stamp nor the checkpoint identity: the kernels compute the same
+numbers, a run may resume under the other one, and
+`run_provenance.execution_segments` keeps each segment's. `Run_Field_2D_Task`
+(the five-year field runs) has no kernel gate yet.
