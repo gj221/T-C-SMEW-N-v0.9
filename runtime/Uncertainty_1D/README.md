@@ -214,13 +214,21 @@ queued, and lists stale 2-D run locks to remove.
 
 ## Summary and figures
 
-The summary and figures for the three-set design (per arm the original
-with the lower and upper sets, 2-D domain aggregates, the 5 t/ha arm)
-come with the post-processing package. For u, it must read the original
-set from the Base and SSP campaign directories of the table above and
-`lower/` and `upper/` under each ensemble tag. Unpack it in a root of its
-own: while any element here is queued or running, or may still be
-resubmitted, nothing under `runtime/`, `v2/plotting`, `v2/audit` or
-`v2/T&C_Code/Tests` of this root may change, since every element's stamp
-covers those files and a change discards the runs in flight. Run the
-model check again before summarising.
+From package z, `Summarize_Uncertainty.m` at the package root gathers the
+three sets of an arm: the original from the Base or SSP campaign
+directory of the table above, `lower/` and `upper/` under the ensemble
+tag, as pairs `{original_dir, ensemble_dir}`. It writes per run the
+domain means on the daily axis, the yearly statistics, the envelope of
+the three sets and the observations, which `v2/plotting/Plot_Uncertainty.m`
+draws, and reads one-column results from their full records and 2-D
+results of package y from their daily stores. It lives outside every
+campaign's stamp, so it can change while elements run; nothing under
+`runtime/`, `v2/plotting`, `v2/audit` or `v2/T&C_Code/Tests` of a root
+may, since every element's stamp covers those files and a change discards
+the runs in flight. For example, the five-year 2-D arm:
+
+```bash
+sbatch --account=pi_np363 --export=ALL,UC_SOURCES="v2/SIM/Subfield_12/Base_2D|v2/SIM/Subfield_12/Uncertainty_2D",UC_RUNS="1:9",UC_OUTPUT=v2/SIM/Subfield_12/uncertainty_2d_5yr.mat summarize_uncertainty.sbatch
+```
+
+The field-grid ensemble is `runtime/Field_Uncertainty_2D`.

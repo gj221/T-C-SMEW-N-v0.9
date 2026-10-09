@@ -1,5 +1,24 @@
 # T&C-SMEW-N v0.9
 
+Package aa is package z with the campaign side of the 108 35-year runs
+on the 10 m Kantola grids (`FIELD_PROJECTIONS_2026-10-08.md`):
+`runtime/Field_SSP_2D` runs the central SSP runs on a field grid and
+`runtime/Field_Uncertainty_2D` the lower and upper sets of the
+uncertainty ensemble on it, both with Field_2D's gates, `TC_FIELD_WORKERS`
+workers, two-hourly checkpoints, a memory floor from y's daily arrays,
+z's ERW kernels (`TC_ERW_KERNEL`, checked and recorded per run) and
+24-hour pieces on the day partition that requeue themselves. The central
+controller adds runs beside running ones, so the pilot (run 2) sizes the
+rest while it runs. `Summarize_Uncertainty.m` at the package root gathers
+the three sets of an arm from y's daily stores and ERW day summaries (full
+records for older results), field-averaged as Domain averages. No
+equation, parameter or solver setting changes: `Run_One_Subfield` only
+keeps a result or checkpoint name within 255 characters
+(`Bounded_File_Tag`), since every field-grid ensemble name was 258 to 272
+characters; a name that fits is unchanged. `RUNBOOK_2026-09-24.md`,
+section 0aa, is the procedure. The paragraph below describes z, which aa
+contains.
+
 Package z is package y with restructured kernels for the ERW chemistry
 step (`ERW_KERNELS_2026-10-08.md`). `TC_ERW_KERNEL` selects them: unset or
 `matlab` runs the original code, `fast` restructured MATLAB kernels that
