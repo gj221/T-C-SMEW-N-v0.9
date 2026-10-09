@@ -693,6 +693,7 @@ end
 if OPT_CELL_INPUTS == 1
     ckpt_tag = sprintf('%s__%s',ckpt_tag,cell_soil_tag(opt.CellAgronomicFile));
 end
+ckpt_knobs_from = numel(ckpt_tag);
 if ~isempty(opt.CECpHSensitivity)
     ckpt_tag = sprintf('%s__dcec%s',ckpt_tag,number_tag(opt.CECpHSensitivity));
 end
@@ -722,7 +723,12 @@ end
 if ~isempty(opt.Kbot)
     ckpt_tag = sprintf('%s__kbot%s',ckpt_tag,kbot_tag(opt.Kbot));
 end
+ckpt_knobs_to = numel(ckpt_tag);
 ckpt_tag = sprintf('%s__%dd__from%s',ckpt_tag,NN/24,datestr(Date(1),'yyyymmdd'));
+%% A name past 255 characters cannot be written: its knobs become a digest.
+ckpt_tag = Bounded_File_Tag(ckpt_tag,ckpt_knobs_from,ckpt_knobs_to, ...
+    sprintf('ckpt_run%02d_',R.id),'.mat');
+clear ckpt_knobs_from ckpt_knobs_to
 ERW_ckpt_file = fullfile(ckpt_dir, ...
     sprintf('ckpt_run%02d_%s.mat',R.id,ckpt_tag));
 %% Interval comes from the environment so it reaches the worker
@@ -817,6 +823,7 @@ if opt.SaveResults
     if OPT_CELL_INPUTS == 1
         tag = sprintf('%s__%s',tag,cell_soil_tag(opt.CellAgronomicFile));
     end
+    knobs_from = numel(tag);
     if ~isempty(opt.CECpHSensitivity)
         tag = sprintf('%s__dcec%s',tag,number_tag(opt.CECpHSensitivity));
     end
@@ -846,8 +853,11 @@ if opt.SaveResults
     if ~isempty(opt.Kbot)
         tag = sprintf('%s__kbot%s',tag,kbot_tag(opt.Kbot));
     end
+    knobs_to = numel(tag);
     if ~isempty(opt.NDays); tag = sprintf('%s__%dd',tag,opt.NDays); end
     if ~isempty(start_datenum); tag = sprintf('%s__from%s',tag,datestr(start_datenum,'yyyymmdd')); end
+    tag = Bounded_File_Tag(tag,knobs_from,knobs_to,sprintf('TC_2D_run%02d_',R.id),'.mat');
+    clear knobs_from knobs_to
     result_file = fullfile(fl_save,sprintf('TC_2D_run%02d_%s.mat',R.id,tag));
     tmp_result = [tempname(fl_save) '.mat'];
     try
