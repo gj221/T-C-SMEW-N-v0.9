@@ -1,5 +1,15 @@
 # T&C-SMEW-N v0.9
 
+Package ab is package aa with the five-year field campaign
+(`runtime/Field_2D`) held to z's fast ERW kernels. Its batch file sets
+`TC_ERW_KERNEL=fast` for every element, so nothing needs exporting. Its
+task refuses any other kernel and checks that every result records the
+fast one (`run_provenance.erw_kernel`), and its validation saves the
+one-day grid run and checks it the same way. The fast kernels compute the
+original code's numbers bit for bit; nothing else changes.
+`RUNBOOK_2026-09-24.md`, section 0ab. The paragraph below describes aa,
+which ab contains.
+
 Package aa is package z with the campaign side of the 108 35-year runs
 on the 10 m Kantola grids (`FIELD_PROJECTIONS_2026-10-08.md`):
 `runtime/Field_SSP_2D` runs the central SSP runs on a field grid and
