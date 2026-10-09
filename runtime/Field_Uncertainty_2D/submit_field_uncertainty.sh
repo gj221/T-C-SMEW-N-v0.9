@@ -73,14 +73,15 @@ if [[ ! "$restarts" =~ ^[0-9]+$ ]] || (( restarts > 30 )); then
     echo "TC_FIELD_RESTARTS must be a whole number from 0 to 30. No jobs were submitted." >&2
     exit 2
 fi
-# Package z's ERW chemistry kernels: matlab (the original code) or fast,
-# the same numbers bit for bit; MATLAB runs no MEX function on the thread
-# pool every field run has. Every element is told the kernel explicitly.
-kernel="${TC_ERW_KERNEL:-matlab}"
+# Package z's fast ERW chemistry kernels, the original code's numbers bit
+# for bit, are the only kernels a field run runs (MATLAB runs no MEX
+# function on the thread pool every field run has). Every element is told
+# the kernel explicitly.
+kernel="${TC_ERW_KERNEL:-fast}"
 case "$kernel" in
-    matlab|fast) ;;
+    fast) ;;
     mex) echo "TC_ERW_KERNEL=mex cannot run on a field run's thread pool; fast computes the same numbers. No jobs were submitted." >&2; exit 2 ;;
-    *) echo "TC_ERW_KERNEL must be matlab or fast, not '$kernel'. No jobs were submitted." >&2; exit 2 ;;
+    *) echo "Field runs use the fast ERW kernels: TC_ERW_KERNEL must be fast or unset, not '$kernel'. No jobs were submitted." >&2; exit 2 ;;
 esac
 partition="${TC_FIELD_PARTITION:-day}"
 case "$partition" in

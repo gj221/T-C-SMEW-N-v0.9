@@ -78,10 +78,11 @@ if [[ ! "$restarts" =~ ^[0-9]+$ ]] || (( restarts > 30 )); then
     echo "TC_FIELD_RESTARTS must be a whole number from 0 to 30." >&2
     exit 2
 fi
-kernel="${TC_ERW_KERNEL:-matlab}"
+# Field runs run package z's fast ERW kernels only.
+kernel="${TC_ERW_KERNEL:-fast}"
 case "$kernel" in
-    matlab|fast) ;;
-    *) echo "TC_ERW_KERNEL must be matlab or fast for a field run, not '$kernel'." >&2; exit 2 ;;
+    fast) ;;
+    *) echo "Field runs use the fast ERW kernels: TC_ERW_KERNEL must be fast or unset, not '$kernel'." >&2; exit 2 ;;
 esac
 export TC_ERW_KERNEL="$kernel"
 case_suffix=''

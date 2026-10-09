@@ -92,8 +92,8 @@ end
 if allocated_cpus < workers
     error([prefix ':InsufficientCpus'],'Reserve at least %d CPUs.',workers);
 end
-%% Package z's ERW chemistry kernels: matlab (the original code) or fast
-%% (the same numbers, bit for bit); each result records the one it ran.
+%% Package z's fast ERW chemistry kernels (the original code's numbers, bit
+%% for bit), the only ones a field run runs; each result records them.
 kernel = Field_Campaign_Grid('kernel',prefix);
 %% Two hours, as the SSP and Field_2D campaigns: each write holds the
 %% daily stores and state, so a shorter interval costs more than the work

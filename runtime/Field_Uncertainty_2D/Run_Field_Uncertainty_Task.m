@@ -44,8 +44,8 @@ end
 if str2double(getenv('SLURM_CPUS_PER_TASK')) < workers
     error([prefix ':InsufficientCpus'],'Reserve at least %d CPUs.',workers);
 end
-%% Package z's ERW chemistry kernels: matlab (the original code) or fast
-%% (the same numbers, bit for bit); each result records the one it ran.
+%% Package z's fast ERW chemistry kernels (the original code's numbers, bit
+%% for bit), the only ones a field run runs; each result records them.
 kernel = Field_Campaign_Grid('kernel',prefix);
 if ~strcmp(getenv('TC_CKPT_MINUTES'),'120')
     error([prefix ':BadCheckpointInterval'],'TC_CKPT_MINUTES must be 120.');

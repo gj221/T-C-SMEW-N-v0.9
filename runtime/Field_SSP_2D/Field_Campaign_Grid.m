@@ -21,8 +21,8 @@ function varargout = Field_Campaign_Grid(action,varargin)
 %%   Field_Campaign_Grid('check_memory',n_squares,n_days,prefix)
 %%       refuse a job whose memory (SLURM_MEM_PER_NODE) is below that
 %%   kernel = Field_Campaign_Grid('kernel',prefix)
-%%       the ERW chemistry kernel the job runs (TC_ERW_KERNEL): matlab
-%%       (unset) or fast; mex cannot run on a field run's thread pool
+%%       the ERW chemistry kernel the job runs (TC_ERW_KERNEL): fast, the
+%%       only one a field run runs (unset reads as fast)
 %%   Field_Campaign_Grid('kernel_provenance',p,kernel,prefix)
 %%       a saved run_provenance records that kernel
 %%
@@ -139,17 +139,18 @@ gib = 4 + 8*(672+12+79)*n_daily_rows*n_squares/2^30;
 end
 
 function kernel = erw_kernel(prefix)
-%% Package z's ERW chemistry kernels compute the same numbers bit for bit
-%% (ERW_KERNELS_2026-10-08.md); fast is the field runs' choice, and MATLAB
-%% runs no MEX function on the thread pool every field run has. The kernel
-%% is in neither the stamp nor the checkpoint identity: a run may resume
-%% under the other one, and each segment's is kept in its provenance.
+%% Package z's fast ERW chemistry kernels compute the original code's
+%% numbers bit for bit (ERW_KERNELS_2026-10-08.md), and a field run runs
+%% them only: unset reads as fast, anything else is refused (MATLAB runs no
+%% MEX function on the thread pool every field run has). The kernel is in
+%% neither the stamp nor the checkpoint identity, so every element checks
+%% it here and every result must record it.
 kernel = lower(strtrim(getenv('TC_ERW_KERNEL')));
-if isempty(kernel); kernel = 'matlab'; end
-if ~ismember(kernel,{'matlab','fast'})
+if isempty(kernel); kernel = 'fast'; end
+if ~strcmp(kernel,'fast')
     error([prefix ':BadKernel'], ...
-        ['TC_ERW_KERNEL must be matlab or fast for a field run, not ''%s''; ' ...
-         'mex cannot run on its thread pool.'],kernel);
+        'Field runs use the fast ERW kernels: TC_ERW_KERNEL must be fast or unset, not ''%s''.', ...
+        kernel);
 end
 end
 
