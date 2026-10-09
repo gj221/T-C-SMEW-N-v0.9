@@ -216,3 +216,10 @@ validation stamp nor the checkpoint identity: the kernels compute the same
 numbers, a run may resume under the other one, and
 `run_provenance.execution_segments` keeps each segment's. `Run_Field_2D_Task`
 (the five-year field runs) has no kernel gate yet.
+
+Package ab (9 October): at Greg's request every field campaign runs the
+fast kernels only. Both controllers, both batch files and
+`Field_Campaign_Grid('kernel')` read an unset `TC_ERW_KERNEL` as `fast` and
+refuse anything else (`matlab` included); `test_field_projection_campaigns`
+checks it. `runtime/Field_2D` sets `fast` in its batch file and checks it
+in its task (`RUNBOOK_2026-09-24.md`, section 0ab).

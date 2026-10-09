@@ -1,12 +1,18 @@
 # T&C-SMEW-N v0.9
 
-Package ab is package aa with the five-year field campaign
-(`runtime/Field_2D`) held to z's fast ERW kernels. Its batch file sets
-`TC_ERW_KERNEL=fast` for every element, so nothing needs exporting. Its
-task refuses any other kernel and checks that every result records the
-fast one (`run_provenance.erw_kernel`), and its validation saves the
-one-day grid run and checks it the same way. The fast kernels compute the
-original code's numbers bit for bit; nothing else changes.
+Package ab is package aa with every field campaign held to z's fast ERW
+kernels, which compute the original code's numbers bit for bit; nothing
+else changes, and nothing needs exporting.
+- The five-year campaign (`runtime/Field_2D`): its batch file sets
+  `TC_ERW_KERNEL=fast` for every element. Its task refuses any other
+  kernel and checks that every result records the fast one
+  (`run_provenance.erw_kernel`), and its validation saves the one-day
+  grid run and checks it the same way.
+- The two 35-year campaigns (`runtime/Field_SSP_2D`,
+  `runtime/Field_Uncertainty_2D`): their controllers, batch files and
+  tasks read an unset `TC_ERW_KERNEL` as `fast` and refuse anything else,
+  `matlab` included.
+
 `RUNBOOK_2026-09-24.md`, section 0ab. The paragraph below describes aa,
 which ab contains.
 
