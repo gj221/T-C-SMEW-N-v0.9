@@ -17,8 +17,8 @@
 # Add TC_CALCITE_CASE=8 for the 5 t/ha arm (runs 3, 6 and 9). TC_FIELD_RUNS
 # (default every run of the arm) names runs as the field SSP controller
 # does; a %N suffix holds N elements at once. TC_FIELD_MEM, TC_FIELD_WORKERS,
-# TC_FIELD_PARTITION, TC_FIELD_TIME and TC_FIELD_RESTARTS are the field SSP
-# controller's. After a TIMEOUT or node loss, resubmit the same command once
+# TC_FIELD_PARTITION, TC_FIELD_TIME, TC_FIELD_RESTARTS and TC_ERW_KERNEL are
+# the field SSP controller's. After a TIMEOUT or node loss, resubmit the same command once
 # the call's jobs have left the queue: finished elements exit at once and
 # the rest continue from their checkpoints.
 
@@ -73,6 +73,15 @@ if [[ ! "$restarts" =~ ^[0-9]+$ ]] || (( restarts > 30 )); then
     echo "TC_FIELD_RESTARTS must be a whole number from 0 to 30. No jobs were submitted." >&2
     exit 2
 fi
+# Package z's ERW chemistry kernels: matlab (the original code) or fast,
+# the same numbers bit for bit; MATLAB runs no MEX function on the thread
+# pool every field run has. Every element is told the kernel explicitly.
+kernel="${TC_ERW_KERNEL:-matlab}"
+case "$kernel" in
+    matlab|fast) ;;
+    mex) echo "TC_ERW_KERNEL=mex cannot run on a field run's thread pool; fast computes the same numbers. No jobs were submitted." >&2; exit 2 ;;
+    *) echo "TC_ERW_KERNEL must be matlab or fast, not '$kernel'. No jobs were submitted." >&2; exit 2 ;;
+esac
 partition="${TC_FIELD_PARTITION:-day}"
 case "$partition" in
     day)  limit_s=86400;  default_time='1-00:00:00' ;;
@@ -294,7 +303,7 @@ n_elements=$(( run_members * n_runs ))
 # The run list holds commas, which separate the variables of --export, so
 # it reaches the jobs through the environment --export=ALL passes on.
 export TC_FIELD_RUNS="$run_list"
-export_common="ALL,TC_FIELD_UC_CONTROLLER_TOKEN=$token,TC_FIELD_TOPOLOGY=$topology_file,TC_SSP=$TC_SSP,TC_CALCITE_CASE=$calcite_case,TC_FIELD_WORKERS=$workers,TC_FIELD_RESTARTS=$restarts"
+export_common="ALL,TC_FIELD_UC_CONTROLLER_TOKEN=$token,TC_FIELD_TOPOLOGY=$topology_file,TC_SSP=$TC_SSP,TC_CALCITE_CASE=$calcite_case,TC_FIELD_WORKERS=$workers,TC_FIELD_RESTARTS=$restarts,TC_ERW_KERNEL=$kernel"
 submit_job validation_job \
     --partition=day --array=1 --ntasks=1 --cpus-per-task="$workers" --mem=96G --time=06:00:00 \
     --no-requeue --job-name="$validation_name" \
@@ -313,8 +322,8 @@ trap - ERR HUP INT TERM
 printf 'Uncertainty ensemble %s (original %s in %s)\n' "$tag" \
     "Field_SSP_2D_35yr_${TC_SSP}${case_suffix}__${topology_name}" "$TC_UC_ORIGINAL_ROOT"
 printf 'Validation: %s (day, %d CPUs, 6 h)\n' "$validation_job" "$workers"
-printf 'Production: %s, %d elements (lower then upper over runs %s; %s, %d CPUs, %s, pieces of %s, up to %d requeues), eligible after the validation passes\n' \
+printf 'Production: %s, %d elements (lower then upper over runs %s; %s, %d CPUs, %s, pieces of %s, up to %d requeues, ERW kernel %s), eligible after the validation passes\n' \
     "$production_job" "$n_elements" "$run_list" "$partition" "$workers" "$TC_FIELD_MEM" \
-    "$piece_time" "$restarts"
+    "$piece_time" "$restarts" "$kernel"
 printf 'Monitor: sacct -j %s,%s --format=JobID%%18,JobName%%40,State%%12,Elapsed,MaxRSS,NodeList%%16\n' \
     "$validation_job" "$production_job"

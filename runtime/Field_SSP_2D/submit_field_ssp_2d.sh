@@ -22,6 +22,8 @@
 # requeues itself, at most TC_FIELD_RESTARTS times, default 12) or week
 # (pieces of up to 7 days; the week partition holds 96 CPUs per user).
 # TC_FIELD_TIME (default the partition's limit) is the length of a piece.
+# TC_ERW_KERNEL is package z's ERW chemistry kernel, matlab (default) or
+# fast (the same numbers, bit for bit; the production choice).
 # Stages (TC_FIELD_STAGE): fresh (default; result and log trees must be
 # empty) or resume (adds runs or continues them; refuses while a requested
 # run is queued or locked, or while a validation of this campaign is
@@ -84,6 +86,15 @@ if [[ ! "$restarts" =~ ^[0-9]+$ ]] || (( restarts > 30 )); then
     echo "TC_FIELD_RESTARTS must be a whole number from 0 to 30. No jobs were submitted." >&2
     exit 2
 fi
+# Package z's ERW chemistry kernels: matlab (the original code) or fast,
+# the same numbers bit for bit; MATLAB runs no MEX function on the thread
+# pool every field run has. Every element is told the kernel explicitly.
+kernel="${TC_ERW_KERNEL:-matlab}"
+case "$kernel" in
+    matlab|fast) ;;
+    mex) echo "TC_ERW_KERNEL=mex cannot run on a field run's thread pool; fast computes the same numbers. No jobs were submitted." >&2; exit 2 ;;
+    *) echo "TC_ERW_KERNEL must be matlab or fast, not '$kernel'. No jobs were submitted." >&2; exit 2 ;;
+esac
 partition="${TC_FIELD_PARTITION:-day}"
 case "$partition" in
     day)  limit_s=86400;  default_time='1-00:00:00' ;;
@@ -332,7 +343,7 @@ submit_job() {
     submitted_jobs+=("$submitted_id")
 }
 
-export_common="ALL,TC_FIELD_SSP_CONTROLLER_TOKEN=$token,TC_FIELD_TOPOLOGY=$topology_file,TC_SSP=$TC_SSP,TC_CALCITE_CASE=$calcite_case,TC_FIELD_WORKERS=$workers,TC_FIELD_RESTARTS=$restarts"
+export_common="ALL,TC_FIELD_SSP_CONTROLLER_TOKEN=$token,TC_FIELD_TOPOLOGY=$topology_file,TC_SSP=$TC_SSP,TC_CALCITE_CASE=$calcite_case,TC_FIELD_WORKERS=$workers,TC_FIELD_RESTARTS=$restarts,TC_ERW_KERNEL=$kernel"
 submit_job validation_job \
     --partition=day --array=1 --ntasks=1 --cpus-per-task="$workers" --mem=96G --time=06:00:00 \
     --no-requeue --job-name="$validation_name" \
@@ -350,7 +361,7 @@ trap - ERR HUP INT TERM
 
 printf 'Campaign: %s\n' "$tag"
 printf 'Validation: %s (day, %d CPUs, 6 h)\n' "$validation_job" "$workers"
-printf 'Production: runs %s %s (%s, %d CPUs, %s, pieces of %s, up to %d requeues), eligible after the validation passes\n' \
-    "$runs" "$production_job" "$partition" "$workers" "$TC_FIELD_MEM" "$piece_time" "$restarts"
+printf 'Production: runs %s %s (%s, %d CPUs, %s, pieces of %s, up to %d requeues, ERW kernel %s), eligible after the validation passes\n' \
+    "$runs" "$production_job" "$partition" "$workers" "$TC_FIELD_MEM" "$piece_time" "$restarts" "$kernel"
 printf 'Monitor: sacct -j %s,%s --format=JobID%%18,JobName%%34,State%%12,Elapsed,MaxRSS,NodeList%%16\n' \
     "$validation_job" "$production_job"

@@ -17,7 +17,7 @@ The three sets compare only if they ran the same model, so the controller compar
 From the checkout root, after the field SSP campaign of the same grid, scenario and case has been sized by its pilot:
 
 ```bash
-TC_UC_ORIGINAL_ROOT="$PWD" \
+TC_UC_ORIGINAL_ROOT="$PWD" TC_ERW_KERNEL=fast \
 TC_FIELD_TOPOLOGY=/full/path/beside/the/root/kantola_basalt_dem_10m.mat \
 TC_SSP=ssp245 TC_FIELD_RUNS=2,3,5,6,8,9 TC_FIELD_WORKERS=32 TC_FIELD_MEM=<from the pilot> \
 MATLAB_MODULE=MATLAB/2025a TC_BOUCHET_ACCOUNT=<pi account> \
@@ -25,7 +25,7 @@ bash runtime/Field_Uncertainty_2D/submit_field_uncertainty.sh
 ```
 
 * `TC_FIELD_RUNS` (default every run of the arm): the runs, as the field SSP controller takes them; a `%N` suffix holds N elements at once. The array is member-major: elements 1 to n are the lower set over the runs, n+1 to 2n the upper.
-* `TC_FIELD_WORKERS`, `TC_FIELD_MEM`, `TC_FIELD_PARTITION`, `TC_FIELD_TIME` and `TC_FIELD_RESTARTS` as for `runtime/Field_SSP_2D` (README, Resources); the memory and pace of the original's pilot hold for both sets, which move parameters, not arrays.
+* `TC_FIELD_WORKERS`, `TC_FIELD_MEM`, `TC_FIELD_PARTITION`, `TC_FIELD_TIME`, `TC_FIELD_RESTARTS` and `TC_ERW_KERNEL` as for `runtime/Field_SSP_2D` (README, Resources); the memory and pace of the original's pilot hold for both sets, which move parameters, not arrays.
 * The controller refuses while any job of the call's campaign is queued and lists stale run locks to remove. After a time-out or node loss, resubmit the same command once its jobs have left the queue: finished elements exit at once (after rereading their grid and conservation), the rest continue from their checkpoints, and a result of anything else is refused rather than overwritten.
 
 The controller submits one validation element (`day`, `TC_FIELD_WORKERS` CPUs, 96 GB, 6 h, never requeued: the complete audit, the Linux checks of this directory and the code it borrows, and one day of the grid under each set, saved and read back) and the production array, eligible after it passes. Each production element requeues itself before the `day` partition's 24-hour limit, at most `TC_FIELD_RESTARTS` times, and continues from its two-hourly checkpoint under the same job id and run lock.

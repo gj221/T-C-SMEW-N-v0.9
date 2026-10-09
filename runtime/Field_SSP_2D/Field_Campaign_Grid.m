@@ -20,6 +20,11 @@ function varargout = Field_Campaign_Grid(action,varargin)
 %%       the memory a run certainly holds by its end [GiB, Slurm's G]
 %%   Field_Campaign_Grid('check_memory',n_squares,n_days,prefix)
 %%       refuse a job whose memory (SLURM_MEM_PER_NODE) is below that
+%%   kernel = Field_Campaign_Grid('kernel',prefix)
+%%       the ERW chemistry kernel the job runs (TC_ERW_KERNEL): matlab
+%%       (unset) or fast; mex cannot run on a field run's thread pool
+%%   Field_Campaign_Grid('kernel_provenance',p,kernel,prefix)
+%%       a saved run_provenance records that kernel
 %%
 %% prefix is the calling campaign's error identifier prefix.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -37,6 +42,10 @@ switch action
         varargout{1} = memory_floor_gib(varargin{:});
     case 'check_memory'
         check_memory(varargin{:});
+    case 'kernel'
+        varargout{1} = erw_kernel(varargin{:});
+    case 'kernel_provenance'
+        assert_kernel_provenance(varargin{:});
     otherwise
         error('Field_Campaign_Grid:UnknownAction','Unknown action %s.',action);
 end
@@ -127,6 +136,28 @@ function gib = memory_floor_gib(n_squares,n_days)
 %% this does not count; the pilot's MaxRSS measures it.
 n_daily_rows = n_days+1;
 gib = 4 + 8*(672+12+79)*n_daily_rows*n_squares/2^30;
+end
+
+function kernel = erw_kernel(prefix)
+%% Package z's ERW chemistry kernels compute the same numbers bit for bit
+%% (ERW_KERNELS_2026-10-08.md); fast is the field runs' choice, and MATLAB
+%% runs no MEX function on the thread pool every field run has. The kernel
+%% is in neither the stamp nor the checkpoint identity: a run may resume
+%% under the other one, and each segment's is kept in its provenance.
+kernel = lower(strtrim(getenv('TC_ERW_KERNEL')));
+if isempty(kernel); kernel = 'matlab'; end
+if ~ismember(kernel,{'matlab','fast'})
+    error([prefix ':BadKernel'], ...
+        ['TC_ERW_KERNEL must be matlab or fast for a field run, not ''%s''; ' ...
+         'mex cannot run on its thread pool.'],kernel);
+end
+end
+
+function assert_kernel_provenance(p,kernel,prefix)
+if ~isfield(p,'erw_kernel') || ~strcmp(char(p.erw_kernel),kernel)
+    error([prefix ':WrongKernel'], ...
+        'The result does not record the ERW kernel %s it ran with.',kernel);
+end
 end
 
 function check_memory(n_squares,n_days,prefix)

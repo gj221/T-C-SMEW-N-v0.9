@@ -44,6 +44,9 @@ end
 if str2double(getenv('SLURM_CPUS_PER_TASK')) < workers
     error([prefix ':InsufficientCpus'],'Reserve at least %d CPUs.',workers);
 end
+%% Package z's ERW chemistry kernels: matlab (the original code) or fast
+%% (the same numbers, bit for bit); each result records the one it ran.
+kernel = Field_Campaign_Grid('kernel',prefix);
 if ~strcmp(getenv('TC_CKPT_MINUTES'),'120')
     error([prefix ':BadCheckpointInterval'],'TC_CKPT_MINUTES must be 120.');
 end
@@ -74,7 +77,7 @@ end
 logs_root = fullfile(repo_root,'v2','logs','Subfield_12',C.tag);
 stamp_file = fullfile(logs_root,'validation_stamp.txt');
 if strcmp(validate_only,'1')
-    run_validation(code_dir,repo_root,here,C,P,workers,stamp_file,prefix);
+    run_validation(code_dir,repo_root,here,C,P,workers,stamp_file,kernel,prefix);
     return
 end
 if array_index > numel(C.elements)
@@ -128,9 +131,10 @@ worker_log = fullfile(logs_dir,sprintf('worker_run%02d.log',run_id));
 diary(worker_log);
 diary_cleanup = onCleanup(@() diary('off')); %#ok<NASGU>
 fprintf(['Campaign: %s (original: %s)\nSet: %s\nRun: %d\nGrid: %s (%d squares)\n' ...
-    'Horizon: %s (%d days, rock to %d)\nWorkers: %d\nSlurm restart: %s\nStarted: %s\n'], ...
+    'Horizon: %s (%d days, rock to %d)\nWorkers: %d\nERW kernel: %s\n' ...
+    'Slurm restart: %s\nStarted: %s\n'], ...
     C.tag,C.original_tag,member.tag,run_id,C.topology_file,C.n_columns,C.horizon, ...
-    C.n_days,C.last_application_year,workers,getenv('SLURM_RESTART_COUNT'), ...
+    C.n_days,C.last_application_year,workers,kernel,getenv('SLURM_RESTART_COUNT'), ...
     datestr(now,'yyyy-mm-dd HH:MM:SS'));
 
 status_file = fullfile(logs_dir,sprintf('run_%02d.status',run_id));
@@ -155,7 +159,9 @@ if ~strcmp(state,'complete')
         'The saved result of run %d in %s does not carry the provenance of set %s.', ...
         run_id,results_dir,member.tag);
 end
-Field_Campaign_Grid('provenance',load_provenance(result_file),C.topology_file,C.topo,prefix);
+p = load_provenance(result_file);
+Field_Campaign_Grid('provenance',p,C.topology_file,C.topo,prefix);
+Field_Campaign_Grid('kernel_provenance',p,kernel,prefix);
 %% After the save, so a leak flags the run without losing it.
 fprintf('Lateral conservation over the whole run:\n');
 Check_Lateral_Conservation(result_file,prefix);
@@ -163,7 +169,7 @@ fprintf('PASS: set %s run %d (%s) saved with matching provenance: %s\n', ...
     member.tag,run_id,C.tag,result_file);
 end
 
-function run_validation(code_dir,repo_root,here,C,P,workers,stamp_file,prefix)
+function run_validation(code_dir,repo_root,here,C,P,workers,stamp_file,kernel,prefix)
 test_dir = fullfile(code_dir,'Tests');
 addpath(test_dir);
 old_dir = pwd;
@@ -203,8 +209,9 @@ for m = 1:numel(members)
             'The one-day %s run does not carry the set''s provenance: %s',members(m).tag,smoke_file);
     end
     Field_Campaign_Grid('provenance',p,C.topology_file,C.topo,prefix);
-    fprintf('Smoke %s (%d characters): %s%s\n',members(m).tag,numel([name extension]), ...
-        name,extension);
+    Field_Campaign_Grid('kernel_provenance',p,kernel,prefix);
+    fprintf('Smoke %s (%d characters, ERW kernel %s): %s%s\n',members(m).tag, ...
+        numel([name extension]),kernel,name,extension);
     Check_Lateral_Conservation(smoke_file,prefix);
     clear smoke_cleanup
 end
