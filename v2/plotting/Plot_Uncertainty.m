@@ -32,6 +32,14 @@ if ~isfile(summary_file)
         'Uncertainty summary not found: %s',summary_file);
 end
 S = load(summary_file,'run_ids','treatments','yearly','obs','in_envelope','members');
+%% A summary may name what it covers (Summarize_Uncertainty: the plot, a
+%% field grid, the scenario); the figures' titles say it.
+label = 'Kantola 1-D';
+contents = whos('-file',summary_file);
+if any(strcmp({contents.name},'label'))
+    L = load(summary_file,'label');
+    label = char(L.label);
+end
 required = {'run_ids','treatments','yearly','obs','in_envelope','members'};
 yearly_fields = {'years','pH_season_mean','N2O_cumulative_gN_m2', ...
     'NO3_leaching_cumulative_gN_m2','Ca_release_mol_m2','Mg_release_mol_m2', ...
@@ -123,7 +131,7 @@ title(ax,'Basalt pH signal','Color','k');
 lgd = legend([handles obs_handles sensitivity_handles], ...
     [labels obs_names sensitivity_names],'NumColumns',4,'Box','off','TextColor','k');
 lgd.Layout.Tile = 'south';
-title(tl,'Kantola 1-D: parameter-uncertainty ensemble, bulk pH','Color','k');
+title(tl,[label ': parameter-uncertainty ensemble, bulk pH'],'Color','k');
 subtitle(tl,member_note,'Color',[0.3 0.3 0.3],'FontSize',9);
 plot_file{1} = save_pair(fig(1),fullfile(figure_dir,'Kantola_uncertainty_ph.png'));
 
@@ -146,7 +154,7 @@ end
 lgd = legend([handles sensitivity_handles],[labels sensitivity_names], ...
     'NumColumns',4,'Box','off','TextColor','k');
 lgd.Layout.Tile = 'south';
-title(tl,'Kantola 1-D: parameter-uncertainty ensemble, nitrogen losses','Color','k');
+title(tl,[label ': parameter-uncertainty ensemble, nitrogen losses'],'Color','k');
 subtitle(tl,member_note,'Color',[0.3 0.3 0.3],'FontSize',9);
 plot_file{2} = save_pair(fig(2),fullfile(figure_dir,'Kantola_uncertainty_nitrogen.png'));
 
@@ -187,7 +195,7 @@ if isgraphics(obs_handle)
 end
 lgd = legend(legend_handles,legend_names,'NumColumns',4,'Box','off','TextColor','k');
 lgd.Layout.Tile = 'south';
-title(tl,'Kantola 1-D: parameter-uncertainty ensemble, weathering','Color','k');
+title(tl,[label ': parameter-uncertainty ensemble, weathering'],'Color','k');
 subtitle(tl,member_note,'Color',[0.3 0.3 0.3],'FontSize',9);
 plot_file{3} = save_pair(fig(3),fullfile(figure_dir,'Kantola_uncertainty_weathering.png'));
 end
