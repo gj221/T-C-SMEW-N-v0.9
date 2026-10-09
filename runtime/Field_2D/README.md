@@ -73,9 +73,10 @@ bash runtime/Field_2D/submit_field_2d.sh
 
 * `TC_FIELD_RUNS` (default `1-9`): the Slurm array of runs to submit, such as `2`, `1-9`, or `1-9%2` to hold two at a time.
 * `TC_FIELD_WORKERS` (default 12, from 2 to 64): the pool (the daily ERW step; in package y also the daily and hourly work of the squares) and the CPUs of every element. It enters the validation stamp, so a resume keeps it.
+* **ERW kernel:** the batch file sets `TC_ERW_KERNEL=fast` for every element, so the ERW step runs package z's fast kernels (`ERW_KERNELS_2026-10-08.md`), which compute the original code's numbers bit for bit. The task refuses any other kernel, and every result must record it (`run_provenance.erw_kernel`). Nothing needs exporting.
 
 The controller submits one validation element and the production array.
-* **Validation:** `day`, `TC_FIELD_WORKERS` CPUs, 96 GB, 6 h. It runs the complete audit, the Linux portability checks and a one-day run of the grid across the first application.
+* **Validation:** `day`, `TC_FIELD_WORKERS` CPUs, 96 GB, 6 h. It runs the complete audit, the Linux portability checks and a one-day run of the grid across the first application, which it saves and checks for the fast kernels.
 * **Production:** `week`, the runs of `TC_FIELD_RUNS`. It starts only after the validation passes. `TC_FIELD_STAGE=resume` continues after a timeout or node loss: finished runs are kept, interrupted ones resume from their two-hourly checkpoints, and the controller lists any stale run lock to remove first.
 
 ## Files
@@ -84,7 +85,7 @@ The controller submits one validation element and the production array.
 |---|---|
 | `submit_field_2d.sh` | controller: preflight, validation element, production array |
 | `submit_field_2d.sbatch` | array batch file: validation mode and production |
-| `Run_Field_2D_Task.m` | one element: gates, lock, existing-result check, `Run_Subfield_Worker` with `FieldTopologyFile`, post-run checks, provenance (calibrated set and the grid file's SHA-256), lateral conservation |
+| `Run_Field_2D_Task.m` | one element: gates (the fast ERW kernels among them), lock, existing-result check, `Run_Subfield_Worker` with `FieldTopologyFile`, post-run checks, provenance (calibrated set, the grid file's SHA-256 and the kernel), lateral conservation |
 | `Check_Lateral_Conservation.m` | byte copy of the 2-D campaigns' whole-run check, which also reports the overland export of a topographic run |
 
 ## Outputs

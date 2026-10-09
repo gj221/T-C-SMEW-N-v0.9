@@ -22,7 +22,8 @@
 # so the directives above are only the defaults.
 #
 # TC_FIELD_WORKERS (default 12, set by the controller) workers for the daily
-# ERW columns, one CPU each; see the task.
+# ERW columns, one CPU each; see the task. The ERW chemistry runs package
+# z's fast kernels (TC_ERW_KERNEL=fast, set below), which the task requires.
 
 set -euo pipefail
 umask 027
@@ -84,6 +85,10 @@ export TC_CAMPAIGN_TAG="Field_2D__${topology_name}"
 export TC_NUMERICAL_IDENTITY="cpumodel=9575f;matlab_release=2025a;single_comp_thread=1;parallel_workers=${workers}"
 export TC_CKPT_MINUTES=120
 unset TC_CKPT_FORCE_RESUME || true
+# Package z's fast ERW chemistry kernels: the original code's numbers, bit
+# for bit, and the only kernels this campaign runs (MATLAB runs no MEX
+# function on the thread pool). The task refuses any other.
+export TC_ERW_KERNEL=fast
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1

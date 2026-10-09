@@ -14,7 +14,11 @@ function Run_Field_2D_Task
 %%
 %% The chemistry is untouched: every calibrated number comes from
 %% Campaign_Parameters in the five-year 1-D campaign directory, as for the
-%% 12-column plot, and the provenance assertion is the same.
+%% 12-column plot, and the provenance assertion is the same. The ERW step
+%% runs package z's fast kernels (TC_ERW_KERNEL=fast), which compute the
+%% original code's numbers bit for bit; the element refuses any other
+%% kernel, and every result, the validation's one-day run included, must
+%% record it.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 one_d_tag = ...
@@ -89,6 +93,12 @@ if ~isempty(getenv('TC_CKPT_FORCE_RESUME'))
     error('Bouchet_Kantola_Field2D:ForcedResumeForbidden', ...
         'TC_CKPT_FORCE_RESUME must remain unset for production.');
 end
+%% The kernels are in neither the stamp nor the checkpoint identity (all
+%% three compute the same numbers), so the element checks them itself.
+if ~strcmp(ERW_Chemistry_Kernel_Mode([]),'fast')
+    error('Bouchet_Kantola_Field2D:BadKernel', ...
+        'TC_ERW_KERNEL must be fast for this campaign.');
+end
 if ~strcmp(strtrim(getenv('TC_CAMPAIGN_TAG')),campaign_tag)
     error('Bouchet_Kantola_Field2D:BadCampaignTag', ...
         'TC_CAMPAIGN_TAG must be %s.',campaign_tag);
@@ -148,8 +158,8 @@ worker_log = fullfile(logs_dir,sprintf('worker_run%02d.log',run_id));
 diary(worker_log);
 diary_cleanup = onCleanup(@() diary('off')); %#ok<NASGU>
 fprintf(['Campaign: %s\nGrid: %s (%d cells of %g m, topography %d)\n' ...
-    'Slurm run: %d\nWorkers: %d\nAppelo alpha: %.17g\nKNmaxd: %.17g d^-1\n' ...
-    'Kbot: %.17g mm h^-1\nCEC: %g cmolc kg^-1\n'], ...
+    'Slurm run: %d\nWorkers: %d\nERW kernel: fast\nAppelo alpha: %.17g\n' ...
+    'KNmaxd: %.17g d^-1\nKbot: %.17g mm h^-1\nCEC: %g cmolc kg^-1\n'], ...
     campaign_tag,topology_file,n_columns,topo.cell_size_m, ...
     isfield(topo,'topography_attached') && topo.topography_attached, ...
     run_id,workers,P.AppeloAlpha,P.KNmaxd,P.Kbot,P.CEC_cmolc_kg);
@@ -190,8 +200,9 @@ saved = load(result_file,'run_provenance');
 Assert_Base_Provenance(saved.run_provenance,run_id,n_columns,workers, ...
     stamp_digest,campaign_tag,results_dir,P.NDays);
 assert_field_grid_provenance(saved.run_provenance,topology_file,topo);
-fprintf('Provenance: run %d carries the calibrated CEC 13 identity on %s.\n', ...
-    run_id,topology_name);
+assert_kernel_provenance(saved.run_provenance);
+fprintf(['Provenance: run %d carries the calibrated CEC 13 identity on %s, ' ...
+    'with the fast ERW kernels.\n'],run_id,topology_name);
 
 fprintf('Lateral conservation over the whole run:\n');
 Check_Lateral_Conservation(result_file,'Bouchet_Kantola_Field2D');
@@ -207,7 +218,8 @@ cleanup = onCleanup(@() cd(old_dir));
 cd(test_dir);
 %% The complete audit (the post-legacy suite, which carries the topography
 %% and field-grid tests), the Linux deployment, and the grid itself for one
-%% day across the first application, before any multi-day element starts.
+%% day across the first application, before any multi-day element starts;
+%% that day is saved and its kernel read back as production does.
 run_post_legacy_equation_audit_tests(1);
 cd(test_dir);
 test_biogeochemistry_io_path_portability;
@@ -218,10 +230,14 @@ mkdir(smoke_dir);
 smoke_cleanup = onCleanup(@() rmdir(smoke_dir,'s'));
 ckpt_minutes = getenv('TC_CKPT_MINUTES');
 setenv('TC_CKPT_MINUTES','0');
-Run_One_Subfield(5,'FieldTopologyFile',topology_file,'NDays',1, ...
+smoke_file = Run_One_Subfield(5,'FieldTopologyFile',topology_file,'NDays',1, ...
     'StartDate','2016-11-10','ParallelWorkers',workers, ...
-    'SaveResults',false,'ResultDirectory',smoke_dir);
+    'SaveResults',true,'ResultDirectory',smoke_dir);
 setenv('TC_CKPT_MINUTES',ckpt_minutes);
+saved = load(smoke_file,'run_provenance');
+assert_kernel_provenance(saved.run_provenance);
+fprintf('One-day run of the grid: ERW kernel %s recorded.\n', ...
+    char(saved.run_provenance.erw_kernel));
 clear smoke_cleanup
 logs_dir = fullfile(repo_root,'v2','logs','Subfield_12',campaign_tag);
 fingerprint = Bouchet_Campaign_Validation_Fingerprint( ...
@@ -285,6 +301,15 @@ ok = isfield(p,'field_topology_file') && strcmp(p.field_topology_file,topology_f
 if ~ok
     error('Bouchet_Kantola_Field2D:WrongProvenance', ...
         'The result does not carry the grid it was validated on: %s.',topology_file);
+end
+end
+
+function assert_kernel_provenance(p)
+%% The result records the ERW chemistry kernels it ran with (Run_One_Subfield,
+%% run_provenance.erw_kernel): this campaign's are the fast ones.
+if ~isfield(p,'erw_kernel') || ~strcmp(char(p.erw_kernel),'fast')
+    error('Bouchet_Kantola_Field2D:WrongKernel', ...
+        'The result does not record the fast ERW kernels this campaign runs.');
 end
 end
 
