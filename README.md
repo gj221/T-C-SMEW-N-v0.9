@@ -227,6 +227,33 @@ changes, the control included, so this build needs its own Bouchet R2025a
 equivalence baseline, validation and sweep before production; use the
 runbook here.
 
+## Limitations
+
+**Mineralogy of the basalt** (the block headed MINERALOGY CAVEAT in
+`v2/T&C_Code/ERW_function.m`, above the saturation call). A mineral
+dissolves only while the pore water is undersaturated with it (rate x
+max(0, 1 - Omega)). The model has no sink for dissolved silica (no clay,
+amorphous silica or gibbsite precipitates), so the silica released by the
+other minerals builds up until the pore water is supersaturated with
+albite (19.6 percent of the Blue Ridge basalt) and quartz, and those two
+never dissolve at Kantola. SCEPTER and PHREEQC keep albite dissolving by
+precipitating secondary phases; this model does not, an accepted
+limitation. Epidote, chlorite and the amphibole have no saturation ratio
+(their reactions need products the model does not track) and dissolve at
+the far-from-equilibrium rate; the amphibole runs on the measured
+Hermanska et al. (2022) rate law, about 60 times slower at pH 6 than the
+Palandri and Kharaka tremolite row (a Sverdrup 1990 model coefficient)
+that let the legacy T&C-SMEW match the rock-loss CDR of Beerling et al.
+(2024) while overshooting the measured soil pH (7.8 against 6.65 in
+August 2020). So the Ca+Mg release from this basalt, and any CDR built
+from it, is bounded by amphibole, epidote, chlorite and the calcite the
+rock itself holds, 0.54 percent (about 23 percent of the Ca in the rock;
+about 60 percent of the 2017-2020 alkalinity release). The 32 percent Ca
+loss and 10.5 t CO2/ha of Beerling et al. (2024), from a Ti mass
+balance, cannot be reproduced with this mineralogy. The model is
+calibrated to the measured soil pH and base saturation, not to that CDR
+estimate (`AMPHIBOLE_KINETICS_2026-10-02.md`).
+
 ## Repository layout
 
 ```

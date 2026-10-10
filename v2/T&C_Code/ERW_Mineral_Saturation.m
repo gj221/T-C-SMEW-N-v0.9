@@ -21,6 +21,15 @@ function [Omega, thermodynamic_defined] = ERW_Mineral_Saturation( ...
 %%% dissolved product that the model does not represent. Those phases use
 %%% far-from-equilibrium dissolution kinetics in the callers; NaN prevents
 %%% the placeholder from being reported as a saturation index.
+%%%
+%%% MINERALOGY CAVEAT: the ratio returned here is why albite and quartz
+%%% never dissolve at Kantola (no silica sink, so the pore water becomes
+%%% supersaturated with both and their affinity max(0, 1 - Omega) is zero),
+%%% and the NaN returned for epidote, chlorite and the amphibole is why
+%%% those dissolve at the far-from-equilibrium rate. The plain-language
+%%% account, and what it means for Ca+Mg release and CDR, is the block
+%%% headed MINERALOGY CAVEAT in ERW_function.m, above the call to this
+%%% function.
 
 if iscell(mineral)
     if numel(mineral) ~= 1

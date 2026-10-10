@@ -1329,6 +1329,46 @@ if rock_app > 0
                     SA(j_only),rock_f(j_only,min_j),M_min(j_only,min_j), ...
                     MM_min_row(min_j),dtw,gamma_IAP);
             else
+                %% MINERALOGY CAVEAT (read this before using any Ca+Mg release
+                %% or CDR number from a basalt run; Greg, 10 October 2026).
+                %% The rule below lets a mineral dissolve only while the pore
+                %% water is undersaturated with it: the rate is multiplied by
+                %% max(0, 1 - Omega), where Omega is the saturation ratio that
+                %% ERW_Mineral_Saturation returns. Two consequences for the
+                %% Blue Ridge basalt used at Kantola:
+                %% 1. Albite (19.6 percent of the rock) and quartz never
+                %%    dissolve. The model has no sink for dissolved silica: no
+                %%    clay, amorphous silica or gibbsite is precipitated. The
+                %%    silica released by the other minerals therefore builds up
+                %%    until the pore water is supersaturated with albite and
+                %%    quartz, and from then on their affinity is zero. Reactive
+                %%    transport codes such as SCEPTER and PHREEQC keep albite
+                %%    dissolving by precipitating secondary phases; this model
+                %%    does not. This is an accepted, known limitation (no
+                %%    amorphous-silica or silica-cap fix has been added).
+                %% 2. Epidote, chlorite and the amphibole (ferroactinolite,
+                %%    actinolite) have no saturation ratio, because their
+                %%    reactions need dissolved products the model does not
+                %%    track (Omega_defined is false). They dissolve at the
+                %%    far-from-equilibrium rate (affinity 1). The amphibole
+                %%    runs on the measured rate law of Hermanska et al. (2022);
+                %%    the Palandri and Kharaka tremolite row used before is a
+                %%    Sverdrup (1990) model coefficient about 60 times faster at
+                %%    pH 6. That faster row is what let the legacy T&C-SMEW
+                %%    match the rock-loss CDR of Beerling et al. (2024) while
+                %%    overshooting the measured soil pH (7.8 against 6.65 in
+                %%    August 2020).
+                %% So the Ca+Mg release from this basalt, and any CDR built
+                %% from it, is bounded by amphibole, epidote, chlorite and the
+                %% calcite the rock itself holds, 0.54 percent (about 23 percent
+                %% of the Ca in the rock; about 60 percent of the 2017-2020
+                %% alkalinity release is that calcite). The 32 percent Ca loss
+                %% and 10.5 t CO2/ha that Beerling et al. (2024) derive from a
+                %% Ti mass balance cannot be reproduced with this mineralogy.
+                %% The model is calibrated to the measured soil pH and base
+                %% saturation, not to that CDR estimate. Rate constants:
+                %% Parameters/ERW_MOD_PARAM_excel.m; saturation ratios:
+                %% ERW_Mineral_Saturation.m; record: AMPHIBOLE_KINETICS_2026-10-02.md.
                 [Omega(j_only,min_j),Omega_defined] = ERW_Mineral_Saturation(mineral(min_j), K, Ca, Mg, Na, Si, Al, PO4, H, K_sp(min_j), conv_mol, Al_CEC_scale, activity_I); %[-]
                 if Omega_defined
                     dissolution_affinity = max(0,1-Omega(j_only,min_j));

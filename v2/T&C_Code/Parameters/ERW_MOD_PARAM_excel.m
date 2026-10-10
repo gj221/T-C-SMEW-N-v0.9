@@ -1408,6 +1408,11 @@ function [MM_min,k_diss_H,k_diss_w,k_diss_OH,E_H,E_w,...
         % before (10^-8.4, 18.9, 0.7; 10^-10.6, 94.4) is taken from Sverdrup
         % (1990), not fitted to tremolite experiments, and is about 60 times
         % the measured rate at pH 6 (AMPHIBOLE_KINETICS_2026-10-02.md).
+        % MINERALOGY CAVEAT: this measured amphibole rate, with albite and
+        % quartz never dissolving (no silica sink) and epidote, chlorite
+        % and the amphibole dissolving far from equilibrium, bounds the
+        % Ca+Mg release and any CDR from Blue Ridge basalt. The plain-language
+        % account is the block headed MINERALOGY CAVEAT in ERW_function.m.
         k_diss_H = 10^(-11.3)*24*3600*conv_mol; % [mol-conv m-2 d-1]
         k_diss_w = 10^(-13.1)*24*3600*conv_mol;
         k_diss_OH = 0;
