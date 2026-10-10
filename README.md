@@ -1,5 +1,24 @@
 # T&C-SMEW-N v0.9
 
+Package ac is package ab with the uncertainty ensemble's two moved sets
+revised (`UNCERTAINTY_BOUNDS_REVISION_2026-10-09.md`,
+`runtime/Uncertainty_1D/README.md`): the twelve biogeochemistry literals
+a factor of two around the shipped values instead of Table S2's ends
+(fd by 0.1; pepf and Vdb clipped to the table), KNmaxd 0.002-0.0064 d^-1
+instead of 0.002-0.01, alpha 1.3 and 6 as before, and each parameter's
+end assigned to the set it pushes the basalt pH response towards, so the
+lower set is the fast-nitrogen, low-alpha, slow-weathering one and the
+upper set the slow-nitrogen, high-alpha, fast-weathering one. The first
+run's upper set had mineralised about a decade of litter in its first
+year (a spin-up transient) and the band could not rise above the central
+pH line. Only `Uncertainty_Members.m`, `test_uncertainty_campaign`, the
+ensemble README and this record change; no controller, driver or model
+file does, and the original set is untouched. `precheck_1d.m` at the
+package root prints the acceptance checks of the two sets' five-year 1-D
+runs. `RUNBOOK_2026-09-24.md`, section 0ac: the 1-D runs first, then the
+2-D and 35-year arrays. The paragraph below describes ab, which ac
+contains.
+
 Package ab is package aa with every field campaign held to z's fast ERW
 kernels, which compute the original code's numbers bit for bit; nothing
 else changes, and nothing needs exporting.
@@ -484,8 +503,9 @@ The calibrated set and every campaign that reads it live under `runtime/`;
 * `Uncertainty_1D` and `Uncertainty_2D`: the parameter-uncertainty
   ensemble, the T&C-SMEW field paper's sensitivity analysis in the coupled
   model. Beside the original set, reused from the Base and SSP results,
-  all sixteen parameters run at the lower and at the upper end of their
-  ranges, in 1-D and 2-D, with the 5 t/ha arm, over both horizons
+  all sixteen parameters run in two moved sets, each at the end that
+  pushes the basalt pH response its way (`runtime/Uncertainty_1D/README.md`),
+  in 1-D and 2-D, with the 5 t/ha arm, over both horizons
   (`runtime/Uncertainty_1D/submit_uncertainty.sh`). `Run_One_Subfield`
   carries its three knobs (`BiogeoOverrides`, `DissolutionFactor`,
   `SaturationExponent`), bit-identical when unset.

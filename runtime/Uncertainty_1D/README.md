@@ -3,8 +3,10 @@
 The parameter-uncertainty analysis of the T&C-SMEW field paper (Zhang et
 al., GCB; supplement section 4, Table S2), carried into the coupled model
 with the two parameters this model adds. Three parameter sets are
-compared: the original (calibrated) values, all sixteen parameters at the
-lower end of their ranges, and all sixteen at the upper end. Each set
+compared: the original (calibrated) values and two moved sets, each
+moving all sixteen parameters to the end that pushes the basalt pH
+response its way (the "lower" and the "upper" response; the bounds of
+9 October 2026, `UNCERTAINTY_BOUNDS_REVISION_2026-10-09.md`). Each set
 covers every treatment in 1-D and 2-D, at the standard rates and in the
 5 t/ha calcite arm, over the five validation years and over the 35
 projection years of each SSP.
@@ -15,46 +17,78 @@ weathering responses carry the parameter spread together.
 
 ## Parameter sets
 
-| parameter | meaning | lower | original | upper |
-|---|---|---|---|---|
-| Vm | max. specific decomposition rate of MOC | 1.2 | 100 | 528 |
-| Vpc | max. specific decomposition rate of POC cellulose | 4.8 | 200 | 792 |
-| Km | half-saturation constant, MOC decomposition | 0.057 | 0.25 | 0.95 |
-| rem | turnover rate of the MOC enzyme pools | 0.0075 | 0.018 | 0.075 |
-| rep | turnover rate of the POC enzyme pools | 0.0075 | 0.018 | 0.075 |
-| pepf | maintenance-respiration fraction to POC enzymes (fungi) | 0.0031 | 0.006 | 0.031 |
-| mrb | maintenance rate of bacteria | 0.0012 | 0.010 | 0.03 |
-| mrf | maintenance rate of saprotrophic fungi | 0.0012 | 0.005 | 0.03 |
-| fd | fraction of decomposed POC to DOC | 0.2 | 0.4 | 0.8 |
-| Vpl | max. specific decomposition rate of POC lignin | 4.8 | 23 | 792 |
-| Vdb | max. DOC uptake rate, bacteria | 0.0024 | 0.04 | 0.06 |
-| Vdf | max. DOC uptake rate, saprotrophic fungi | 0.0024 | 0.02 | 0.06 |
-| FD | dissolution factor on the weathering rate law | 0.8 | 1 | 1.2 |
-| exponent on the ERW pore saturation | s^2 low, sqrt(s) high | 2 | 1 | 0.5 |
-| KNmaxd | denitrification rate scale, d^-1 | 0.002 | 0.0048 | 0.01 |
-| alpha | Appelo exchange slope, constants slid with it | 1.3 | 3.4 | 6 |
+The sets since package ac (the first run's sets, Table S2's ends, are in
+the last table of this section):
 
-The first fourteen rows are the legacy analysis. Ranges come from Table
-S2 of the T&C-SMEW supplement, which the range comments in
-`Biogeochemistry_Parameter.m` repeat. The original values are what the
-model ships: the SI "original" column, except mrb and mrf, which keep the
-legacy code's 0.010 and 0.005 (the SI lists 0.005 and 0.002) because
-`Data_Kantola_BG.mat` was spun up with them. The workbook's dissolution
-factor is 1 on every feedstock row, the SI's original.
+| parameter | meaning | lower (low response) | original | upper (high response) | Table S2 range |
+|---|---|---|---|---|---|
+| Vm | max. specific decomposition rate of MOC | 200 | 100 | 50 | 1.2-528 |
+| Vpc | max. specific decomposition rate of POC cellulose | 400 | 200 | 100 | 4.8-792 |
+| Km | half-saturation constant, MOC decomposition | 0.5 | 0.25 | 0.125 | 0.057-0.95 |
+| rem | turnover rate of the MOC enzyme pools | 0.036 | 0.018 | 0.009 | 0.0075-0.075 |
+| rep | turnover rate of the POC enzyme pools | 0.036 | 0.018 | 0.009 | 0.0075-0.075 |
+| pepf | maintenance-respiration fraction to POC enzymes (fungi) | 0.012 | 0.006 | 0.0031 (S2 floor) | 0.0031-0.031 |
+| mrb | maintenance rate of bacteria | 0.020 | 0.010 | 0.005 | 0.0012-0.03 |
+| mrf | maintenance rate of saprotrophic fungi | 0.010 | 0.005 | 0.0025 | 0.0012-0.03 |
+| fd | fraction of decomposed POC to DOC | 0.5 | 0.4 | 0.3 | 0.2-0.8 |
+| Vpl | max. specific decomposition rate of POC lignin | 46 | 23 | 11.5 | 4.8-792 |
+| Vdb | max. DOC uptake rate, bacteria | 0.06 (S2 ceiling) | 0.04 | 0.02 | 0.0024-0.06 |
+| Vdf | max. DOC uptake rate, saprotrophic fungi | 0.04 | 0.02 | 0.01 | 0.0024-0.06 |
+| FD | dissolution factor on the weathering rate law | 0.8 | 1 | 1.2 | 0.8-1.2 |
+| exponent on the ERW pore saturation | s^2 slow, sqrt(s) fast | 2 | 1 | 0.5 | |
+| KNmaxd | denitrification rate scale, d^-1 | 0.002 | 0.0048 | 0.0064 | |
+| alpha | Appelo exchange slope, constants slid with it | 1.3 | 3.4 | 6 | |
 
-KNmaxd and alpha are this model's additions. The KNmaxd range is an
-exploratory cross-model bracket, not a confidence interval or a range
-fitted to the Energy Farm chambers. Hou et al. (2024,
-doi:10.3389/fpls.2024.1482292) report first-order soil denitrification
-constants of 0.002-0.003 d^-1 in the upper 40 cm. CropSyst's first-order
+The original values are what the model ships: the SI "original" column,
+except mrb and mrf, which keep the legacy code's 0.010 and 0.005 (the SI
+lists 0.005 and 0.002) because `Data_Kantola_BG.mat` was spun up with
+them. The workbook's dissolution factor is 1 on every feedstock row, the
+SI's original.
+
+**The twelve literals** move a factor of two around the shipped values
+(fd, a fraction, by 0.1), clipped to Table S2 where the factor would
+leave it: pepf's half, 0.003, becomes the table's floor 0.0031, and
+Vdb's double, 0.08, its ceiling 0.06. Table S2's ends are the cross-site
+literature priors of the MEND-type microbial model (Wang et al. 2013,
+Waring and Averill 2013), two to three orders of magnitude wide; they
+describe ignorance across soils, not the uncertainty left after the
+model has been calibrated to this field's tower NEE, respiration and
+chambers. The first run of the ensemble (package u) put all twelve at
+those ends on pools spun up at the shipped values, and the set at the
+tops (Vm x5.3, Vpl x34 ...) mineralised about a decade of litter in its
+first year: +865 g C/m2 of net respiration, 145 kg N/ha of nitrate
+leached and 36 kg N2O-N/ha emitted in 2016, before any fertiliser, and
+the control pH went from 6.1 to 4.9 within months. A factor of two is
+the usual post-calibration bracket for microbial kinetic constants and
+keeps the potential decomposition within 2x of the state the pools were
+spun up with, which that run shows is the condition for no burst (x4-34
+burst; x0.01-0.4 did not). The range comments in
+`Biogeochemistry_Parameter.m` still give Table S2.
+
+**KNmaxd** is this model's addition, 0.0048 d^-1 calibrated to the
+multi-year chamber total (N2O/obs = 1). That total hides two
+compensating per-year errors recorded in `Biogeochemistry_Parameter.m`:
+2017 modelled 2.4x the chambers, 2018 0.75x, so the per-year fits
+bracket the constant at 0.0048/2.4 = 0.002 and 0.0048/0.75 = 0.0064.
+Both ends have literature support: Hou et al. (2024,
+doi:10.3389/fpls.2024.1482292) measure first-order soil denitrification
+constants of 0.002-0.003 d^-1 in the upper 40 cm; CropSyst's first-order
 nitrate loss (Confalonieri et al. 2006, doi:10.1051/agro:2006022) has a
-0.01 d^-1 reference at 15 C (Heinen 2003, Alterra report 690). Alpha 3.4
-is the Appelo (1994) proton-loading slope, the value SCEPTER carries as
-its default and the campaign's since package u. No range is published for
-it, so the range is likewise an exploratory bracket: the ends of the sweep
-grid, 1.3 (the value fitted on 26 September) and 6. Both are formed as the
-sweep forms them (the first point of `linspace(1.3,3.4,5)` and the literal
-6). Moving alpha slides the exchange constants by the campaign's rule,
+0.01 d^-1 reference at 15 C (Heinen 2003, Alterra report 690; Heinen
+2006 reviews the family), so 0.0064 is inside the modelled range, and
+the first run's 0.01 is dropped as the top of a cross-model bracket
+rather than a value fitted to this site. 0.0064 ran in the package-t
+sweep grid (`kn0p0064`), so its exchange behaviour is known.
+
+**Alpha** 3.4 is the Appelo (1994) proton-loading slope, the value
+SCEPTER carries as its default and the campaign's since package u. The
+range is the ends of the sweep grid, 1.3 (the value fitted on 26
+September) and 6, both formed as the sweep forms them (the first point of
+`linspace(1.3,3.4,5)` and the literal 6). The field's own pH-versus-base-
+saturation pairs (Beerling et al. 2024 / Pihlap, 0.063-0.080 pH per
+point of base saturation against the model's 0.056 at alpha 3.4)
+correspond to alpha 4.1-5.8 at the seed's f_H of 0.20, so 6 brackets the
+field slope with a margin. Moving alpha slides the exchange constants by the campaign's rule,
 `logKH = reference_logKH + charge x (alpha - 1.3) x 0.20`, which keeps the
 seed's measured 80 % base saturation. A set's constants are given to
 twelve significant figures, the precision a result name carries: at alpha
@@ -76,11 +110,51 @@ saturation, (0.434/f_H + alpha)/100 pH units per point at an H fraction
 f_H: 0.035, 0.056 and 0.082 at the seed's f_H of 0.20 for the three
 values.
 
-"Lower" and "upper" name the ends of the parameter ranges, not of any
-output. The sixteen moves push a given output in different directions
-(the s^2 exponent slows weathering while the low KNmaxd raises nitrate,
-for example), so neither set need give an output's lowest or highest
-value, and the original can fall outside the pair.
+**Which end sits in which set.** "Lower" and "upper" name the ends of
+the basalt pH response, the quantity the paper reports, not the ends of
+the parameter ranges: each parameter's end sits in the set it pushes
+that response towards. Faster mineralisation (literals x2) means more
+nitrification acidity and nitrate export, so a lower pH; less
+denitrification (KNmaxd 0.002) consumes less acidity and nitrate; a low
+alpha moves the pH less per point of base saturation; a low dissolution
+factor and s^2 release less. So the lower set is the fast-nitrogen,
+low-alpha, slow-weathering set and the upper set the slow-nitrogen,
+high-alpha, fast-weathering one:
+
+| parameter | lower (low response) | upper (high response) |
+|---|---|---|
+| twelve literals | x2 | x0.5 |
+| KNmaxd | 0.002 | 0.0064 |
+| alpha | 1.3 | 6 |
+| dissolution factor | 0.8 | 1.2 |
+| saturation exponent | 2 (s^2) | 0.5 (sqrt s) |
+
+Relative to the first run this flips only the literals' side. In that
+run both moved sets were the ends of the parameter ranges, so
+parameters that push the pH opposite ways shared a member and cancelled:
+the only member above the central control line was the set with alpha
+1.3, and alpha 6, which gives the largest basalt effect, sat in the
+acidified member where it could not lift the band. Alpha alone cannot do
+it: it scales the control's acid drift and the basalt gain alike (0.035,
+0.056 and 0.082 pH per point of base saturation at 1.3, 3.4 and 6), so
+the band's upper edge for the control is set by the nitrogen cycle and
+the basalt plot's upper edge needs high alpha in that same slow-nitrogen
+member. Other outputs need not follow the sets: N2O pairs fast
+mineralisation with slow denitrification and vice versa, so its band is
+narrow (roughly 10-45 kg N/ha over five years, inside the Midwest maize
+range of Hoben et al. 2011), and the original can fall outside a pair.
+
+The first run's sets, for the record (package u to ab; every parameter
+at a Table S2 end, KNmaxd 0.002-0.01, alpha 1.3 in the lower set and 6
+in the upper):
+
+| parameter | lower | upper |
+|---|---|---|
+| Vm, Vpc, Km | 1.2, 4.8, 0.057 | 528, 792, 0.95 |
+| rem, rep, pepf | 0.0075, 0.0075, 0.0031 | 0.075, 0.075, 0.031 |
+| mrb, mrf, fd | 0.0012, 0.0012, 0.2 | 0.03, 0.03, 0.8 |
+| Vpl, Vdb, Vdf | 4.8, 0.0024, 0.0024 | 792, 0.06, 0.06 |
+| FD, exponent, KNmaxd, alpha | 0.8, 2, 0.002, 1.3 | 1.2, 0.5, 0.01, 6 |
 
 ## Arms, horizons and where the results are
 
@@ -138,7 +212,11 @@ is submitted otherwise.
 `RUNBOOK_2026-09-24.md`, section 0u, gives the order for package u: the
 equivalence baseline, the campaign's own 1-D runs with their validation,
 then the ensemble. Submit the ensemble only after the R2025a validation of
-the root has passed (the `Base1Dcheck` job).
+the root has passed (the `Base1Dcheck` job). Section 0ac gives the order
+for the revised sets: the two moved sets run in 1-D first
+(`TC_UC_DIMS=1d`, runs 10-12, five years) and are accepted against the
+checks listed there (`precheck_1d.m` at the package root prints them)
+before any 2-D or 35-year array is submitted.
 
 One controller call per horizon and case, eight in all. A call submits a
 1-D and a 2-D array; `TC_UC_DIMS=1d` or `TC_UC_DIMS=2d` submits that array
