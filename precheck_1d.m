@@ -80,6 +80,10 @@ for s = 2:3
     c = R{s,1}; o = R{1,1}; b = R{s,2}; ob = R{1,2}; k = R{s,3};
     if ~isempty(c)
         y16 = years == 2016;
+        %% A year the run has not reached is NaN; it fails the first check
+        %% and is left out of the others, so a partial run reads sensibly.
+        checks(end+1,:) = {tag,'all five years run (2016-2020 complete)',all(isfinite(c.ph_aug)), ...
+            sprintf('%d of %d years',nnz(isfinite(c.ph_aug)),numel(years))}; %#ok<AGROW>
         checks(end+1,:) = {tag,'N2O 2016 < 5 kg N/ha',c.n2o_kg_ha(y16) < 5, ...
             sprintf('%.2f',c.n2o_kg_ha(y16))}; %#ok<AGROW>
         total = sum(c.n2o_kg_ha,'omitnan');
@@ -87,7 +91,7 @@ for s = 2:3
             sprintf('%.2f',total)}; %#ok<AGROW>
         peak = max(c.n2o_peak_g_ha_d);
         checks(end+1,:) = {tag,'peak daily N2O < 150 g N/ha/day',peak < 150,sprintf('%.1f',peak)}; %#ok<AGROW>
-        checks(end+1,:) = {tag,'NO3 leached < 100 kg N/ha every year',all(c.no3_kg_ha < 100), ...
+        checks(end+1,:) = {tag,'NO3 leached < 100 kg N/ha every year',all(finite(c.no3_kg_ha) < 100), ...
             sprintf('max %.1f',max(c.no3_kg_ha))}; %#ok<AGROW>
         if ~isempty(o)
             d = c.nee_g_m2(y16)-o.nee_g_m2(y16);
@@ -98,7 +102,7 @@ for s = 2:3
                 all(side(isfinite(side)) == want),sprintf('%+.3f ',c.ph_aug-o.ph_aug)}; %#ok<AGROW>
         end
         checks(end+1,:) = {tag,'control August pH within 5.4-6.4', ...
-            all(c.ph_aug >= 5.4 & c.ph_aug <= 6.4),sprintf('%.3f ',c.ph_aug)}; %#ok<AGROW>
+            all(finite(c.ph_aug) >= 5.4 & finite(c.ph_aug) <= 6.4),sprintf('%.3f ',c.ph_aug)}; %#ok<AGROW>
     end
     if ~isempty(c) && ~isempty(b)
         effect = b.ph_aug-c.ph_aug;
@@ -108,16 +112,17 @@ for s = 2:3
         if ~isempty(ob) && ~isempty(o)
             oe = ob.ph_aug-o.ph_aug;
             later = years >= 2017;
+            side = sign(b.ph_aug(later)-ob.ph_aug(later));
             checks(end+1,:) = {tag,'basalt August pH on its side of the original every year after 2016', ...
-                all(sign(b.ph_aug(later)-ob.ph_aug(later)) == want), ...
+                all(finite(side) == want), ...
                 sprintf('%+.3f ',b.ph_aug-ob.ph_aug)}; %#ok<AGROW>
             fprintf('\nbasalt effect, August: original %s | %s %s\n',sprintf('%+.2f ',oe),tag,sprintf('%+.2f ',effect));
         end
     end
     if ~isempty(k)
-        after = years >= 2017;
+        after = finite(k.ph_aug(years >= 2017));
         checks(end+1,:) = {tag,'calcite 50 t/ha at the carbonate ceiling (7.9-8.3) every August after application', ...
-            all(k.ph_aug(after) >= 7.9 & k.ph_aug(after) <= 8.3),sprintf('%.2f ',k.ph_aug)}; %#ok<AGROW>
+            all(after >= 7.9 & after <= 8.3),sprintf('%.2f ',k.ph_aug)}; %#ok<AGROW>
     end
 end
 fprintf('\n%-7s %-80s %-5s %s\n','set','check','','value');
@@ -135,6 +140,10 @@ elseif ok
 else
     fprintf('\nPRECHECK FAIL: do not submit the 2-D or 35-year arrays; see the note, section 2c (fallback x/1.5).\n');
 end
+end
+
+function x = finite(x)
+x = x(isfinite(x));
 end
 
 function a = read_result(res_dir,run_id,years)
