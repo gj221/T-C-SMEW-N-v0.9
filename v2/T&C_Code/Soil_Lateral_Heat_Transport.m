@@ -103,13 +103,6 @@ if use_phase
     %% heat capacity, which already embeds dOliq/dT along the freezing
     %% curve, so temperature still responds with the right thermal inertia
     %% near the freezing front.
-    %% T&C's state is deliberately NOT on the local freezing curve:
-    %% HYDROLOGIC_UNIT solves Richards flow and then Cryosuction_stabilizer
-    %% moves liquid water BETWEEN layers while holding Oice fixed, so
-    %% (T,theta,Oice) cannot satisfy a local equilibrium relation at any
-    %% tolerance. Re-deriving the split here would re-partition order
-    %% 0.03 m3/m3 every step and inject spurious latent heat.
-    %%
     %% Instead, carry that departure from equilibrium as a constant offset
     %% across the lateral step. Because the offset is fixed, the enthalpy
     %% curve is merely shifted by -rho_i_Lf*offset, so the same inversion

@@ -52,6 +52,7 @@ implied = c1.bg.Na(1)*1000*V_erw;          %% umol from ERW pore water
 %% --- 3. Immobilization deficit path -----------------------------------
 F = load(fullfile(here,'Fixtures','no3_immobilization_20190906.mat'),'fixture');
 F = F.fixture;
+F.args{end+1} = 0.8;
 %% Close the system: zero every external N source and sink so the only
 %% remaining N exchanges are the internal transfers plus gaseous loss.
 %% Arg order: 12 FertN, 13 DepN, 14 BfixN, 25 NH4_Uptake, 26 NO3_Uptake,
@@ -350,6 +351,47 @@ DOC_C_residual = sum(dDOC(1:22))+R_litter_DOC+R_microbe_DOC+ ...
     sprintf('DOC limiting conserves carbon (%.6g)',DOC_C_residual), ...
     npass,nfail);
 
+%% Physical-state interfaces reject negative inventory rather than hiding it.
+tiny_negative = F.args;
+tiny_negative{2}(:) = 0;
+for k = 25:46; tiny_negative{k} = 0; end
+tiny_negative{2}(31) = -eps;
+[npass,nfail] = check(rejects(@() BIOGEOCHEMISTRY_DYNAMIC3(tiny_negative{:}), ...
+    'BIOGEOCHEMISTRY_DYNAMIC3:InvalidPoolState'), ...
+    'biogeochemistry rejects a negative physical pool without clamping', ...
+    npass,nfail);
+[npass,nfail] = check(rejects(@() Biogeo_Lateral_Pools( ...
+    [zeros(1,30) -eps zeros(1,48)]), 'Biogeo_Lateral_Pools:BadPools'), ...
+    'lateral handoff rejects a negative physical pool without clamping', ...
+    npass,nfail);
+
+bad_env = F.args;
+bad_env{55} = 1.01;
+[npass,nfail] = check(rejects(@() BIOGEOCHEMISTRY_DYNAMIC3(bad_env{:}), ...
+    'BIOGEOCHEMISTRY_DYNAMIC3:InvalidEnvironment'), ...
+    'anaerobic fraction outside [0,1] is rejected',npass,nfail);
+bad_env = F.args;
+bad_env{56} = 1.01;
+[npass,nfail] = check(rejects(@() BIOGEOCHEMISTRY_DYNAMIC3(bad_env{:}), ...
+    'BIOGEOCHEMISTRY_DYNAMIC3:InvalidEnvironment'), ...
+    'water-filled pore space outside [0,1] is rejected',npass,nfail);
+bad_env = F.args;
+bad_env{10} = 1.01;
+[npass,nfail] = check(rejects(@() BIOGEOCHEMISTRY_DYNAMIC3(bad_env{:}), ...
+    'BIOGEOCHEMISTRY_DYNAMIC3:InvalidEnvironment'), ...
+    'effective saturation outside [0,1] is rejected',npass,nfail);
+bad_env = F.args;
+bad_env{6} = 70;
+[npass,nfail] = check(rejects(@() BIOGEOCHEMISTRY_DYNAMIC3(bad_env{:}), ...
+    'BIOGEOCHEMISTRY_DYNAMIC3:InvalidEnvironment'), ...
+    'temperature outside the empirical response domain is rejected', ...
+    npass,nfail);
+bad_env = F.args;
+bad_env{9} = NaN;
+[npass,nfail] = check(rejects(@() BIOGEOCHEMISTRY_DYNAMIC3(bad_env{:}), ...
+    'BIOGEOCHEMISTRY_DYNAMIC3:InvalidEnvironment'), ...
+    'non-finite microbial bulk-soil pH is rejected',npass,nfail);
+
 fprintf('  ---------------------------------------\n');
 fprintf('  %d passed, %d failed\n',npass,nfail);
 if nfail > 0
@@ -374,6 +416,16 @@ if ok
     fprintf('  PASS  %s\n',label); npass = npass+1;
 else
     fprintf(2,'  FAIL  %s\n',label); nfail = nfail+1;
+end
+end
+
+%% =======================================================================
+function tf = rejects(fn,id)
+tf = false;
+try
+    fn();
+catch ME
+    tf = strcmp(ME.identifier,id);
 end
 end
 

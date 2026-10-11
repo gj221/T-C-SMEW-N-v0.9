@@ -28,11 +28,19 @@ switch OPT_BFIX
     case 3
         % if REXMY(3) > 0 
         if opt_BfixN > 0
+        if numel(REXMY) < 3 || ~(isfinite(REXMY(3)) && REXMY(3) >= 0)
+            error('Biogeo_Bio_fixation:InvalidCarbonAllocation', ...
+                'Fixation carbon allocation must be finite and nonnegative.');
+        end
         %%% Biological N-fixation
-        a= -3.62; b=0.27; c=25.14;
-        s=-30;
+        a= -3.62; b=0.27; c=25.15;
+        s=-6.25;
         Costfix = s*(exp(a + b*Tdp*(1 - 0.5*Tdp/c))-2); %% [gC/gN]
-        BfixN = sum(REXMY)/Costfix; %% [gN/m2 d]
+        if ~(isfinite(Costfix) && Costfix > 0)
+            error('Biogeo_Bio_fixation:InvalidFixationCost', ...
+                'Fixation cost must be finite and positive.');
+        end
+        BfixN = REXMY(3)/Costfix; %% [gN/m2 d]
         else
             BfixN = 0 ; 
         end 

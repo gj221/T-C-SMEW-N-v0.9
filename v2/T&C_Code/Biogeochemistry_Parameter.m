@@ -1,7 +1,17 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %   Subfunction Biogeochemistry_Parameter     %%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function[BiogeoPar]=Biogeochemistry_Parameter(opt_cons_CUE)
+function[BiogeoPar]=Biogeochemistry_Parameter(opt_cons_CUE,KNmaxd_override)
+if nargin < 2
+    KNmaxd_override = [];
+end
+if ~isempty(KNmaxd_override) && ...
+        ~(isnumeric(KNmaxd_override) && isreal(KNmaxd_override) && ...
+          isscalar(KNmaxd_override) && isfinite(KNmaxd_override) && ...
+          KNmaxd_override >= 0)
+    error('Biogeochemistry_Parameter:InvalidKNmaxd', ...
+        'KNmaxd must be a finite nonnegative scalar in d^-1.');
+end
 %%%%%%%%%%%%%%
 %%%% Decay Constant on a 40�C basis (Kirschbaum 2002)
 BiogeoPar.k_met_sur = 1/12.5; %%[1/day]
@@ -102,23 +112,40 @@ BiogeoPar.kv = 8.6*1e-5; %% [1/d]
 %%%%%%% Nitrification (Aerobic)
 BiogeoPar.KNmaxn = 0.086; %% [1/d] % Dickinson et al., 2002
 %%%%%%% Denitrification (Anaerobic)
-BiogeoPar.Kc = 17.5; %% [gC/ gsoil] %% Li et al., 1992
-BiogeoPar.Kn = 82.5; %% [gN/ gsoil] % Li et al., 1992 (not used)
-BiogeoPar.KNmaxd= 0.217; %% [1/d] % Dickinson et al., 2002
+BiogeoPar.Kc = 17.5; %% [gC/m3] DOC half-saturation, Li et al., 1992
+BiogeoPar.Kn = 82.5; %% [gN/m3] inactive NOx half-saturation, Li et al., 1992
+%%%%%% Historical denitrification rate constant, not the literature value.
+%% Dickinson et al. (2002) give 2.5e-6 s^-1 = 0.217 d^-1. That value was never
+%% fitted to this site and overestimates Energy Farm N2O by 5.4x against the
+%% chamber record digitised from Val Martin et al. (2023), figure 3a.
+%% Calibrated on the 2017 and 2018 maize seasons over the chamber sampling
+%% windows (DOY 114-263 and 117-243), the two years the model rotation and the
+%% field trial share as maize: 8601 gN/ha observed against 9023 modelled,
+%% a ratio of 1.05.
+%% That aggregate conceals two compensating per-year errors: 2017 modelled
+%% 3774 against 1561 observed (2.4x over) and 2018 modelled 5249 against 7040
+%% (0.75x under). The model damps interannual amplitude, giving a 2018/2017
+%% ratio of 1.39 against 4.51 observed and 2.23 for CLM5. The calibration is
+%% therefore sound for multi-year cumulative fluxes and unreliable for any
+%% single year.
+%% Cost of the calibration: NO3 leaching rises from 42 to 68 kg N/ha/yr, the
+%% upper end for tile-drained Midwest maize-soy. That is the binding
+%% constraint if drain nitrate data become available.
+%% The basalt and calcite N2O reductions are insensitive to this constant
+%% (44% at 0.217; 39% and 43% at 0.0271), so the treatment comparison does
+%% not rest on the calibration.
+%% Re-checked 2026-09-03 after the CEC_tot_in correction 8.6 -> 19.5 (USDA SSURGO,
+%% Dana Ap CEC7): the same windows give a ratio of 1.01 to observed, so the
+%% constant stands. The basalt reduction moves to 27% at CEC 19.5; that is the
+%% CEC effect on soil pH, not a KNmaxd effect.
+%% Those checks used the earlier Se^(1/L) moisture response. The default is
+%% retained as the old reference only; it is not calibrated for Se^2. The
+%% corrected-moisture sweep supplies KNmaxd explicitly for each run.
+BiogeoPar.KNmaxd= 0.0271; %% [1/d] old fitted reference; was 0.217 (Dickinson et al., 2002)
+if ~isempty(KNmaxd_override)
+    BiogeoPar.KNmaxd = KNmaxd_override;
+end
 %%%%%% N2O pathway - pH effects
-BiogeoPar.f_N2O_nit = 0.002; %% [-] N2O yield of nitrification
-%% Goodroad and Keeney 1984, Soil Biol Biochem 16:39-43; Khalil et al 2004, Soil Biol Biochem 36:687-699
-BiogeoPar.k_rN2O = 1.5;   %% [1/pH] steepness of denitrification N2O/(N2O+N2) partition
-%% Moved from 6.2 to 5.0. At 6.2 the 50%% crossover sits essentially on
-%% this site's pH of 6.06, giving rN2O = 0.55: over half of all
-%% denitrified nitrogen leaving as N2O rather than N2. The cited work
-%% places the crossover in acidic soil, with near-neutral soils emitting
-%% N2O at 0.1-0.3 of denitrification. 5.0 gives rN2O = 0.17 here.
-%% This changes only the N2O/N2 split, not total denitrification, so it
-%% does not affect the nitrate budget. Default is 6.2.
-BiogeoPar.pH0_rN2O = 5.0; %% [-] pH at which N2O/(N2O+N2) = 0.5
-%% Simek and Cooper 2002, Eur J Soil Sci 53:345; Cuhel et al 2010, Appl Environ Microbiol 76:1870;
-%% Liu et al 2010, FEMS Microbiol Ecol 72:407
 %%%%%% Parton et al 1997
 %%%%%%
 BiogeoPar.K1p= 1/600; %%% [1/day]
@@ -212,17 +239,7 @@ BiogeoPar.vam =  2.3e-7; %BiogeoPar.g_am*BiogeoPar.mrm/kn3 ; %% [m^2/day]
 %BiogeoPar.KnP=0.05;
 %BiogeoPar.KnK=0.1;
 
-%%%%%% Shape of the pH response functions used in BIOGEOCHEMISTRY_DYNAMIC3.
-%% These were literals inside the rate expressions. Named here so the
-%% published forms and their coefficients sit in one visible place rather
-%% than buried in the rate code. The values are the published ones and
-%% reproduce those forms exactly.
-%% Nitrification, Parton et al 1996: 0.56 + atan(pi*s*(PH-p0))/pi
-BiogeoPar.pH_nit_0 = 5.0;   %% [-] inflection
-BiogeoPar.pH_nit_s = 0.45;  %% [1/pH] steepness
-%% Denitrification, Heinen 2006: (PH-pmin)/prng, clamped to [0 1]
-BiogeoPar.pH_den_min = 3.5; %% [-] pH of zero denitrification
-BiogeoPar.pH_den_rng = 3.0; %% [pH] span from zero to unlimited
+%%%%%% Shape of the nitrification pH response used in BIOGEOCHEMISTRY_DYNAMIC3.
 return
 
 

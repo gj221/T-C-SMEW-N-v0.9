@@ -20,6 +20,11 @@ function topo = Build_Single_Cell_Topology(area_m2)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if nargin < 1 || isempty(area_m2); area_m2 = 3600; end
+if ~isnumeric(area_m2) || ~isscalar(area_m2) || ...
+        ~isfinite(area_m2) || area_m2 <= 0
+    error('Build_Single_Cell_Topology:BadArea', ...
+        'Single-cell plot area must be finite and positive.');
+end
 L = sqrt(area_m2);
 
 topo.field_side_m         = L;

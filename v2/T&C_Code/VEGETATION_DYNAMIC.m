@@ -328,98 +328,48 @@ else
     Add_AR = 0;
 end
 %%%%%%%%%%%%%%%%% STOICHIOMETRIC Constraints Growth
-if NPP > 0
-    %%%% NITROGEN
-    Ncons= fl*(NPP)/Nl+ ff*(NPP)/Nf + fc*(NPP)/Nc + fr*(NPP)/Nr +  fs*(NPP)/Ns + Tr_l/Nl + Tr_r/Nr + Ss/Nh ...
-        - Sll*ftransL/Nl - Sr*ftransR/Nr - Tr./Nc  -Ss./Ns -Rexmy/Nc + Add_AR/Nc; %% [gN /m^2 d]
-    %%%%
-    if (Ncons) >  Nreserve/dtd
-        f_red = (Nreserve/dtd)/Ncons; %%% [-]
-    else
-        f_red = 1;
-    end
-    AddRA=(1-f_red)*NPP;% Additional Respiration/Allocation [gC /m^2 d]
-    NPP=f_red*NPP;
-    %%%%%
-    WResp = AddRA; %% [gC /m^2 d]
-    %%%%%%
-    %%%% PHOSPHORUS
-    Pcons= fl*(NPP)/Phol+ ff*(NPP)/Phof + fc*(NPP)/Phoc + fr*(NPP)/Phor +  fs*(NPP)/Phos + Tr_l/Phol + Tr_r/Phor + Ss/Phoh ...
-        - Sll*ftransL/Phol - Sr*ftransR/Phor - Tr./Phoc  -Ss./Phos -Rexmy/Phoc + Add_AR/Phoc ; %% [gP/m^2 d]
-    %%%%
-    if (Pcons) >  Preserve/dtd
-        f_red = (Preserve/dtd)/Pcons; %%% [-]
-    else
-        f_red = 1;
-    end
-    AddRA=(1-f_red)*NPP;% Additional Respiration [gC /m^2 d]
-    NPP=f_red*NPP;
-    WResp = WResp + AddRA; %% [gC /m^2 d]
-    %%%%%
-    %%%% POTASSIUM
-    Kcons= fl*(NPP)/Kpotl+ ff*(NPP)/Kpotf + fc*(NPP)/Kpotc + fr*(NPP)/Kpotr +  fs*(NPP)/Kpots + Tr_l/Kpotl + Tr_r/Kpotr - Tr./Kpotc ... 
-         - Sll*ftransL/Kpotl - Sr*ftransR/Kpotr -Rexmy/Kpotc + Add_AR/Kpotc + Ss/Kpoth  -Ss./Kpots ; %% [gK/m^2 d]
-    %%%%
-    if (Kcons) >  Kreserve/dtd
-        f_red = (Kreserve/dtd)/Kcons; %%% [-]
-    else
-        f_red = 1;
-    end
-    AddRA=(1-f_red)*NPP;% Additional Respiration [gC /m^2 d]
-    NPP=f_red*NPP;
-    WResp = WResp + AddRA; %% [gC /m^2 d]
-    %%%%%
-
-    %%%% CALCIUM
-    Cacons= fl*(NPP)/Call+ ff*(NPP)/Calf + fc*(NPP)/Calc + fr*(NPP)/Calr +  fs*(NPP)/Cals + Tr_l/Call + Tr_r/Calr - Tr./Calc ... 
-         - Sll*ftransL/Call - Sr*ftransR/Calr -Rexmy/Calc + Add_AR/Calc + Ss/Calh  -Ss./Cals ; %% [gK/m^2 d]
-    %%%%
-    if (Cacons) >  Careserve/dtd
-        f_red = (Careserve/dtd)/Cacons; %%% [-]
-    else
-        f_red = 1;
-    end
-    AddRA=(1-f_red)*NPP;% Additional Respiration [gC /m^2 d]
-    NPP=f_red*NPP;
-    WResp = WResp + AddRA; %% [gC /m^2 d]
-    %%%%%
-    %%%% MAGNESIUM
-    Mgcons= fl*(NPP)/Magl+ ff*(NPP)/Magf + fc*(NPP)/Magc + fr*(NPP)/Magr +  fs*(NPP)/Mags + Tr_l/Magl + Tr_r/Magr - Tr./Magc ... 
-         - Sll*ftransL/Magl - Sr*ftransR/Magr -Rexmy/Magc + Add_AR/Magc + Ss/Magh  -Ss./Mags ; %% [gK/m^2 d]
-    %%%%
-    if (Mgcons) >  Mgreserve/dtd
-        f_red = (Mgreserve/dtd)/Mgcons; %%% [-]
-    else
-        f_red = 1;
-    end
-    AddRA=(1-f_red)*NPP;% Additional Respiration [gC /m^2 d]
-    NPP=f_red*NPP;
-    WResp = WResp + AddRA; %% [gC /m^2 d]
-    %%%%%
-    %%%% SILICON
-    Sicons= fl*(NPP)/Sill+ ff*(NPP)/Silf + fc*(NPP)/Silc + fr*(NPP)/Silr +  fs*(NPP)/Sils + Tr_l/Sill + Tr_r/Silr - Tr./Silc ... 
-         - Sll*ftransL/Sill - Sr*ftransR/Silr -Rexmy/Silc + Add_AR/Silc + Ss/Silh  -Ss./Sils ; %% [gK/m^2 d]
-    %%%%
-    if (Sicons) >  Sireserve/dtd
-        f_red = (Sireserve/dtd)/Sicons; %%% [-]
-    else
-        f_red = 1;
-    end
-    AddRA=(1-f_red)*NPP;% Additional Respiration [gC /m^2 d]
-    NPP=f_red*NPP;
-    WResp = WResp + AddRA; %% [gC /m^2 d]
-    %%%%%
-
-
-else
-    WResp = 0; %% [gC /m^2 d]
+if NPP <= 0 && fl*(GPP-Rg) < 1.0368*Rdark && ...
+        ((PHE_S == 2) || (PHE_S == 3))
+    fl = 1;
+    fs = 0; fr = 0; fc = 0; ff = 0;
+    Tr_l = min(1.0368*Rdark-fl*(GPP-Rg),B(4));
+    Tr_r = 0;
+    Tr = Tr_l;
 end
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Stop translocation if completely nutrient deprived 
-if  Nreserve == 0 || Preserve ==0 || Kreserve == 0 || Careserve == 0 || Mgreserve == 0 || Sireserve == 0
-Tr = 0; Tr_r = 0; Tr_l = 0;
-end 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+growth_demand = max(NPP,0)*[...
+    fl/Nl+ff/Nf+fc/Nc+fr/Nr+fs/Ns; ...
+    fl/Phol+ff/Phof+fc/Phoc+fr/Phor+fs/Phos; ...
+    fl/Kpotl+ff/Kpotf+fc/Kpotc+fr/Kpotr+fs/Kpots; ...
+    fl/Call+ff/Calf+fc/Calc+fr/Calr+fs/Cals; ...
+    fl/Magl+ff/Magf+fc/Magc+fr/Magr+fs/Mags; ...
+    fl/Sill+ff/Silf+fc/Silc+fr/Silr+fs/Sils];
+transfer_demand = [...
+    Add_AR/Nc+Tr_l/Nl+Tr_r/Nr-Tr/Nc; ...
+    Add_AR/Phoc+Tr_l/Phol+Tr_r/Phor-Tr/Phoc; ...
+    Add_AR/Kpotc+Tr_l/Kpotl+Tr_r/Kpotr-Tr/Kpotc; ...
+    Add_AR/Calc+Tr_l/Call+Tr_r/Calr-Tr/Calc; ...
+    Add_AR/Magc+Tr_l/Magl+Tr_r/Magr-Tr/Magc; ...
+    Add_AR/Silc+Tr_l/Sill+Tr_r/Silr-Tr/Silc];
+fixed_demand = [...
+    Ss/Nh-Sll*ftransL/Nl-Sr*ftransR/Nr-Ss/Ns-Rexmy/Nc; ...
+    Ss/Phoh-Sll*ftransL/Phol-Sr*ftransR/Phor-Ss/Phos-Rexmy/Phoc; ...
+    Ss/Kpoth-Sll*ftransL/Kpotl-Sr*ftransR/Kpotr-Ss/Kpots-Rexmy/Kpotc; ...
+    Ss/Calh-Sll*ftransL/Call-Sr*ftransR/Calr-Ss/Cals-Rexmy/Calc; ...
+    Ss/Magh-Sll*ftransL/Magl-Sr*ftransR/Magr-Ss/Mags-Rexmy/Magc; ...
+    Ss/Silh-Sll*ftransL/Sill-Sr*ftransR/Silr-Ss/Sils-Rexmy/Silc];
+
+reserve = [Nreserve; Preserve; Kreserve; Careserve; Mgreserve; Sireserve];
+f_red = Plant_Reserve_Growth_Limit(reserve,dtd,fixed_demand,...
+    growth_demand+transfer_demand);
+WResp = (1-f_red)*(max(NPP,0)+Add_AR);
+if NPP > 0
+    NPP = f_red*NPP;
+end
+Add_AR = f_red*Add_AR;
+Tr = f_red*Tr;
+Tr_l = f_red*Tr_l;
+Tr_r = f_red*Tr_r;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if NPP > 0
     dB(1)= fl*(NPP) - Sll + Tr_l;  %%% Bl Green aboveground -- Leaves / Grass
     dB(2)= fs*(NPP) - Ss; %%% Bs Living - Stem -Sapwood
@@ -432,14 +382,7 @@ if NPP > 0
     %%%%%%%%%%%%%%%%%%%%%%%%%
 else
     %%% dB [gC/m^2 d]
-    if (fl*(GPP-Rg) <  1.0368*Rdark) && ((PHE_S == 2) ||  (PHE_S == 3))
-        fl = 1 ;
-        fs = 0; fr = 0; fc = 0; ff = 0;
-        %%%%%%%%%
-        Tr_l = 1.0368*Rdark - fl*(GPP-Rg);
-        Tr_l = min(Tr_l,B(4));
-        Tr = Tr_l ;
-    end
+
     %if fr*(GPP-Rg) < Rmr && ((PHE_S == 2) ||  (PHE_S == 3))
     %    Tr_r = Rmr - fr*(GPP-Rg); 
     %    Tr_r = max(0,min(Tr_r,B(4)-Tr_l)); 

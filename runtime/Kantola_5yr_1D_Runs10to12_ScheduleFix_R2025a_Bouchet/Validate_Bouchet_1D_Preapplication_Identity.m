@@ -21,18 +21,32 @@ setenv('TC_PARALLEL_WORKERS','0');
 
 run_ids = [10 11 12 12];
 labels = {'control','basalt','calcite_a','calcite_b'};
-states = cell(size(run_ids));
 variables = {'Date','Pr','Ta','Ws','ea','Pre','PARB','PARD', ...
     'P','O','V','Ts','Tdp','Lk','T_H','T_L','EG','LAI_L','B_L', ...
-    'PH_d','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI','ERW'};
-for k = 1:numel(run_ids)
+    'PH_d','VOL','NITflx','DENITflx','N2Oflx_nit','N2flx','N2Oflx', ...
+    'LEAK_NO3','LEAK_NH4','NavlI','ERW'};
+validation_workers = 4;
+if isempty(ver('parallel')) || ~license('test','Distrib_Computing_Toolbox')
+    error('Preapplication:ParallelToolboxUnavailable', ...
+        'Parallel Computing Toolbox is required for concurrent validation.');
+end
+pool = parpool('Processes',validation_workers);
+pctRunOnAll maxNumCompThreads(1)
+result_files = cell(size(run_ids));
+parfor (k = 1:numel(run_ids),validation_workers)
     result_dir = fullfile(root,labels{k});
     mkdir(result_dir);
-    result_file = Run_One_Subfield(run_ids(k), ...
+    result_files{k} = Run_One_Subfield(run_ids(k), ...
         'StartDate',datenum(2016,1,1),'NDays',315, ...
         'AppeloAlpha',1.3,'ParallelWorkers',0, ...
         'SaveResults',true,'ResultDirectory',result_dir);
-    states{k} = load(result_file,variables{:});
+end
+delete(pool);
+clear pool
+
+states = cell(size(run_ids));
+for k = 1:numel(run_ids)
+    states{k} = load(result_files{k},variables{:});
 end
 
 forcing = {'Date','Pr','Ta','Ws','ea','Pre','PARB','PARD'};
@@ -50,7 +64,8 @@ hour_mask = states{1}.Date(:) < first_amendment;
 daily_dates = states{1}.Date(1) + (0:size(states{1}.P,1)-1)';
 daily_mask = daily_dates < first_amendment;
 state_names = {'P','O','V','Ts','Tdp','Lk','T_H','T_L','EG', ...
-    'LAI_L','B_L','PH_d','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI'};
+    'LAI_L','B_L','PH_d','VOL','NITflx','DENITflx','N2Oflx_nit', ...
+    'N2flx','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI'};
 for k = 2:3
     for q = 1:numel(state_names)
         name = state_names{q};

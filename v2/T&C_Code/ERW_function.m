@@ -13,7 +13,7 @@ function [ERW_data, ERW_TC, ERW_biogeochem, ERW_weathering, ERW_plant,ERW_var, E
         R_alk,H, ...
         EW, IC_tot, Wr, psd, d, lamb, SSA,...
         Fs, DIC, ...
-        ~, ~, I_Na, I_K, I_An, ~, W_CaCO3, W_MgCO3, j_only, ...
+        I_Ca, I_Mg, I_Na, I_K, I_An, ~, W_CaCO3, W_MgCO3, j_only, ...
         CaCO3, MgCO3,...
         f_CEC,f_Ca,f_Mg,f_K,f_Na,f_Al,f_H, ...
         r_CaCO3,r_MgCO3, tau_CaCO3, tau_MgCO3,...
@@ -169,7 +169,7 @@ function [ERW_data, ERW_TC, ERW_biogeochem, ERW_weathering, ERW_plant,ERW_var, E
 %%% `ERW_weathering` Structure:
 % `SSA`: Specific surface area (m^2/g)
 % `Omega`: Saturation state (unitless)
-% `EW`: Enhanced weathering rate (mol/m^2/s)
+% `EW`: Enhanced weathering rate (umol mineral/m^2/day)
 % `Wr`: Weathering rate (mol/m^2/s)
 % `lamb`: Weathering constant (unitless)
 % `W_CaCO3`: Weathering rate of calcium carbonate (mol/m^2/s)
@@ -195,7 +195,10 @@ end
 
 % soil temperature constant
 T_K = temp_soil+273.15;
-if isnan(T_K) || ~isfinite(T_K) || T_K < 100 || T_K > 400, T_K = 298.15; end % guard invalid T_K
+if ~isfinite(T_K) || T_K < 100 || T_K > 400
+    error('ERW:InvalidTemperature', ...
+        'Step %d: invalid soil temperature %.6g K.',time_step,T_K);
+end
 
 % solute diffusivity in water
 Dw = Dw_0*(n*s)^2;% Archie 1942, Grathwohl 1998 (book)
@@ -222,18 +225,25 @@ pk_w = -(-283.971+13323/(T_K)-0.0507*(T_K)+102.24447*log10(T_K)-1119669/(T_K)^2)
 k1 = 10^(-pk1)*conv_mol; % dissociation constant
 k2 = 10^(-pk2)*conv_mol;
 
-% guard against invalid constants
-if isnan(k1) || ~isfinite(k1) || k1 <= 0, k1 = 0.447; end
-if isnan(k2) || ~isfinite(k2) || k2 <= 0, k2 = 4.68e-5; end
+if ~isfinite(k1) || k1 <= 0 || ~isfinite(k2) || k2 <= 0
+    error('ERW:InvalidEquilibriumConstant', ...
+        'Step %d: invalid carbonate constants k1=%.6g, k2=%.6g.',time_step,k1,k2);
+end
 
 % water dissociation constant
 k_w = 10^(-pk_w)*conv_mol^2;
-if isnan(k_w) || ~isfinite(k_w) || k_w <= 0, k_w = 1e-2; end
+if ~isfinite(k_w) || k_w <= 0
+    error('ERW:InvalidEquilibriumConstant', ...
+        'Step %d: invalid water constant k_w=%.6g.',time_step,k_w);
+end
 
 % ammonia dissociation constant
 pk_nh3 = 0.09018 + 2729.92/T_K;
 k_nh3 = 10^(-pk_nh3)*conv_mol;
-if isnan(k_nh3) || ~isfinite(k_nh3) || k_nh3 <= 0, k_nh3 = 1.77e-5*conv_mol; end
+if ~isfinite(k_nh3) || k_nh3 <= 0
+    error('ERW:InvalidEquilibriumConstant', ...
+        'Step %d: invalid ammonia constant k_nh3=%.6g.',time_step,k_nh3);
+end
 
 % Henry - constant for CO2 solubility
 k_H = 0.83*exp(2400*(1/T_K-1/T_ref));
@@ -276,11 +286,9 @@ end
 %%%   Al3_model = 10^K_AlOH3 * (H_umol/conv_mol)^3 * conv_mol * Al_CEC_scale
 %%%             = 10^(K_AlOH3-12) * H_umol^3 * Al_CEC_scale
 %%%             = 10^(-1.2) * H_umol^3 * Al_CEC_scale   (amorphous K_AlOH3 = 10.8)
-%%% The legacy Al_tot soil-conservation equation (eq 5) is replaced by this
-%%% solubility relation; exchangeable Al derives from the solution and the
-%%% measured exchange-Al heritage pool is NOT conserved (background
-%%% excluded).  Pin units follow the ERW Al storage convention (Al_CEC_scale
-%%% x actual umol/L), matching Initialize_ERW_Equilibrium output.
+%%% Al_tot includes dissolved, exchangeable and secondary Al(OH)3.  The
+%%% saturation target is inventory-limited, so the phase can precipitate or
+%%% redissolve without creating Al.
 al_pin = scheme_is_appelo && isstruct(bulk_pH_params) && ...
     isfield(bulk_pH_params, 'Al_solubility_pin') && ...
     isequal(bulk_pH_params.Al_solubility_pin, true);
@@ -314,18 +322,41 @@ K_tot_prev = K_tot(j_only);
 Na_tot_prev = Na_tot(j_only);
 An_tot_prev = An_tot(j_only);
 Al_tot_prev = Al_tot(j_only);
+Si_tot_prev = Si_tot(j_only);
 IC_tot_prev = IC_tot(j_only);
 PO4_tot_prev = PO4_tot(j_only);
 NO3_tot_prev = NO3_tot(j_only);
 NH4_tot_prev = NH4_tot(j_only);
 pool0 = [Ca_tot_prev, Mg_tot_prev, K_tot_prev, Na_tot_prev, An_tot_prev, ...
     Al_tot_prev, IC_tot_prev, PO4_tot_prev, NO3_tot_prev, NH4_tot_prev];
-Ca_tot= Ca_tot(j_only)+(sum(min_st(:,1)'.*EW(j_only,:))+W_CaCO3(j_only)+dCa_tot(1))*dtw;
-Mg_tot= Mg_tot(j_only)+(sum(min_st(:,2)'.*EW(j_only,:))+W_MgCO3(j_only)+dMg_tot(1))*dtw;
+inventory_names = {'Ca','Mg','K','Na','An','Al','Si','IC','PO4','NO3','NH4'};
+inventory_initial = [Ca_tot_prev, Mg_tot_prev, K_tot_prev, Na_tot_prev, ...
+    An_tot_prev, Al_tot_prev, Si_tot_prev, IC_tot_prev, PO4_tot_prev, ...
+    NO3_tot_prev, NH4_tot_prev];
+initial_bad = ~isfinite(inventory_initial) | inventory_initial < 0;
+if any(initial_bad)
+    first = find(initial_bad,1);
+    error('ERW:PoolInventory', ...
+        ['Incoming %s total inventory must be finite and nonnegative; got %.6g. ' ...
+         '%d of %d inventories are invalid.'], ...
+        inventory_names{first},inventory_initial(first),sum(initial_bad), ...
+        numel(inventory_initial));
+end
+%% I_Ca / I_Mg are the upper-boundary base-cation supply (see
+%% ERW_MOD_PARAM_excel).  They are a boundary condition, not weathering,
+%% and their alkalinity is booked separately in dAlk_boundary below.
+Ca_tot= Ca_tot(j_only)+(I_Ca+sum(min_st(:,1)'.*EW(j_only,:))+W_CaCO3(j_only)+dCa_tot(1))*dtw;
+Mg_tot= Mg_tot(j_only)+(I_Mg+sum(min_st(:,2)'.*EW(j_only,:))+W_MgCO3(j_only)+dMg_tot(1))*dtw;
 K_tot= K_tot(j_only)+(sum(min_st(:,3)'.*EW(j_only,:))+dK_tot(1))*dtw;
 Si_tot= Si_tot(j_only)+(sum(min_st(:,6)'.*EW(j_only,:))+dSi_tot(1))*dtw;
 
-PO4_tot= PO4_tot(j_only)+(sum(min_st(:,7)'.*EW(j_only,:))+dPO4_tot(1))*dtw;
+P_weathering_release = sum(min_st(:,7)'.*EW(j_only,:))*dtw;
+if ~(isscalar(P_weathering_release) && isfinite(P_weathering_release) && ...
+        P_weathering_release >= 0)
+    error('ERW:invalidPhosphorusRelease', ...
+        'Weathered phosphorus release must be finite and nonnegative.');
+end
+PO4_tot= PO4_tot(j_only)+P_weathering_release+dPO4_tot(1)*dtw;
 NO3_tot= NO3_tot(j_only)+dNO3_tot(1)*dtw;
 NH4_tot= NH4_tot(j_only)+dNH4_tot(1)*dtw;
 
@@ -354,10 +385,40 @@ end
 % explicit mass balances (within Biogeo Active Layer only)
 Al_weathering = sum(min_st(:,5)'.*EW(j_only,:))*Al_CEC_scale;
 Na_tot= Na_tot(j_only)+(I_Na+sum(min_st(:,4)'.*EW(j_only,:))-Leak_Na-Na_uptake)*dtw;
-Al_tot = max(0, Al_tot(j_only)+(Al_weathering-Leak_Al)*dtw);
+Al_tot = Al_tot(j_only)+(Al_weathering-Leak_Al)*dtw;
+if ~(isfinite(Al_tot) && Al_tot >= 0)
+    error('ERW:AlInventory', 'Al processes overdraw the total Al inventory.');
+end
 An_tot= An_tot(j_only)+(I_An-Leak_An-An_uptake)*dtw;
-IC_tot= IC_tot(j_only)+Iw*1000*DIC_rain-ADV+(W_CaCO3(j_only)+W_MgCO3(j_only)+r_het(j_only)+r_aut(j_only)-Fs(j_only)-Leak_DIC).*dtw;
+if isempty(mineral)
+    mineral_C = zeros(size(min_st,1),1);
+else
+    mineral_C = ERW_Mineral_DIC_Stoichiometry(mineral);
+end
+if numel(mineral_C) ~= size(min_st,1)
+    error('ERW:MineralDICSize','Mineral DIC stoichiometry does not match min_st.');
+end
+dIC_mineral = sum(mineral_C'.*EW(j_only,:))*dtw;
+IC_tot= IC_tot(j_only)+dIC_mineral+Iw*1000*DIC_rain*dtw-ADV+ ...
+    (W_CaCO3(j_only)+W_MgCO3(j_only)+r_het(j_only)+r_aut(j_only)-Leak_DIC).*dtw;
+if IC_tot < 0
+    error('ERW:DICReactionOverdraw', ...
+        'Step %d: non-gas DIC processes overdraw the pool by %.3e umol m^{-2}.', ...
+        time_step,-IC_tot);
+end
 pool_final = [Ca_tot, Mg_tot, K_tot, Na_tot, An_tot, Al_tot, IC_tot, PO4_tot, NO3_tot, NH4_tot];
+%% Negative inventories make the carbonate and charge solve unphysical.
+inventory_final = [Ca_tot, Mg_tot, K_tot, Na_tot, An_tot, Al_tot, ...
+    Si_tot, IC_tot, PO4_tot, NO3_tot, NH4_tot];
+final_bad = ~isfinite(inventory_final) | inventory_final < 0;
+if any(final_bad)
+    first = find(final_bad,1);
+    error('ERW:PoolInventory', ...
+        ['Updated %s total inventory must be finite and nonnegative; got %.6g. ' ...
+         '%d of %d inventories are invalid.'], ...
+        inventory_names{first},inventory_final(first),sum(final_bad), ...
+        numel(inventory_final));
+end
 pool_target0 = ERW_NoSolid_Pool_Target(pool0);
 pool_target_final = ERW_NoSolid_Pool_Target(pool_final);
 Alk_tot = pool_target_final(1);
@@ -371,6 +432,8 @@ end
 if ~(isscalar(Al_CEC_scale) && isfinite(Al_CEC_scale) && Al_CEC_scale > 0)
     error('ERW:invalidParam', 'Al_CEC_scale must be a positive finite scalar.');
 end
+al3_inventory_fn = @(p) ERW_Al_Equilibrium_Target(p(3),p(11),Al_tot, ...
+    soil_water_l,CEC_tot,Al_CEC_scale,K_AlOH3,K1,K2,K3,K4);
 
 %% Alk_tot budget diagnostic - source partitioning
 % Alk_tot = 2*Ca + 2*Mg + Na + K + NH4 - An - NO3 - PO4
@@ -378,16 +441,21 @@ end
 Alk_tot_prev = pool_target0(1);
 min_alk_sil = 2*min_st(:,1) + 2*min_st(:,2) + min_st(:,3) + min_st(:,4);
 dAlk_sil = sum(min_alk_sil' .* EW(j_only,:)) * dtw;
-dAlk_PO4_w = -sum(min_st(:,7)' .* EW(j_only,:)) * dtw;
+dAlk_PO4_w = -P_weathering_release;
 dAlk_sil = dAlk_sil + dAlk_PO4_w;
 dAlk_carb = (2*W_CaCO3(j_only) + 2*W_MgCO3(j_only)) * dtw;
 dAlk_N = (dNH4_tot(1) - dNO3_tot(1)) * dtw;
 dAlk_bgc_CaMgK = (2*dCa_tot(1) + 2*dMg_tot(1) + dK_tot(1)) * dtw;
 dAlk_bgc_P = -dPO4_tot(1) * dtw;
 dAlk_dep = (I_Na - I_An) * dtw;
+%% Boundary-supplied base cations carry 2 charges each.  Kept as its own
+%% term, never folded into dAlk_sil or dAlk_carb, so that carbon-removal
+%% attribution can subtract alkalinity the column was given rather than
+%% weathered.
+dAlk_boundary = (2*I_Ca + 2*I_Mg) * dtw;
 dAlk_leach = (-Leak_Na + Leak_An) * dtw;
 dAlk_uptake = (-Na_uptake + An_uptake) * dtw;
-dAlk_check = dAlk_sil + dAlk_carb + dAlk_N + dAlk_bgc_CaMgK + dAlk_bgc_P + dAlk_dep + dAlk_leach + dAlk_uptake;
+dAlk_check = dAlk_sil + dAlk_carb + dAlk_N + dAlk_bgc_CaMgK + dAlk_bgc_P + dAlk_dep + dAlk_boundary + dAlk_leach + dAlk_uptake;
 dAlk_total = Alk_tot - Alk_tot_prev;
 if abs(dAlk_check - dAlk_total) > max(1e-6, 1e-6*abs(dAlk_total))
     warning('ERW:AlkBudgetClosure', 'Alk_tot budget mismatch: total=%.6g, sum(parts)=%.6g, diff=%.6g', ...
@@ -402,6 +470,7 @@ ERW_biogeochem.dAlk_N = dAlk_N;
 ERW_biogeochem.dAlk_bgc_CaMgK = dAlk_bgc_CaMgK;
 ERW_biogeochem.dAlk_bgc_P = dAlk_bgc_P;
 ERW_biogeochem.dAlk_dep = dAlk_dep;
+ERW_biogeochem.dAlk_boundary = dAlk_boundary;
 ERW_biogeochem.dAlk_leach = dAlk_leach;
 ERW_biogeochem.dAlk_uptake = dAlk_uptake;
 ERW_biogeochem.dAlk_check = dAlk_check;
@@ -444,11 +513,12 @@ else
         1-(p(16)+p(11)+p(12)+p(13)+p(14)+p(15))];
 end
 make_equations_no_solid = @(target) @(p)[(target(1)-p(4))-p(1)*(n*Zrw*s*1000);
-  target(2)-(p(2)*(1+k1/(p(3))+k2*k1/((p(3))^2))*s+(p(2)/k_H)*(1-s))*(n*Zrw*1000);
+  target(2)-(D/Z_CO2*(p(2)/k_H-CO2_atm)*1000)*dtw- ...
+      (p(2)*(1+k1/(p(3))+k2*k1/((p(3))^2))*s+(p(2)/k_H)*(1-s))*(n*Zrw*1000);
   (k1*p(2)/(p(3))+2*k1*k2*p(2)/((p(3))^2)-(p(3))+k_w/(p(3)))-p(1);
   p(4)-(p(12)+p(16)+p(13)+p(14))*CEC_tot;
   (1-al_pin)*(p(5)*n*Zrw*s*1000+(p(11)/3)*CEC_tot*Al_CEC_scale-target(3)) + ...
-  al_pin*(p(6)-al3_pin_fn(p(3)));
+  al_pin*(p(6)-al3_inventory_fn(p));
   p(6)-((p(3))^4/((p(3))^4+(p(3))^3*K1+(p(3))^2*K1*K2+(p(3))*K1*K2*K3+K1*K2*K3*K4))*p(5);
   p(7)*n*Zrw*s*1000+p(12)/2*CEC_tot-target(4);
   p(8)*n*Zrw*s*1000+p(16)/2*CEC_tot-target(5);
@@ -465,7 +535,8 @@ if j_idx < 1, j_idx = 1; end
 
 H0 = H(j_idx);
 if H0 < 1e-10 || isnan(H0) || ~isfinite(H0)
-    H0 = 1e-1; % fallback: use pH 7 instead of unreasonable values
+    error('ERW:InvalidHydrogenState', ...
+        'Step %d: invalid hydrogen state H=%.6g umol L^{-1}.',time_step,H0);
 end
 
 %% Exchange-alkalinity cap retry.  R_alk is the alkalinity parked on the
@@ -498,7 +569,10 @@ if isnan(Alk0) || ~isfinite(Alk0) || s < 1e-6
 end
 R_alk0 = R_alk(j_idx);
 if al_pin
-    Al_w0 = max(al_w_sat_fn(H0), 0);
+    Al_den0 = H0^4+H0^3*K1+H0^2*K1*K2+H0*K1*K2*K3+K1*K2*K3*K4;
+    Al3_0 = ERW_Al_Equilibrium_Target(H0,f_Al(j_idx),Al_tot,soil_water_l, ...
+        CEC_tot,Al_CEC_scale,K_AlOH3,K1,K2,K3,K4);
+    Al_w0 = Al3_0/max(H0^4/Al_den0,eps);
 else
     Al_w0 = max((Al_tot-(f_Al(j_idx)/3)*CEC_tot*Al_CEC_scale)/(n*Zrw*s*1000), 0);
 end
@@ -516,8 +590,9 @@ charge_res_fn = @(XH) (k1*CO2_w0/XH + 2*k1*k2*CO2_w0/(XH^2) - XH + k_w/XH) - Alk
 % Root selection follows the previous porewater state passed in H.
 H_anchor = H0;
 
-% Scan pH 2-16 for sign changes in charge residual
-pH_scan = linspace(2,16,281);
+% The carbonate charge residual is strictly monotone in positive H, so one
+% root inside the physical pH interval is required.
+pH_scan = linspace(1e-8,14-1e-8,281);
 H_scan = 10.^(-pH_scan) * conv_mol;
 R_scan = nan(size(H_scan));
 for ii = 1:numel(H_scan)
@@ -526,22 +601,11 @@ end
 valid_scan = isfinite(R_scan);
 sign_change = find(valid_scan(1:end-1) & valid_scan(2:end) & ...
     (R_scan(1:end-1) == 0 | R_scan(2:end) == 0 | sign(R_scan(1:end-1)) ~= sign(R_scan(2:end))));
+sign_change = sign_change([true,diff(sign_change) > 1]);
 
-% Filter physical roots: |R_mid| < 1e-6 indicates a true charge balance root
-% (Al(OH)3 buffer transitions have non-zero midpoint residual)
-tol_R = 1e-6;
-if ~isempty(sign_change)
-    R_mid = 0.5 * (R_scan(sign_change) + R_scan(sign_change+1));
-    physical = sign_change(abs(R_mid) < tol_R);
-    if ~isempty(physical)
-        [~,i_best] = min(abs(pH_scan(physical) - (-log10(H_anchor/conv_mol))));
-        lo_H = H_scan(physical(i_best));
-        hi_H = H_scan(physical(i_best)+1);
-    else
-        [~,i_best] = min(abs(pH_scan(sign_change) - (-log10(H_anchor/conv_mol))));
-        lo_H = H_scan(sign_change(i_best));
-        hi_H = H_scan(sign_change(i_best)+1);
-    end
+if numel(sign_change) == 1
+    lo_H = H_scan(sign_change);
+    hi_H = H_scan(sign_change+1);
     % Refine with bisection (bracketed, guaranteed convergent)
     lo_r = charge_res_fn(lo_H);
     for iter = 1:60
@@ -561,13 +625,9 @@ if ~isempty(sign_change)
     H_robust = 0.5*(lo_H + hi_H);
     H0_2 = H_robust;
 else
-    % No sign change anywhere in the scan window: the charge balance has
-    % no root for positive H (or it lies beyond the scan).  Seed the
-    % ultra-basic branch (pH 14) so the solver can find a high-pH
-    % solution when the chemistry genuinely demands it, and report.
-    H0_2 = max(H0, 1e-8);   %% pH 14 in umol/L
-    fprintf('[ERW H-root] step=%d no charge-balance root in pH 2..16; H0=%.3g Alk0=%.3g CO2_w0=%.3g, seeding H0_2=%.3g\n', ...
-        time_step, H0, Alk0, CO2_w0, H0_2);
+    error('ERW:nonUniquePorePH', ...
+        'Step %d: expected one pore-water charge root in 0 < pH < 14, found %d.', ...
+        time_step,numel(sign_change));
 end
 
 
@@ -610,21 +670,90 @@ if ~valid_initial
 end
 
 res_threshold = 1e-3;  % dimensionless ERW algebraic residual tolerance
-if al_pin
-    f_Al_max = 1;
-else
-    f_Al_max = min(1, 3*Al_tot/(CEC_tot*Al_CEC_scale));
-end
+f_Al_max = min(1, 3*Al_tot/(CEC_tot*Al_CEC_scale));
 if ~(isfinite(f_Al_max) && f_Al_max >= 0)
     f_Al_max = 0;
 end
 x0_alt = real([Alk0, CO2_w0, H0_2, R_alk0, Al_w0, Al0, Mg0, Ca0, Na0, K0, f_Al(j_only), f_Mg(j_only), f_Na(j_only), f_K(j_only), f_H(j_only), f_Ca(j_only)]');
+%% Put the alternate seed ON the branch it is meant to open.  H0_2 is the
+%% carbonate charge-balance root, but the line above pairs it with the
+%% PREVIOUS step's exchange fractions and the concentrations derived at
+%% the previous H.  While the chemistry drifts those agree closely enough
+%% to matter little; on an amendment day they disagree by three pH units,
+%% so the "alternate" seed is not a high-pH state at all and lsqnonlin
+%% simply falls back into the local minimum around x0.  Re-solve the
+%% Appelo competitive partition at H0_2 against the current pool totals
+%% so the seed satisfies the exchange laws, the site sum and the R_alk
+%% definition at its own pH.
+if scheme_is_appelo && isfinite(H0_2) && H0_2 > 0 && H0_2 ~= H0
+    if al_pin
+        Al3_alt = al3_pin_fn(H0_2)/Al_CEC_scale;
+    else
+        Al3_alt = max(Al0, 0)/Al_CEC_scale;
+    end
+    [f_alt, conc_alt] = ERW_Appelo_State_At_H(H0_2, ...
+        [Ca_tot, Mg_tot, K_tot, Na_tot], Al3_alt, CEC_tot, soil_water_l, ...
+        appelo_alpha, K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3);
+    if all(isfinite(f_alt)) && all(f_alt >= 0) && all(isfinite(conc_alt)) && all(conc_alt >= 0)
+        R_alk_alt = (f_alt(1)+f_alt(2)+f_alt(3)+f_alt(4))*CEC_tot;
+        Alk0_alt = (Alk_tot - R_alk_alt)/soil_water_l;
+        Al_w_alt = Al3_alt*Al_CEC_scale * ...
+            (H0_2^4+H0_2^3*K1+H0_2^2*K1*K2+H0_2*K1*K2*K3+K1*K2*K3*K4)/H0_2^4;
+        x0_alt = real([Alk0_alt, CO2_w0, H0_2, R_alk_alt, Al_w_alt, ...
+            Al3_alt*Al_CEC_scale, conc_alt(2), conc_alt(1), conc_alt(4), conc_alt(3), ...
+            f_alt(5), f_alt(2), f_alt(4), f_alt(3), f_alt(6), f_alt(1)]');
+    end
+end
 x0_alt = max(x0_alt, 0);
 
 physical_check = @(p) ERW_Is_Physical_Solution(p, pool_target_final, ...
     soil_water_l, CEC_tot, Al_CEC_scale, al_pin);
+%% The pH search box has to be able to reach the charge-balance root.
+%% H_anchor is the previous step's H, a continuity heuristic that holds
+%% while the chemistry drifts, and solve_erw_branch turns it into hard
+%% bounds of H_anchor*10^(-+pH_tol).  That breaks on the day an amendment
+%% is applied, where liming moves pore-water pH by several units within
+%% one step: at the first Kantola application the previous step sits at
+%% pH 5.2 while the carbonate charge balance (already bisected above into
+%% H0_2) puts the root at pH 8.4, so a +-1 unit box excludes the answer
+%% outright.  The solver then returns the best point inside the box,
+%% which cannot conserve cation mass, and the column aborts at exactly
+%% the application step every year.
+%% Widen the box so it spans both the continuity anchor and the located
+%% root.  This only enlarges the feasible set; which branch is accepted
+%% is still decided by the physical check, the charge-residual gate and
+%% the h_ok proximity test.
+pH_tol_step = [];
+if isfinite(H0) && H0 > 0 && isfinite(H0_2) && H0_2 > 0
+    pH_tol_step = max(1.0, abs(log10(H0_2) - log10(H0)) + 0.5);
+end
+if scheme_is_appelo && al_pin
+    carbonate = [k1,k2,k_w,k_H,conv_mol];
+    appelo = [K_Na_H,K_K_H,K_Ca_H2,K_Mg_H2,K_Al_H3,appelo_alpha];
+    gas_exchange = [D/Z_CO2*1000,CO2_atm,dtw];
+    finite_al = struct('Al_tot',Al_tot,'Al_CEC_scale',Al_CEC_scale, ...
+        'K_AlOH3',K_AlOH3,'K1',K1,'K2',K2,'K3',K3,'K4',K4);
+    reduced = ERW_Appelo_Mass_Conserving_State(Alk_tot,IC_tot, ...
+        [Ca_tot,Mg_tot,K_tot,Na_tot],soil_water_l,n*Zrw*1000,s, ...
+        carbonate,CEC_tot,appelo,gas_exchange, ...
+        @(Hp) al3_pin_fn(Hp)/Al_CEC_scale,H_anchor,finite_al);
+    if reduced.is_valid
+        Al_den_reduced = reduced.H^4+reduced.H^3*K1+reduced.H^2*K1*K2+ ...
+            reduced.H*K1*K2*K3+K1*K2*K3*K4;
+        Al_w_reduced = reduced.Al3*Al_CEC_scale*Al_den_reduced/reduced.H^4;
+        x0 = [reduced.Alk,reduced.CO2_w,reduced.H,reduced.R_alk, ...
+            Al_w_reduced,reduced.Al3*Al_CEC_scale, ...
+            reduced.concentration(2),reduced.concentration(1), ...
+            reduced.concentration(4),reduced.concentration(3), ...
+            reduced.fraction(5),reduced.fraction(2),reduced.fraction(4), ...
+            reduced.fraction(3),reduced.fraction(6),reduced.fraction(1)]';
+        x0_alt = x0;
+        valid_initial = true;
+    end
+end
 trial = solve_erw_branch(equations_no_solid, equation_scale_no_solid, ...
-    x0, x0_alt, valid_initial, fsolve_options, conc_floor, H_anchor, f_Al_max, [], physical_check);
+    x0, x0_alt, valid_initial, fsolve_options, conc_floor, H_anchor, f_Al_max, ...
+    pH_tol_step, physical_check);
 
 sol = real(trial.sol);
 fsolve_errors = trial.scaled_residual;
@@ -684,7 +813,11 @@ if erw_solve_attempt == 1
     %% release) so the re-solve stays physical and, if that state is
     %% still unhostable, the attempt-2 mass check reports it honestly.
     R_alk(j_idx) = min(R_alk_orig, alk_cap_frac*max(Alk_tot, 0));
-    f_cap = R_alk(j_idx)/R_alk_orig;
+    if R_alk_orig > 0
+        f_cap = R_alk(j_idx)/R_alk_orig;
+    else
+        f_cap = 0;
+    end
     f_Ca(j_idx) = min(f_Ca_orig*f_cap, 2*Ca_tot/CEC_tot);
     f_Mg(j_idx) = min(f_Mg_orig*f_cap, 2*Mg_tot/CEC_tot);
     f_K (j_idx) = min(f_K_orig*f_cap, K_tot/CEC_tot);
@@ -706,29 +839,10 @@ if erw_solve_attempt == 1
         continue
     end
 end
-if erw_solve_attempt == 2
-    %% The capped re-solve has every species non-negative (porewater Ca
-    %% pinned at zero) but still carries a small cation-mass drift: the
-    %% Gaines-Thomas floor cannot drop a base-cation fraction below what
-    %% its (drained) total pool can host.  Accept it when the drift is a
-    %% few percent of the affected pool; the carbonate precipitation term
-    %% re-dissolves CaCO3 on the following 10-min steps and the pools
-    %% re-converge.  Without this the amended column would crash at its
-    %% first carbonate-verdict year-end.  The strict gate keeps the
-    %% normal path unchanged; only the capped fallback relaxes.
-    rel_ok = all(isfinite(sol)) && sol(3) > 0 && all(sol([2 4:16]) >= -1e-8) && ...
-        abs(physics.site_sum_residual) <= 1e-4 && ...
-        all(physics.cation_mass_relative_residual <= 2e-2);
-    if all(rel_ok)
-        fprintf('[ERW cap] step=%d accepted capped solution (relaxed mass tol 2%%): Ca_w=%.4g f_Ca=%.6g\n', ...
-            time_step, sol(8), sol(16));
-        break
-    end
-end
 if isempty(sign_change)
     root_info = 'none';
 else
-    root_info = sprintf('pH %.2f', pH_scan(sign_change(min(i_best,end))));
+    root_info = sprintf('pH %.2f', pH_scan(sign_change(1)));
 end
 fprintf('[ERW fail] step=%d s=%.4f swl=%.3g Zrw=%.3g n=%.3g CEC_tot=%.3g Al_CEC=%.3g\n', ...
     time_step, s, soil_water_l, Zrw, n, CEC_tot, Al_CEC_scale);
@@ -760,22 +874,27 @@ bad_state = any(~isfinite(sol(:))) || sol(4) < -state_neg_tol || ...
     any(sol([2 3 5:16]) < -state_neg_tol);
 [~,max_res_idx] = max(abs(fsolve_errors(:)));
 dominant_residual_name = equation_names{max_res_idx};
-no_converge = max_scaled_res > 10*res_threshold || bad_state;
+no_converge = max_scaled_res > res_threshold || bad_state;
 candidate_summary = erw_candidate_history_summary(trial.history, equation_names);
 suppress_no_converge_warning = false;
 if isstruct(bulk_pH_params) && isfield(bulk_pH_params, 'suppress_no_converge_warning')
     suppress_no_converge_warning = logical(bulk_pH_params.suppress_no_converge_warning);
 end
-if no_converge && ~suppress_no_converge_warning
-    fprintf('[ERW diag] step=%d  s=%.4f  soil_water_l=%.3g  Al_tot=%.3g  Al_w0=%.3g  res=%.3g  H0=%.3e\n', ...
-        time_step, s, soil_water_l, Al_tot, Al_w0, max_scaled_res, H0);
-    warning('ERW:NoConverge', ...
-        'Step %d: solver did not converge (dominant=%s, max scaled|res|=%.2e, raw dominant=%.2e, max raw|res|=%.2e).', ...
-        time_step, dominant_residual_name, max_scaled_res, abs(raw_residual(max_res_idx)), max_raw_res);
-    fprintf('[ERW candidate summary] step=%d %s\n', time_step, candidate_summary);
-    if erw_candidate_debug_enabled()
-        print_erw_candidate_history(time_step, trial.history, equation_names);
+if no_converge
+    if ~suppress_no_converge_warning
+        fprintf('[ERW diag] step=%d  s=%.4f  soil_water_l=%.3g  Al_tot=%.3g  Al_w0=%.3g  res=%.3g  H0=%.3e\n', ...
+            time_step, s, soil_water_l, Al_tot, Al_w0, max_scaled_res, H0);
+        warning('ERW:NoConverge', ...
+            'Step %d: solver did not converge (dominant=%s, max scaled|res|=%.2e, raw dominant=%.2e, max raw|res|=%.2e).', ...
+            time_step, dominant_residual_name, max_scaled_res, abs(raw_residual(max_res_idx)), max_raw_res);
+        fprintf('[ERW candidate summary] step=%d %s\n', time_step, candidate_summary);
+        if erw_candidate_debug_enabled()
+            print_erw_candidate_history(time_step, trial.history, equation_names);
+        end
     end
+    error('ERW:NoConverge', ...
+        'Step %d: refusing to write an unconverged ERW state (dominant=%s, max scaled|res|=%.2e).', ...
+        time_step,dominant_residual_name,max_scaled_res);
 end
 
 Al_den_sol = sol(3)^4+sol(3)^3*K1+sol(3)^2*K1*K2+sol(3)*K1*K2*K3+K1*K2*K3*K4;
@@ -786,6 +905,8 @@ if isfinite(Al_w_sat) && Al_w_sat > 0
 else
     Omega_AlOH3 = NaN;
 end
+[~,AlOH3_solid,Al_inventory_residual] = ERW_Al_Equilibrium_Target(sol(3),sol(11),Al_tot, ...
+    soil_water_l,CEC_tot,Al_CEC_scale,K_AlOH3,K1,K2,K3,K4);
 % update variables for current time step
 CO2_w = sol(2);
 H = sol(3);
@@ -803,6 +924,11 @@ f_K = sol(14);
 f_H = sol(15);
 f_Ca = sol(16);
 f_CEC(1,:) = [f_Ca,f_Mg,f_K,f_Na,f_Al,f_H];
+charge_residual = raw_residual(3);
+gamma_i = nan(1,5);
+if scheme_is_appelo
+    gamma_i = 10.^(appelo_alpha.*[1 1 2 2 3].*f_H);
+end
 
 % pH and C
 pH = -log10(H/conv_mol);
@@ -823,11 +949,20 @@ Si = Si_tot/(n*Zrw*s*1000);%[umol-conv/l]
 An = An_tot/(n*Zrw*s*1000);%[umol_c-conv/l]
 
 PO4 = PO4_tot/(n*Zrw*s*1000);%[umol-conv/l]
-NH4 = max(NH4_tot/(n*Zrw*s*1000), 0);
+if ~(isfinite(NH4_tot) && NH4_tot >= 0)
+    error('ERW:NH4Inventory', 'NH4 total inventory must be finite and nonnegative.');
+end
+NH4 = NH4_tot/(n*Zrw*s*1000);
 NO3 = NO3_tot/(n*Zrw*s*1000);
 
 %CO2 diff flux
 Fs = D/(Z_CO2)*(CO2_air-CO2_atm)*1000;%[umol/d]
+IC_tot = IC_tot-Fs*dtw;
+if ~isfinite(IC_tot) || IC_tot < 0
+    error('ERW:DICGasClosure', ...
+        'Step %d: implicit gas exchange produced invalid IC_tot %.3e umol m^{-2}.', ...
+        time_step,IC_tot);
+end
 
 % Carbonate minerals
 CaCO3 = CaCO3 - W_CaCO3*dtw + CaCO3_rock;
@@ -838,16 +973,33 @@ Omega_CaCO3 = Ca*CO3/K_CaCO3;%[-]
 Omega_MgCO3 = Mg*CO3/K_MgCO3;
 % update on current time step
 [W_CaCO3,W_MgCO3]= carb_W(CaCO3,MgCO3,Omega_CaCO3,Omega_MgCO3,s,Zrw,r_CaCO3,r_MgCO3,tau_CaCO3,tau_MgCO3);
+if W_CaCO3 > CaCO3/dtw || W_MgCO3 > MgCO3/dtw
+    W_CaCO3 = min(W_CaCO3,CaCO3/dtw);
+    W_MgCO3 = min(W_MgCO3,MgCO3/dtw);
+end
 
 %Silicate weathering
 Omega = zeros(size(EW));
 if rock_app > 0
+    MM_min_row = ERW_Mineral_Molar_Mass_Row(MM_min,mineral);
 
     % mineral mass variation
-    M_min(j_only,:)= M_min(j_only,:)-EW(j_only,:).*MM_min(j_only,:)*dtw + rock_f_in*M_rock_add; %[g]
+    M_min_available = M_min(j_only,:) + rock_f_in*M_rock_add;
+    M_min_loss = EW(j_only,:).*MM_min_row*dtw;
+    M_min_tol = 1e-12*max(1,max(M_min_available));
+    if any(M_min_loss < -M_min_tol) || any(M_min_loss > M_min_available + M_min_tol)
+        error('ERW:mineralInventory', 'Primary-mineral dissolution exceeds available inventory.');
+    end
+    M_min(j_only,:) = M_min_available - M_min_loss;
+    exhausted = M_min_loss >= M_min_available;
+    M_min(j_only,exhausted) = 0;
     M_iner = M_iner + M_rock_add*(1-sum(rock_f_in));
     M_rock(j_only,:) = sum(M_min(j_only,:)) + M_iner;%[g]
-    rock_f(j_only,:) = M_min(j_only,:)./M_rock(j_only,:);
+    if M_rock(j_only,:) > 0
+        rock_f(j_only,:) = M_min(j_only,:)./M_rock(j_only,:);
+    else
+        rock_f(j_only,:) = zeros(size(M_min(j_only,:)));
+    end
 
     if M_rock_add > 0
 
@@ -866,11 +1018,10 @@ if rock_app > 0
     for t_appl = 1:size(d,3)
 
         %diameter class variation
-        d_shrink = sum(Wr(j_only,:).*MM_min(j_only,:)/rho_rock);%[m/d]
-        d(j_only,:,t_appl) = d(j_only,:,t_appl)-2*d_shrink* lamb(j_only,:,t_appl)* dtw;
-
-        % for any d values less than 0
-        d(d(j_only,:,t_appl)<0) = 0;
+        d_shrink = sum(Wr(j_only,:).*rock_f(j_only,:).*MM_min_row/rho_rock);%[m/d]
+        d_loss = 2*d_shrink.*lamb(j_only,:,t_appl)*dtw;
+        d_loss = min(d(j_only,:,t_appl),d_loss);
+        d(j_only,:,t_appl) = d(j_only,:,t_appl)-d_loss;
 
         % initial psd and lamb
         psd_0_in = psd_0(find(psd_0(:,end,t_appl)>0,1),:,t_appl);
@@ -885,8 +1036,8 @@ if rock_app > 0
         ind_check = find(d(j_only,:,t_appl)>0);
         if ~isempty(ind_check)
             lamb(j_only,ind_check,t_appl) = a(t_appl)*d(j_only,ind_check,t_appl).^b; %[-]
-            SSA(j_only,ind_check,t_appl) = 6./(d(j_only,ind_check,t_appl)*rho_rock).*lamb(j_only,ind_check,t_appl); % [m2/g]
-            psd(j_only,ind_check,t_appl)= psd_0_in(ind_check)*(d(j_only,ind_check,t_appl)/ d_0(ind_check))^3*(lamb_0_in(ind_check)/lamb(j_only,ind_check,t_appl));%[g/m]
+            SSA(j_only,ind_check,t_appl) = 6./(d(j_only,ind_check,t_appl).*rho_rock).*lamb(j_only,ind_check,t_appl); % [m2/g]
+            psd(j_only,ind_check,t_appl)= psd_0_in(ind_check).*(d(j_only,ind_check,t_appl)./d_0(ind_check)).^3.*(lamb_0_in(ind_check)./lamb(j_only,ind_check,t_appl));%[g/m]
             delta_d(j_only,:,t_appl) = [d(j_only,1,t_appl) diff(d(j_only,:,t_appl))];
         else
             delta_d(j_only,:,t_appl) = zeros(1,size(d,2));
@@ -898,9 +1049,33 @@ if rock_app > 0
 
     for min_j = 1:length(mineral)
         if M_min(j_only,min_j) > 0 % minimum solvable [g]
-            Omega(j_only,min_j) = Omega_sil(mineral(min_j), K, Ca, Mg, Na, Si, Al, PO4, H, K_sp(min_j), conv_mol); %[-]
-            Wr(j_only,min_j) = s*diss_f*(k_diss_H_t(j_only,min_j)*(H/conv_mol)^n_H(min_j) + k_diss_w_t(j_only,min_j) + k_diss_OH_t(j_only,min_j)*(H/conv_mol)^n_OH(min_j))*(1-Omega(j_only,min_j)); % [mol/m2 d]
-            EW(j_only,min_j) = Wr(j_only,min_j)*SA(j_only)*rock_f(j_only,min_j); % [umol/d]
+            if strcmpi(mineral(min_j),'calcite')
+                [Omega(j_only,min_j),Wr(j_only,min_j),EW(j_only,min_j)] = ...
+                    ERW_Calcite_Kinetics(Ca,CO3,K_CaCO3,H,CO2_air,conv_mol,s,diss_f, ...
+                    k_diss_H_t(j_only,min_j),k_diss_w_t(j_only,min_j), ...
+                    k_diss_OH_t(j_only,min_j),n_H(min_j),n_OH(min_j), ...
+                    SA(j_only),rock_f(j_only,min_j),M_min(j_only,min_j), ...
+                    MM_min_row(min_j),dtw);
+            else
+                [Omega(j_only,min_j),Omega_defined] = ERW_Mineral_Saturation(mineral(min_j), K, Ca, Mg, Na, Si, Al, PO4, H, K_sp(min_j), conv_mol); %[-]
+                if Omega_defined
+                    dissolution_affinity = max(0,1-Omega(j_only,min_j));
+                else
+                    dissolution_affinity = 1; % missing aqueous products: far-from-equilibrium kinetic assumption
+                end
+                Wr(j_only,min_j) = s*diss_f*(k_diss_H_t(j_only,min_j)*(H/conv_mol)^n_H(min_j) + k_diss_w_t(j_only,min_j) + k_diss_OH_t(j_only,min_j)*(H/conv_mol)^n_OH(min_j))*dissolution_affinity; % [mol/m2 d]
+                EW(j_only,min_j) = Wr(j_only,min_j)*SA(j_only)*rock_f(j_only,min_j); % [umol/d]
+                EW_inventory_max = M_min(j_only,min_j)/MM_min_row(min_j)/dtw;
+                if EW(j_only,min_j) > EW_inventory_max
+                    EW(j_only,min_j) = EW_inventory_max;
+                    area_fraction = SA(j_only)*rock_f(j_only,min_j);
+                    if area_fraction > 0
+                        Wr(j_only,min_j) = EW(j_only,min_j)/area_fraction;
+                    else
+                        Wr(j_only,min_j) = 0;
+                    end
+                end
+            end
         else
             M_min(j_only,min_j) = 0;
             Omega(j_only,min_j) = 1;
@@ -924,6 +1099,24 @@ else
     M_iner = 0;
     M_rock = 0;
 
+end
+
+calcite_j = find(strcmpi(string(mineral),'calcite'),1);
+EW_calcite = 0;
+if rock_app > 0 && ~isempty(calcite_j)
+    EW_calcite = EW(j_only,calcite_j);
+end
+[EW_calcite,W_CaCO3] = ERW_Calcite_Reaction_Limit( ...
+    EW_calcite,W_CaCO3,dtw,Omega_CaCO3,Ca,DIC,Alk, ...
+    n*Zrw*s*1000,k1,k2,k_w,K_CaCO3,conv_mol);
+if rock_app > 0 && ~isempty(calcite_j)
+    EW(j_only,calcite_j) = EW_calcite;
+    area_fraction = SA(j_only)*rock_f(j_only,calcite_j);
+    if area_fraction > 0
+        Wr(j_only,calcite_j) = EW_calcite/area_fraction;
+    else
+        Wr(j_only,calcite_j) = 0;
+    end
 end
 
 
@@ -984,6 +1177,10 @@ ERW_biogeochem.CaCO3 = CaCO3;
 ERW_biogeochem.MgCO3 = MgCO3;
 ERW_biogeochem.Al_w = Al_w;
 ERW_biogeochem.Al_w_sat = Al_w_sat;
+ERW_biogeochem.AlOH3_solid = AlOH3_solid;
+ERW_biogeochem.Al_inventory_residual = Al_inventory_residual;
+ERW_biogeochem.charge_residual = charge_residual;
+ERW_biogeochem.gamma_i = gamma_i;
 ERW_biogeochem.Al = Al;
 ERW_biogeochem.Mg = Mg;
 ERW_biogeochem.Ca = Ca;
@@ -1032,6 +1229,7 @@ ERW_weathering.psd = psd;
 ERW_weathering.delta_d = delta_d;
 ERW_weathering.d = d;
 ERW_weathering.EW = EW;
+ERW_weathering.P_weathering_release = P_weathering_release;
 ERW_weathering.Wr = Wr;
 ERW_weathering.lamb = lamb;
 ERW_weathering.W_CaCO3 = W_CaCO3;
@@ -1461,11 +1659,10 @@ cation_target = [target(5); target(4); target(7); target(6); target(3)];
 mass_raw = cation_inventory - cation_target;
 mass_relative = abs(mass_raw)./max(abs(cation_target), mass_abs_tol);
 if al_pin
-    % Al solubility pin: aqueous Al is fixed by Al(OH)3 solubility and the
-    % measured Al pool is not conserved (background excluded).  Do not
-    % demand Al mass closure.
-    mass_raw(5) = 0;
-    mass_relative(5) = 0;
+    % A negative aqueous-plus-exchange residual is retained Al(OH)3.
+    % A positive residual is an inventory overdraw and remains invalid.
+    mass_raw(5) = max(mass_raw(5),0);
+    mass_relative(5) = abs(mass_raw(5))/max(abs(cation_target(5)),mass_abs_tol);
 end
 site_residual = 1 - sum(sol(11:16));
 
@@ -1574,57 +1771,3 @@ function [W_CaCO3,W_MgCO3] = carb_W(CaCO3,MgCO3,Omega_CaCO3,Omega_MgCO3,s,Zrw,r_
     end
 
 end
-
-function [Omega] = Omega_sil(mineral, ~, Ca, Mg, Na, Si, Al, PO4, H, K_sp, conv_mol)
-    %%% Silicate saturation index (Omega)
-    if strcmp(mineral, 'forsterite')
-        Omega = min(1,(Mg/conv_mol).^(1/2).*(Si/conv_mol).^(1/4)/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'wollastonite')
-        Omega = min(1,(Ca/conv_mol).^(1/2).*(Si/conv_mol).^(1/2)/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'diopside')
-        % CaMgSi2O6 + (H+) -> 1/4 Ca++ + 1/4Mg++ 1/2 H2SiO3
-        Omega = min(1,(Ca/conv_mol).^(1/4)*(Mg/conv_mol).^(1/4)*(Si/conv_mol).^(1/2)/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'albite')
-        % NaAlSiO3 + (H+) + 5/2 H2O -> 1/2 kaolinite + 2HSiO3 + (Na+)
-        Omega = min(1,(Na/conv_mol).*(Si/conv_mol).^2/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'anorthite')
-        % 1/2 CaAl2Si2O8+ (H+) + 1/2 H2O -> 1/2 kaolinite + 1/2 (Ca++)
-        Omega = min(1,(Ca/conv_mol).^(1/2)/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'apatite')
-        % 1/7 Ca5(PO4)3(OH) + (H+) -> 5/7 (Ca+2) + 3/7 (H2PO4-)
-        Omega = min(1,(Ca/conv_mol).^(5/7).*(PO4/conv_mol).^(3/7)/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'Fe_forsterite')
-        % 1/4 FeMgSiO4 + (H+) -> 1/4 Fe(++) + 1/4 (Mg++) + 1/4 H4SiO4
-        Omega = min(1,(Mg/conv_mol).^(1/4).*(Si/conv_mol).^(1/4)/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'chlorite')
-        % (Mg0.63Fe0.37)5Al(Si3Al1.2)O10 (OH)8
-        % 1/18.45 chlorite + (H+) -> 3.15/18.45 (Mg++) + 2.2/18.45 (Al+++) + 3/18.45 H4SiO4
-        Omega = min(1,(Mg/conv_mol).^(3.15/18.45).*(Al/conv_mol).^(2.2/18.45).*(Si/conv_mol).^(3/18.45)/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'epidote')
-        % Ca2(Al2.53Fe1.09)SiO4(SiO7) O(OH)
-        % 1/14.86 epidote + (H+) -> 2/14.86 (Ca++) + 2.53/14.86 Al(+++) + 2/14.86 (H4SiO4)
-        Omega = min(1,(Ca/conv_mol).^(2/14.86).*(Al/conv_mol).^(2.53/14.86).*(Si/conv_mol).^(2/14.86)/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'zoisite')
-        % Ca2Al3Si3O12(OH)
-        % (1/13)Zoisite + H+ -> 3/13 Al+3 + 2/13 Ca+2 + 3/13 H4SiO4 + 1/13 H2O
-        Omega = min(1,(Ca/conv_mol).^(2/13).*(Al/conv_mol).^(3/13).*(Si/conv_mol).^(3/13)/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'ferroactinolite')
-        % Ca2(Mg0.75Fe0.25)5Si8.5O22(OH)2
-        % 1/11.5 ferroactinolite + (H+) -> 2/11.5 (Ca++) + 3.75/11.5 (Mg++)+ 8.5/11.5 H4SiO4
-        Omega = min(1,(Ca/conv_mol).^(2/11.5).*(Mg/conv_mol).^(3.75/11.5).*(Si/conv_mol).^(8.5/11.5)/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'quartz')
-        % 1/4 SiO2 + 1/2 (H2O) -> 1/4 H4SiO4
-        Omega = min(1,(Si/conv_mol).^(1/4)/(H/conv_mol)/K_sp);
-    elseif strcmp(mineral, 'actinolite')
-        % 1/15 actinolite + (H+)-> 0.5/15 (Al+++) + 2/15 (Ca++)
-        Omega = min(1,(Ca/conv_mol).^(2/15).*(Al/conv_mol).^(0.5/15)/(H/conv_mol)/K_sp);
-    elseif ismember(mineral, {'labradorite', 'augite', 'calcite'})
-        Omega = 0;
-    else
-        error('Unknown mineral');
-    end
-
-
-end
-
-

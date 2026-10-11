@@ -12,7 +12,10 @@ function report = Bouchet_Check_Lateral_Conservation(result_file,error_id_prefix
 %% from lateral exchange must be zero, and so must the energy change. The
 %% driver stores those sums per day as
 %%
-%%   lateral.erw_mass_residual_umol   [NNd x 4]  Na, Al, An, DIC
+%%   lateral.erw_mass_abs_residual_umol  [NNd x 4]  Na, Al, An, DIC
+%%   lateral.erw_mass_throughput_umol    [NNd x 4]
+%%   lateral.erw_IC_atmosphere_abs_residual_umol  [NNd x 1]
+%%   lateral.erw_IC_atmosphere_throughput_umol    [NNd x 1]
 %%   lateral.heat_residual_J          [NNd x 1]
 %%   lateral.heat_residual_relative   [NNd x 1]  already normalised
 %%
@@ -53,49 +56,97 @@ failures = {};
 %% Aqueous mass: Na, Al, An, DIC
 %% ---------------------------------------------------------------------
 species = {'Na','Al','An','DIC'};
-if isfield(L,'erw_mass_residual_umol') && ~isempty(L.erw_mass_residual_umol)
-    residual = L.erw_mass_residual_umol;
-    if isfield(L,'erw_mass_buf_to_main_umol') && ...
-            ~isempty(L.erw_mass_buf_to_main_umol)
-        moved = L.erw_mass_buf_to_main_umol;
+if isfield(L,'erw_mass_abs_residual_umol') && ...
+        ~isempty(L.erw_mass_abs_residual_umol) && ...
+        isfield(L,'erw_mass_throughput_umol') && ...
+        ~isempty(L.erw_mass_throughput_umol)
+    residual = L.erw_mass_abs_residual_umol;
+    moved = L.erw_mass_throughput_umol;
+    if ~isequal(size(residual),size(moved)) || size(residual,2) ~= numel(species)
+        failures{end+1} = 'aqueous mass diagnostics have invalid dimensions';
     else
-        moved = zeros(size(residual));
-    end
-    for s = 1:min(numel(species),size(residual,2))
-        r = sum(residual(:,s),'omitnan');
-        scale = max(1,sum(abs(moved(:,min(s,size(moved,2)))),'omitnan'));
-        rel = abs(r)/scale;
-        report.(['mass_' species{s} '_residual_umol']) = r;
-        report.(['mass_' species{s} '_relative'])      = rel;
-        fprintf(['  lateral %-4s residual %+.6g umol of %.6g moved ' ...
-            '(relative %.3e)\n'],species{s},r,scale,rel);
-        if ~isfinite(rel) || rel > fail_relative
-            failures{end+1} = sprintf('%s relative residual %.3e', ...
-                species{s},rel); %#ok<AGROW>
-        elseif rel > warn_relative
-            warning([error_id_prefix ':LateralMassDrift'], ...
-                'Lateral %s residual is %.3e of transported mass.', ...
-                species{s},rel);
+        for s = 1:numel(species)
+            residual_s = residual(:,s);
+            moved_s = moved(:,s);
+            physical = all(isfinite(residual_s)) && all(residual_s >= 0) && ...
+                all(isfinite(moved_s)) && all(moved_s >= 0);
+            r = sum(residual_s);
+            throughput = sum(moved_s);
+            rel = r/max(1,throughput);
+            report.(['mass_' species{s} '_residual_umol']) = r;
+            report.(['mass_' species{s} '_throughput_umol']) = throughput;
+            report.(['mass_' species{s} '_relative'])      = rel;
+            fprintf(['  lateral %-4s absolute residual %.6g umol of %.6g moved ' ...
+                '(relative %.3e)\n'],species{s},r,throughput,rel);
+            if ~physical || ~isfinite(rel) || rel > fail_relative
+                failures{end+1} = sprintf('%s relative residual %.3e', ...
+                    species{s},rel); %#ok<AGROW>
+            elseif rel > warn_relative
+                warning([error_id_prefix ':LateralMassDrift'], ...
+                    'Lateral %s residual is %.3e of transported mass.', ...
+                    species{s},rel);
+            end
         end
     end
 else
-    failures{end+1} = 'aqueous mass residuals absent';
+    failures{end+1} = 'uncancelled aqueous mass diagnostics absent';
+end
+
+%% ---------------------------------------------------------------------
+%% Soil-air piston exchange
+%% ---------------------------------------------------------------------
+if isfield(L,'erw_IC_atmosphere_abs_residual_umol') && ...
+        ~isempty(L.erw_IC_atmosphere_abs_residual_umol) && ...
+        isfield(L,'erw_IC_atmosphere_throughput_umol') && ...
+        ~isempty(L.erw_IC_atmosphere_throughput_umol)
+    residual = L.erw_IC_atmosphere_abs_residual_umol;
+    exchanged = L.erw_IC_atmosphere_throughput_umol;
+    if ~isvector(residual) || ~isvector(exchanged) || numel(residual) ~= numel(exchanged)
+        failures{end+1} = 'ERW atmosphere diagnostics have invalid dimensions';
+    else
+        residual = residual(:);
+        exchanged = exchanged(:);
+        physical = all(isfinite(residual)) && all(residual >= 0) && ...
+            all(isfinite(exchanged)) && all(exchanged >= 0);
+        r = sum(residual);
+        throughput = sum(exchanged);
+        rel = r/max(1,throughput);
+        report.IC_atmosphere_residual_umol = r;
+        report.IC_atmosphere_throughput_umol = throughput;
+        report.IC_atmosphere_relative = rel;
+        fprintf(['  ERW atmosphere absolute residual %.6g umol of %.6g exchanged ' ...
+            '(relative %.3e)\n'],r,throughput,rel);
+        if ~physical || ~isfinite(rel) || rel > fail_relative
+            failures{end+1} = sprintf('atmosphere IC relative residual %.3e',rel); %#ok<AGROW>
+        elseif rel > warn_relative
+            warning([error_id_prefix ':LateralMassDrift'], ...
+                'ERW atmosphere IC residual is %.3e of exchanged mass.',rel);
+        end
+    end
+else
+    failures{end+1} = 'ERW atmosphere carbon diagnostics absent';
 end
 
 %% ---------------------------------------------------------------------
 %% Energy
 %% ---------------------------------------------------------------------
 if isfield(L,'heat_residual_relative') && ~isempty(L.heat_residual_relative)
-    heat_rel = max(abs(L.heat_residual_relative),[],'omitnan');
+    heat_series = L.heat_residual_relative;
+    heat_physical = all(isfinite(heat_series)) && all(heat_series >= 0);
+    heat_rel = max(abs(heat_series));
     report.heat_residual_relative_max = heat_rel;
     if isfield(L,'heat_residual_J')
-        report.heat_residual_J_total = sum(L.heat_residual_J,'omitnan');
+        heat_J_physical = all(isfinite(L.heat_residual_J));
+        report.heat_residual_J_total = sum(L.heat_residual_J);
         fprintf('  lateral heat residual %+.6g J, max relative %.3e\n', ...
             report.heat_residual_J_total,heat_rel);
+        if ~heat_J_physical
+            failures{end+1} = 'heat residual contains a nonfinite value';
+        end
     else
         fprintf('  lateral heat max relative residual %.3e\n',heat_rel);
     end
-    if ~isfinite(heat_rel) || heat_rel > fail_relative
+    if ~heat_physical || ~isfinite(heat_rel) || heat_rel > fail_relative
         failures{end+1} = sprintf('heat relative residual %.3e',heat_rel);
     elseif heat_rel > warn_relative
         warning([error_id_prefix ':LateralHeatDrift'], ...

@@ -8,6 +8,7 @@ code = fileparts(here);
 addpath(code,fullfile(code,'Inputs'),fullfile(code,'Parameters'));
 F = load(fullfile(here,'Fixtures','no3_immobilization_20190906.mat'),'fixture');
 F = F.fixture;
+F.args{end+1} = 0.8;
 
 assert(isequal(F.date,[2019 9 6]) && F.P1(32) < 0, ...
     'test_no3_immobilization_replay:BadFixture', ...

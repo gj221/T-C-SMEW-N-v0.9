@@ -16,6 +16,7 @@ function test_lateral_routing()
 %%  11  adaptive Darcy fluxes match the applied water-volume change
 %%  12  solute export cannot exceed the donor mass
 %%  13  the lateral pool map matches every mobile pool in Biogeo_Leakage
+%%  14  split water-solute transport converges under timestep refinement
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 fprintf('\n=== test_lateral_routing ===\n');
@@ -90,6 +91,12 @@ i_buf   = find(~is_main);
 theta = zeros(topo.N_cells, ms);
 theta(i_main,:) = 0.40;      %% wet field
 theta(i_buf,:)  = 0.20;      %% dry margin
+
+soilpar_short = soilpar_cell;
+soilpar_short(1).Ks = soilpar_short(1).Ks(1:end-1);
+assert_error(@() Darcy_Lateral_Topology( ...
+    topo,theta,Zlayer_m,soilpar_short,dt_h), ...
+    'Darcy_Lateral_Topology:BadLayerParameter');
 
 [Q_edge, dtheta, sub_steps] = Darcy_Lateral_Topology( ...
     topo, theta, Zlayer_m, soilpar_cell, dt_h);
@@ -276,6 +283,24 @@ assert_error(@() Biogeo_Lateral_Pools(P_bad_doc), ...
 n_pass = n_pass + 1;
 
 %% ---------------------------------------------------------------------
+%% 14. First-order water-solute splitting must converge as dt is refined.
+%% ---------------------------------------------------------------------
+conv = two_cell_topology;
+conv.edge_face_width_m = 1;
+conv.edge_face_distance_m = 1;
+conv.cell_area_m2 = [1;1];
+state_1 = advance_water_solute(conv,sp,1);
+state_2 = advance_water_solute(conv,sp,2);
+state_4 = advance_water_solute(conv,sp,4);
+state_ref = advance_water_solute(conv,sp,64);
+err_1 = max(abs(state_1-state_ref));
+err_2 = max(abs(state_2-state_ref));
+err_4 = max(abs(state_4-state_ref));
+check('water-solute operator split converges with timestep refinement', ...
+    err_2 < err_1 && err_4 < err_2, ...
+    sprintf('normalized errors %.3e, %.3e, %.3e',err_1,err_2,err_4));
+
+%% ---------------------------------------------------------------------
 fprintf('  ---------------------------------------\n');
 fprintf('  %d passed, %d failed\n\n', n_pass, n_fail);
 if n_fail > 0
@@ -308,6 +333,24 @@ topo.edge_face_distance_m = 0.01;
 topo.edge_active = 1;
 topo.cell_area_m2 = [1e-4;1e-4];
 topo.cell_region = {'main';'buffer'};
+end
+
+function state = advance_water_solute(topo,sp,n_steps)
+Z = 0.30;
+theta = [0.36;0.24];
+C = [100;0];
+soil = repmat(sp,2,1);
+M = C.*theta.*topo.cell_area_m2*Z;
+dt = 1/n_steps;
+for j = 1:n_steps
+    [Q,dtheta] = Darcy_Lateral_Topology(topo,theta,Z,soil,dt);
+    dM = Solute_Lateral_Transport(topo,Q,reshape(C,2,1,1), ...
+        reshape(M,2,1,1),dt);
+    theta = theta+dtheta;
+    M = M+reshape(dM,2,1);
+    C = M./(theta.*topo.cell_area_m2*Z);
+end
+state = [theta;M/sum(M)];
 end
 
 function assert_error(f,expected_id)

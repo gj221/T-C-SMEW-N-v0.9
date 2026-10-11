@@ -11,12 +11,12 @@ clc;
 script_directory = fileparts(mfilename('fullpath'));
 if isempty(script_directory); script_directory = cd; end
 current_directory = fileparts(script_directory);
-Directory=current_directory+"\T&C_Code";
-addpath(Directory)
-addpath(Directory+'\Inputs')
-addpath(Directory+'\Parameters')
+Directory = fullfile(current_directory,'T&C_Code');
+Input_Directory = fullfile(Directory,'Inputs');
+Parameter_Directory = fullfile(Directory,'Parameters');
+addpath(Directory,Input_Directory,Parameter_Directory)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-SCENARIO_TEST = '\FINAL_mesocosm';
+SCENARIO_TEST = 'FINAL_mesocosm';
 %%%%%%%%%%%%%%%%%%%%%
 id_location = 'Kantola';
 NN_case_study_ERW_MOD = 5; % Kantola: 3 Beerling, 4 Lewis, 5 control, 6 pretreatment, 7 calcite
@@ -28,9 +28,10 @@ OPT_SoilBiogeochemistry = 1; % soil biogeochemistry module
 %%%%%%%%%%%%%%%%%%%%%
 %%% optional overrides for batch runs (environment variables survive the clear all above)
 if ~isempty(getenv('TC_CASE')); NN_case_study_ERW_MOD = str2double(getenv('TC_CASE')); end
-if ~isempty(getenv('TC_SCENARIO')); SCENARIO_TEST = ['\' getenv('TC_SCENARIO')]; end
+if ~isempty(getenv('TC_SCENARIO')); SCENARIO_TEST = getenv('TC_SCENARIO'); end
 %%%%%%%%%%%%%%%%%%%%%
-MOD_PARAM_opts = detectImportOptions('ERW_MOD_PARAM_parameters.xlsx',"Sheet",'MOD_PARAM');
+workbook = fullfile(Input_Directory,'ERW_MOD_PARAM_parameters.xlsx');
+MOD_PARAM_opts = detectImportOptions(workbook,"Sheet",'MOD_PARAM');
 MOD_PARAM_opts.DataRange = "A2:Y6";
 MOD_PARAM_opts.VariableTypes = ["double","string","string","double","double",...
     "string","double","double","string","double",...
@@ -38,10 +39,10 @@ MOD_PARAM_opts.VariableTypes = ["double","string","string","double","double",...
     "double","double","string","double","double",...
     "double","double","double","string","string"];
 
-MOD_PARAM_input = readtable('ERW_MOD_PARAM_parameters.xlsx',MOD_PARAM_opts);
+MOD_PARAM_input = readtable(workbook,MOD_PARAM_opts);
 
 %%%%%%%%%%%%%% read ERW module parameters fromexcel
-ERW_PARAM_opts = detectImportOptions('ERW_MOD_PARAM_parameters.xlsx',"Sheet",'ERW_MOD');
+ERW_PARAM_opts = detectImportOptions(workbook,"Sheet",'ERW_MOD');
 ERW_PARAM_opts.DataRange ="A2:AI6";
 ERW_PARAM_opts.VariableTypes ={'double','string','string','double','double',...
   'string','double','double','string','double',...
@@ -52,7 +53,7 @@ ERW_PARAM_opts.VariableTypes ={'double','string','string','double','double',...
   'double','double','double','double','double'};
 ERW_PARAM_opts = setvaropts(ERW_PARAM_opts,{'f_CEC_in','rock_filepath','mineral','rock_f_in'},'FillValue','NaN');
 
-ERW_PARAM_input = readtable('ERW_MOD_PARAM_parameters.xlsx', ERW_PARAM_opts);
+ERW_PARAM_input = readtable(workbook, ERW_PARAM_opts);
 
 % find the corresponding case study
 ERW_PARAM_input = ERW_PARAM_input(ERW_PARAM_input.Number == NN_case_study_ERW_MOD,:);
@@ -60,7 +61,7 @@ MOD_PARAM_input=MOD_PARAM_input(MOD_PARAM_input.Number == NN_case_study_ERW_MOD,
 
 % using spin-up data if any
 if OPT_BG_spinup == 1
-    load(current_directory+"\T&C_Code\Inputs"+"\Data_"+id_location+"_BG.mat")
+    load(fullfile(Input_Directory,['Data_' id_location '_BG.mat']))
 end
 
 %%
@@ -76,7 +77,7 @@ ms = length(Zs)-1; %MOD_PARAM_input.ms; %%% Soil Layer
 cc = MOD_PARAM_input.cc; %% Crown area
 %%%%%%%%% METEO INPUT
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-load(current_directory+"\T&C_Code\Inputs"+"\Data_"+id_location+".mat")
+load(fullfile(Input_Directory,['Data_' id_location '.mat']))
 % Date=D; clear D 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%
@@ -108,7 +109,7 @@ t_bef= -0.67; t_aft= 1.67;
 Ds=esat-ea; %% [Pa] Vapor Pressure Deficit
 Ds(Ds<0)=0;
 %%%%%%%%%%%%%%%%%%%%%%%%%
-load(current_directory+"\T&C_Code\Inputs\Ca_Data.mat");
+load(fullfile(Input_Directory,'Ca_Data.mat'));
 d1 = find(abs(Date_CO2-Date(1))<1/36);
 d2 = find(abs(Date_CO2-Date(end))<1/36);
 Ca=Ca(d1:d2); 
@@ -122,8 +123,8 @@ Ws(Ws<=0)=0.01;
 Datam(:,1) = YE; Datam(:,2)= MO; Datam(:,3)= DA; Datam(:,4)= HO;
 clear YE MO DA HO MI SE
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-PARAM_IC = strcat(current_directory+"\T&C_Code\Parameters\"+MOD_PARAM_input.MOD_PARAM+".m");
-ERW_PARAM_IC = strcat(current_directory+"\T&C_Code\Parameters\ERW_MOD_PARAM_excel.m");
+PARAM_IC = fullfile(Parameter_Directory,[char(MOD_PARAM_input.MOD_PARAM) '.m']);
+ERW_PARAM_IC = fullfile(Parameter_Directory,'ERW_MOD_PARAM_excel.m');
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 cd(Directory)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -137,14 +138,33 @@ if save_results == 1
     % data dir
     fl_save = fullfile(current_directory,'SIM',SCENARIO_TEST);
 
-    if ~exist(fl_save)
+    if ~exist(fl_save,'dir')
         mkdir(fl_save)
     end
 
+    if strcmp(SCENARIO_TEST,'EQUIV_1D_TMP')
+        if NN_case_study_ERW_MOD ~= 5
+            error('ERW_run:EquivalenceCase', ...
+                'The equivalence baseline requires Kantola control case 5.');
+        end
+        equivalence_fingerprint = ERW_Equivalence_Fingerprint( ...
+            current_directory,NN/24);
+    end
+
     if OPT_ERW == 1
-        save([fl_save+"\"+"TC_ERW_results_"+id_location+'_'+ERW_PARAM_input.ExperimentalDescription+".mat"])
+        result_file = fullfile(fl_save, ...
+            ['TC_ERW_results_' id_location '_' ...
+            char(ERW_PARAM_input.ExperimentalDescription) '.mat']);
     else
-        save([fl_save+"\"+"TC_ERW_results_"+id_location+"_ERW_off.mat"])
+        result_file = fullfile(fl_save, ...
+            ['TC_ERW_results_' id_location '_ERW_off.mat']);
+    end
+    temporary_result = [tempname(fl_save) '.mat'];
+    save(temporary_result)
+    [move_ok,move_message] = movefile(temporary_result,result_file,'f');
+    if ~move_ok
+        if isfile(temporary_result); delete(temporary_result); end
+        error('ERW_run:ResultMoveFailed','%s',move_message);
     end
 
 end

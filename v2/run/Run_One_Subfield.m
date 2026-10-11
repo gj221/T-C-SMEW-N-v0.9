@@ -26,6 +26,7 @@ function result_file = Run_One_Subfield(run_id, varargin)
 %%   Run_One_Subfield(5,'GridNx',1,'GridNy',1) % coarser main grid
 %%   Run_One_Subfield(11,'AppeloAlpha',0.8)     % calibration trajectory
 %%   Run_One_Subfield(11,'AppeloLogKH',[5.9 4.8 10.47 10.986 16.47])
+%%   Run_One_Subfield(10,'Pcla',0.12,'Psan',0.22,'KNmaxd',0.0032)
 %%   Run_One_Subfield(2,'ParallelWorkers',6)    % parallel daily ERW columns
 %%
 %% Returns the path of the saved result file.
@@ -35,7 +36,8 @@ function result_file = Run_One_Subfield(run_id, varargin)
 %% unchanged when it is not given. It exists because two runs of the same
 %% run_id launched concurrently would otherwise race on one output path.
 opt = struct('NDays',[],'StartDate',[],'GridNx',[],'GridNy',[], ...
-    'AppeloAlpha',[],'AppeloLogKH',[],'ParallelWorkers',[], ...
+    'AppeloAlpha',[],'AppeloLogKH',[],'Pcla',[],'Psan',[], ...
+    'KNmaxd',[],'ParallelWorkers',[], ...
     'SaveResults',true,'ResultDirectory','');
 if mod(numel(varargin),2) ~= 0
     error('Run_One_Subfield:BadOptions','Options must be name/value pairs.');
@@ -51,7 +53,14 @@ validate_optional_integer(opt.NDays,'NDays');
 validate_optional_integer(opt.GridNx,'GridNx');
 validate_optional_integer(opt.GridNy,'GridNy');
 validate_optional_nonnegative_scalar(opt.AppeloAlpha,'AppeloAlpha');
+validate_optional_fraction(opt.Pcla,'Pcla');
+validate_optional_fraction(opt.Psan,'Psan');
+validate_optional_nonnegative_scalar(opt.KNmaxd,'KNmaxd');
 validate_optional_nonnegative_integer(opt.ParallelWorkers,'ParallelWorkers');
+if xor(isempty(opt.Pcla),isempty(opt.Psan))
+    error('Run_One_Subfield:BadOptions', ...
+        'Pcla and Psan must be supplied together.');
+end
 if ~isempty(opt.AppeloLogKH) && ~(isnumeric(opt.AppeloLogKH) && ...
         isvector(opt.AppeloLogKH) && numel(opt.AppeloLogKH) == 5 && ...
         all(isfinite(opt.AppeloLogKH)))
@@ -133,8 +142,28 @@ ERW_PARAM_input = readtable(wb,ERW_opts);
     Select_Subfield_Parameter_Rows( ...
     MOD_PARAM_input,ERW_PARAM_input,R.case_number);
 MOD_PARAM_input.Zbio(:) = R.biogeo_depth_mm;
+if ~isempty(opt.Pcla)
+    texture_sum = opt.Pcla + opt.Psan + MOD_PARAM_input.Porg;
+    if opt.Pcla + opt.Psan <= 0 || any(~isfinite(texture_sum)) || ...
+            any(texture_sum > 1)
+        error('Run_One_Subfield:BadOptions', ...
+            ['Pcla and Psan must have a positive sum, and Pcla, Psan ' ...
+             'and Porg must sum to no more than one.']);
+    end
+    MOD_PARAM_input.Pcla(:) = opt.Pcla;
+    MOD_PARAM_input.Psan(:) = opt.Psan;
+end
 id_location = char(MOD_PARAM_input.Location);
 fprintf('Active biogeochemical depth: %.0f mm\n',R.biogeo_depth_mm);
+fprintf('Texture: Pcla %.4f, Psan %.4f\n', ...
+    MOD_PARAM_input.Pcla,MOD_PARAM_input.Psan);
+
+default_biogeo = Biogeochemistry_Parameter(1);
+effective_KNmaxd = default_biogeo.KNmaxd;
+if ~isempty(opt.KNmaxd)
+    effective_KNmaxd = opt.KNmaxd;
+end
+fprintf('KNmaxd: %.8g d^-1\n',effective_KNmaxd);
 
 %% Spin-up pool state
 load(fullfile(Input_Directory,['Data_' id_location '_BG.mat']));  %#ok<LOAD>
@@ -225,7 +254,10 @@ run_provenance.validation_fingerprint = getenv('TC_VALIDATION_FINGERPRINT');
 run_provenance.campaign = getenv('TC_CAMPAIGN_TAG');
 run_provenance.slurm_job_id = getenv('SLURM_JOB_ID');
 run_provenance.slurm_step_id = getenv('SLURM_STEP_ID');
-run_provenance.slurm_restart_count = getenv('SLURM_RESTART_COUNT');
+slurm_restart_count = getenv('SLURM_RESTART_COUNT');
+if isempty(slurm_restart_count); slurm_restart_count = '0'; end
+run_provenance.slurm_restart_count = slurm_restart_count;
+run_provenance.slurm_array_task_id = getenv('SLURM_ARRAY_TASK_ID');
 run_provenance.node = getenv('SLURMD_NODENAME');
 run_provenance.date_start = Date(1);
 run_provenance.date_end = Date(end);
@@ -233,13 +265,17 @@ run_provenance.n_days = NN/24;
 run_provenance.n_timesteps = NN;
 run_provenance.n_columns = topo.N_cells;
 run_provenance.result_directory = char(opt.ResultDirectory);
+run_provenance.Pcla = double(MOD_PARAM_input.Pcla);
+run_provenance.Psan = double(MOD_PARAM_input.Psan);
+run_provenance.KNmaxd = effective_KNmaxd;
 
 base_param = fullfile(Parameter_Directory,[char(MOD_PARAM_input.MOD_PARAM) '.m']);
 is_main = strcmp(topo.cell_region,'main');
 ColCfg = repmat(struct('PARAM_IC',base_param,'PFT_OVERRIDE','', ...
                        'apply_rock',false,'ERW_PARAM',ERW_PARAM_control, ...
                        'appelo_alpha',opt.AppeloAlpha, ...
-                       'appelo_logKH',opt.AppeloLogKH), ...
+                       'appelo_logKH',opt.AppeloLogKH, ...
+                       'KNmaxd',opt.KNmaxd), ...
                 topo.N_cells,1);
 for c = 1:topo.N_cells
     if is_main(c)
@@ -291,6 +327,13 @@ if ~isempty(opt.AppeloLogKH)
     logkh_parts = arrayfun(@number_tag,opt.AppeloLogKH,'UniformOutput',false);
     ckpt_tag = sprintf('%s__logkh%s',ckpt_tag,strjoin(logkh_parts,'_'));
 end
+if ~isempty(opt.Pcla)
+    ckpt_tag = sprintf('%s__pcla%s__psan%s',ckpt_tag, ...
+        number_tag(opt.Pcla),number_tag(opt.Psan));
+end
+if ~isempty(opt.KNmaxd)
+    ckpt_tag = sprintf('%s__knmaxd%s',ckpt_tag,number_tag(opt.KNmaxd));
+end
 ckpt_tag = sprintf('%s__%dd__from%s',ckpt_tag,NN/24,datestr(Date(1),'yyyymmdd'));
 ERW_ckpt_file = fullfile(ckpt_dir, ...
     sprintf('ckpt_run%02d_%s.mat',R.id,ckpt_tag));
@@ -320,8 +363,31 @@ parallel_pool_created = start_parallel_pool(parallel_workers);
 old = pwd;
 cleanup = onCleanup(@() restore_run_environment(old,parallel_pool_created));
 cd(Directory);
+%% The deficit counters are persistent, so clear them here: several runs can
+%% share one MATLAB process and each is reported separately.
+Plant_Carbon_Deficit('reset');
 MAIN_FRAME_BG_ERW_2D;
 clear cleanup
+
+%% ---------------------------------------------------------------------
+%% Carbohydrate reserve overdraws
+%% ---------------------------------------------------------------------
+%% Reported, not corrected. Legacy carried a negative B(4) forward and the
+%% clamped ratio in Plant_Exports absorbed it, so this carbon never appeared
+%% in any budget. The campaign conservation checks audit ERW mass and
+%% soil-atmosphere exchange, not the plant carbohydrate pool, so without this
+%% line the overdraw stays invisible. A single event of order 1e-3 gC/m2 is a
+%% boundary artifact of the adaptive step; a count that scales with the run
+%% length is a systematic sink and the nitrogen response needs revisiting.
+carbon_deficit = Plant_Carbon_Deficit('report');
+if carbon_deficit.reserve_events > 0 || carbon_deficit.other_pool_events > 0
+    fprintf(['Carbon reserve overdraw: %d events, %.6g gC/m2 total, ' ...
+        '%.6g gC/m2 worst; %d other negative pool states.\n'], ...
+        carbon_deficit.reserve_events,carbon_deficit.reserve_total_gC_m2, ...
+        carbon_deficit.reserve_worst_gC_m2,carbon_deficit.other_pool_events);
+else
+    fprintf('Carbon reserve overdraw: none.\n');
+end
 
 %% ---------------------------------------------------------------------
 %% Save
@@ -343,6 +409,13 @@ if opt.SaveResults
     if ~isempty(opt.AppeloLogKH)
         logkh_parts = arrayfun(@number_tag,opt.AppeloLogKH,'UniformOutput',false);
         tag = sprintf('%s__logkh%s',tag,strjoin(logkh_parts,'_'));
+    end
+    if ~isempty(opt.Pcla)
+        tag = sprintf('%s__pcla%s__psan%s',tag, ...
+            number_tag(opt.Pcla),number_tag(opt.Psan));
+    end
+    if ~isempty(opt.KNmaxd)
+        tag = sprintf('%s__knmaxd%s',tag,number_tag(opt.KNmaxd));
     end
     if ~isempty(opt.NDays); tag = sprintf('%s__%dd',tag,opt.NDays); end
     if ~isempty(start_datenum); tag = sprintf('%s__from%s',tag,datestr(start_datenum,'yyyymmdd')); end
@@ -379,6 +452,15 @@ if isempty(value); return; end
 if ~(isnumeric(value) && isscalar(value) && isfinite(value) && value >= 0)
     error('Run_One_Subfield:BadOptions', ...
         '%s must be a finite nonnegative scalar.',name);
+end
+end
+
+function validate_optional_fraction(value,name)
+if isempty(value); return; end
+if ~(isnumeric(value) && isreal(value) && isscalar(value) && ...
+        isfinite(value) && value >= 0 && value <= 1)
+    error('Run_One_Subfield:BadOptions', ...
+        '%s must be a finite scalar in [0,1].',name);
 end
 end
 

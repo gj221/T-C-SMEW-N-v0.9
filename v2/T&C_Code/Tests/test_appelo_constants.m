@@ -3,7 +3,8 @@ function test_appelo_constants
 %% SCEPTER form of the Appelo H-referenced selectivity constants.
 %%
 %% Ground truth is scepter.f90: keqiex_all = 10^(-logkhaq_all) with
-%% defaults logKH = [5.9 4.8 10.47 10.786 16.47] (Na K Ca Mg Al) and the
+%% defaults logKH = [5.9 4.8 10.47 10.786 16.47] (Na K Ca Mg Al), alpha
+%% = 3.4, and the
 %% mass action f[X-Na] = K*[Na+]*f[X-H]/[H+] (get_maqads_all_v3); the
 %% Appelo (1994) proton-loading term 10^(alpha*Z*f_H) is applied at use
 %% and no part of alpha is folded into the constant.  The tabulated
@@ -23,7 +24,8 @@ n_pass = 0;
 v2 = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(fullfile(v2, 'T&C_Code'));
 
-[K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3, alpha] = Resolve_Appelo_Constants([]);
+[K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3, alpha, logKH] = ...
+    Resolve_Appelo_Constants([]);
 
 %% ---- exact scepter.f90 values (umol/L basis carries 1e6 per extra charge)
 tol = 1e-12;
@@ -32,7 +34,27 @@ check(abs(K_K_H  /10^(-4.8)        - 1) < tol, 'K_K_H   = 10^(-4.8)');
 check(abs(K_Ca_H2/(10^(-10.47) *1e6)  - 1) < tol, 'K_Ca_H2 = 10^(-10.47)*1e6');
 check(abs(K_Mg_H2/(10^(-10.786)*1e6)  - 1) < tol, 'K_Mg_H2 = 10^(-10.786)*1e6');
 check(abs(K_Al_H3/(10^(-16.47) *1e12) - 1) < tol, 'K_Al_H3 = 10^(-16.47)*1e12');
-check(alpha == 3.4, 'alpha = 3.4');
+check(alpha == 3.4, 'alpha = 3.4 (SCEPTER default exchanger)');
+check(isequal(logKH,[5.9 4.8 10.47 10.786 16.47]), ...
+    'effective SCEPTER default logKH is returned');
+
+%% ---- SCEPTER field fit uses the reported static constants
+% Table 9 reports Na, K, Ca and Mg.  Al was not fitted there, so retain
+% the SCEPTER default Al constant rather than extending the fit.
+table9_logKH = [4.027 4.474 9.032 8.704 16.47];
+[K_Na_K,K_K_K,K_Ca_K,K_Mg_K,K_Al_K,alpha_K,logKH_K] = ...
+    Resolve_Appelo_Constants(struct('logKH',table9_logKH,'alpha',1.3));
+check(alpha_K == 1.3, 'SCEPTER Table 9 alpha is the explicit fitted value');
+check(isequal(logKH_K,table9_logKH), ...
+    'effective SCEPTER Table 9 logKH is returned');
+check(abs(K_Na_K/10^(-table9_logKH(1))-1) < tol, 'SCEPTER Table 9 Na logKH is explicit');
+check(abs(K_K_K/10^(-table9_logKH(2))-1) < tol, 'SCEPTER Table 9 K logKH is explicit');
+check(abs(K_Ca_K/(10^(-table9_logKH(3))*1e6)-1) < tol, 'SCEPTER Table 9 Ca logKH is explicit');
+check(abs(K_Mg_K/(10^(-table9_logKH(4))*1e6)-1) < tol, 'SCEPTER Table 9 Mg logKH is explicit');
+check(abs(K_Al_K/(10^(-16.47)*1e12)-1) < tol, ...
+    'SCEPTER Table 9 retains the unfitted default Al logKH');
+check(max(abs(table9_logKH(1:4)-[4.027 4.474 9.032 8.704])) < tol, ...
+    'SCEPTER Table 9 uses the reported field-fit cation constants');
 
 %% ---- H selectivity direction: Appelo organic exchanger is H-loaded at pH 4
 % Site sum 1 = f_H*(1 + K_Na*[Na]/[H]*gamma) for the Fig-2a-like Na-only

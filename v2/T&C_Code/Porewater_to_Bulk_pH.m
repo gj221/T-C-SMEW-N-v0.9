@@ -14,7 +14,7 @@ function [pH_bulk, diag] = Porewater_to_Bulk_pH(...
 %%% An_pw                                residual bulk anion pool as aqueous concentration [umolc/L]
 %%% NO3_pw, PO4_pw, NH4_pw               ERW explicit N/P ions
 %%% CO2_air_extract                      atmospheric CO2 [umol/L, T&C units] for the extract
-%%%                                       boundary.  Lab pH measurements (1:1, 1:2.5, 1:5
+%%%                                       boundary.  Lab pH measurements (1:1, 1:2, 1:2.5, 1:5
 %%%                                       water:soil) equilibrate at atmospheric pCO2, not
 %%%                                       soil-air CO2.  Always pass CO2_atm here.
 %%% k1, k2, k_w, k_H                     carbonate/water constants
@@ -31,6 +31,7 @@ function [pH_bulk, diag] = Porewater_to_Bulk_pH(...
 %%%                     Gaines-Thomas constants; units are [-], [umol/L],
 %%%                     [umol/L], [L/umol], [umol/L], respectively
 %%%   .field_water_L_m2 field dissolved-inventory water volume [L/m2]
+%%%   .DIC_field_umol_L field dissolved inorganic carbon [umol/L]
 %%%   .H_extract_anchor_umolL optional extract-root anchor [umol/L]
 %%%   .H_init           optional previous-step H seed [umol/L]
 %%%   .pH_init          optional previous-step pH seed [-]
@@ -58,6 +59,12 @@ if ~isfield(bulk_pH_params,'field_water_L_m2') || ...
 end
 if ~(isfinite(rho_bulk) && rho_bulk > 0 && isfinite(Zrw) && Zrw > 0)
     error('ERW:invalidParam', 'rho_bulk and Zrw must be positive.');
+end
+f_CEC_0 = [f_Ca_0,f_Mg_0,f_K_0,f_Na_0,f_Al_0,f_H_0];
+if any(~isfinite(f_CEC_0)) || any(f_CEC_0 < 0) || ...
+        abs(sum(f_CEC_0)-1) > 1e-10
+    error('ERW:invalidExchangeFractions', ...
+        'Exchange fractions must be finite, nonnegative, and sum to one.');
 end
 
 %%% CO2 input check
@@ -107,6 +114,13 @@ rho_b_kg = rho_bulk / 1e3;                                  %% [kg/m3]
 soil_mass_kg_m2 = rho_b_kg * Zrw;                           %% [kg/m2]
 extract_water_L_m2 = bulk_pH_params.n_extract*soil_mass_kg_m2; %% [L/m2]
 dil = bulk_pH_params.field_water_L_m2 / extract_water_L_m2;
+if ~isfield(bulk_pH_params,'DIC_field_umol_L') || ...
+        ~(isscalar(bulk_pH_params.DIC_field_umol_L) && ...
+        isfinite(bulk_pH_params.DIC_field_umol_L) && ...
+        bulk_pH_params.DIC_field_umol_L >= 0)
+    error('ERW:missingParam', ...
+        'DIC_field_umol_L must be a finite nonnegative scalar.');
+end
 
 H_d   = H_pw    * dil;
 Ca_d  = Ca_pw   * dil;
@@ -119,31 +133,58 @@ NO3_d = NO3_pw  * dil;
 PO4_d = PO4_pw  * dil;
 NH4_d = NH4_pw  * dil;
 An_d  = An_pw   * dil;
+DIC_d = bulk_pH_params.DIC_field_umol_L * dil;
 
-%%% Extract CO2 from soil air
-CO2_ext = k_H * CO2_air_extract;
+%%% SCEPTER closes the laboratory vessel and re-equilibrates transferred DIC
+%%% at 25 C. Field solids remain inert during the short extraction.
+T_lab = 298.15;
+pk1_lab = -(-356.309-0.0609*T_lab+21834.37/T_lab+ ...
+    126.8339*log10(T_lab)-1684915/T_lab^2);
+pk2_lab = -(-107.887-0.032528*T_lab+5151.79/T_lab+ ...
+    38.92561*log10(T_lab)-563713.9/T_lab^2);
+pk_w_lab = -(-283.971+13323/T_lab-0.0507*T_lab+ ...
+    102.24447*log10(T_lab)-1119669/T_lab^2);
+k1 = 10^(-pk1_lab)*conv_mol;
+k2 = 10^(-pk2_lab)*conv_mol;
+k_w = 10^(-pk_w_lab)*conv_mol^2;
+k_nh3 = 10^(-(0.09018+2729.92/T_lab))*conv_mol;
 
 %%% CEC per litre of extract [umol_c/L]
 cec_factor = CEC_tot / extract_water_L_m2;
 
+field_solid_CaCO3_umol_m2 = 0;
+if isfield(bulk_pH_params,'solid_CaCO3_umol_m2')
+    field_solid_CaCO3_umol_m2 = bulk_pH_params.solid_CaCO3_umol_m2;
+end
+if ~(isfinite(field_solid_CaCO3_umol_m2) && field_solid_CaCO3_umol_m2 >= 0)
+    error('ERW:invalidParam', 'solid_CaCO3_umol_m2 must be finite and nonnegative.');
+end
+solid_CaCO3_umol_m2 = 0;
+has_solid_calcite = false;
+solid_CaCO3_umol_L = solid_CaCO3_umol_m2 / extract_water_L_m2;
+
 %%% Charge-balance residual as function of final extract H [umol/L]
 R_fn = @(H) charge_residual(H, Ca_d, Mg_d, K_d, Na_d, Al_d, ...
-    NO3_d, PO4_d, NH4_d, An_d, CO2_ext, k1, k2, k_w, k_nh3, ...
+    NO3_d, PO4_d, NH4_d, An_d, DIC_d, k1, k2, k_w, k_nh3, ...
     K1_Al, K2_Al, K3_Al, K4_Al, ...
     K_Ca_Mg, K_Ca_K, K_Ca_Na, K_Ca_Al, K_Ca_H, ...
     f_Ca_0, f_Mg_0, f_K_0, f_Na_0, f_Al_0, cec_factor, conv_mol, ...
     scheme_is_appelo, appelo_alpha, K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3);
 
-%%% Root selection/bracket anchor: H_extract_anchor_umolL when set (parameter input,
-%%% keeps the model generalizable across pH ranges); falls back to H_pw
-%%% otherwise.  Computed before scanning so a VALIDATED anchor can also
-%%% narrow the scan itself (see below), the same warm-start-from-yesterday's
-%%% -state approach ERW_function.m uses for its own daily solve
-%%% (H_anchor/H_prev), rather than rescanning the full pH 0-14 range from
-%%% scratch every call.
-has_validated_anchor = isfield(bulk_pH_params,'H_extract_anchor_umolL') && ...
-    isfinite(bulk_pH_params.H_extract_anchor_umolL) && bulk_pH_params.H_extract_anchor_umolL > 0;
-if has_validated_anchor
+%%% A previous converged extract root is the only continuity anchor.  A
+%%% prescribed pore-water pH or observed bulk pH is not a previous extract
+%%% state and cannot silently select among multiple physical roots.
+has_previous_root = isfield(bulk_pH_params,'H_prev') && ...
+    isscalar(bulk_pH_params.H_prev) && isfinite(bulk_pH_params.H_prev) && ...
+    bulk_pH_params.H_prev > 0 && isfield(bulk_pH_params,'H_prev_valid') && ...
+    isequal(bulk_pH_params.H_prev_valid,true);
+has_inverse_anchor = isfield(bulk_pH_params,'H_extract_anchor_umolL') && ...
+    isscalar(bulk_pH_params.H_extract_anchor_umolL) && ...
+    isfinite(bulk_pH_params.H_extract_anchor_umolL) && ...
+    bulk_pH_params.H_extract_anchor_umolL > 0;
+if has_previous_root
+    pH_anchor_scan = -log10(bulk_pH_params.H_prev / conv_mol);
+elseif has_inverse_anchor
     pH_anchor_scan = -log10(bulk_pH_params.H_extract_anchor_umolL / conv_mol);
 else
     pH_anchor_scan = pH_pw;
@@ -166,7 +207,7 @@ found = false;
 scan_used = 'none';
 anchor_pH_used = pH_anchor_scan;
 all_bracket_pH = [];
-if has_validated_anchor
+if has_previous_root || has_inverse_anchor
     narrow_pH_lo = max(full_pH_lo, pH_anchor_scan - 2);
     narrow_pH_hi = min(full_pH_hi, pH_anchor_scan + 2);
     narrow_n_points = round((narrow_pH_hi - narrow_pH_lo) / narrow_step_pH) + 1;
@@ -187,6 +228,23 @@ if ~found
         scan_used = 'full';
     end
 end
+if ~(has_previous_root || has_inverse_anchor) && numel(all_bracket_pH) ~= 1
+    error('ERW:nonUniqueBulkRoot', ...
+        'Cold bulk extraction requires one physical root; found %d.', ...
+        numel(all_bracket_pH));
+end
+if has_solid_calcite
+    [pH_scan, H_scan, R_scan] = bulk_pH_residual_scan(R_fn, conv_mol, ...
+        full_pH_lo, full_pH_hi, full_n_points);
+    [H_a, H_b, found, all_bracket_pH] = ...
+        bulk_pH_select_bracket(pH_scan, H_scan, R_scan, pH_anchor_scan);
+    scan_used = 'full';
+    if numel(all_bracket_pH) ~= 1
+        error('ERW:nonUniqueBulkRoot', ...
+            'Solid-bearing bulk extraction requires one physical root; found %d.', ...
+            numel(all_bracket_pH));
+    end
+end
 if found
     H0 = bulk_pH_initial_guess(bulk_pH_params, H_pw, conv_mol, H_a, H_b);
     [H, solver_diag] = newton_raphson_H(R_fn, H0, H_a, H_b);
@@ -198,9 +256,33 @@ if ~isfinite(H) || H <= 0
     error('ERW:invalidState', 'Solved bulk extract H must be positive.');
 end
 [R_final, diag] = R_fn(H);
-pH_bulk = diag.pH;
+pH_bulk_raw = diag.pH;
+pH_offset = 0;
+if isfield(bulk_pH_params,'pH_offset')
+    pH_offset = bulk_pH_params.pH_offset;
+    if ~(isscalar(pH_offset) && isfinite(pH_offset))
+        error('ERW:invalidParam', 'bulk_pH_params.pH_offset must be a finite scalar.');
+    end
+    if pH_offset ~= 0
+        error('ERW:bulkPHOffsetNotPhysical', ...
+            'A fixed pH offset cannot alter the physical bulk-extract operator.');
+    end
+end
+pH_bulk = pH_bulk_raw;
+if ~(isfinite(pH_bulk) && pH_bulk > 0 && pH_bulk < 14)
+    error('ERW:invalidState', 'Calibrated bulk extract pH must satisfy 0 < pH < 14.');
+end
+if ~isfield(diag,'calcite_equilibrium_active')
+    diag.calcite_equilibrium_active = false;
+    diag.Omega_CaCO3 = NaN;
+    diag.calcite_remaining_umol_L = 0;
+    diag.calcite_Ca_residual_umol_L = 0;
+end
+diag.calcite_input_umol_m2 = solid_CaCO3_umol_m2;
+diag.calcite_remaining_umol_m2 = diag.calcite_remaining_umol_L * extract_water_L_m2;
+diag.calcite_Ca_residual_umol_m2 = diag.calcite_Ca_residual_umol_L * extract_water_L_m2;
 full_bracket_pH = [];
-large_offset = abs(pH_bulk - pH_pw) > 2.5;
+large_offset = abs(pH_bulk_raw - pH_pw) > 2.5;
 if large_offset
     %%% Check whether the narrow scan missed a pore-proximal root.
     [pH_scan_full, H_scan_full, R_scan_full] = bulk_pH_residual_scan(R_fn, conv_mol, ...
@@ -221,8 +303,8 @@ if large_offset
         ['Bulk pH (%.3f) deviates >2.5 units from pore-water pH (%.2f); ' ...
         'scan=%s anchor_pH=%.2f narrow_brackets=%d narrow_mid=%.2f%s; ' ...
         'check exchange parameters or root selection.'], ...
-        pH_bulk, pH_pw, scan_used, anchor_pH_used, numel(all_bracket_pH), ...
-        0.5*(-log10(H/conv_mol) + pH_bulk), near_pore);
+        pH_bulk_raw, pH_pw, scan_used, anchor_pH_used, numel(all_bracket_pH), ...
+        0.5*(-log10(H/conv_mol) + pH_bulk_raw), near_pore);
 end
 if nargout > 1
     diag.charge_residual = R_final;
@@ -245,7 +327,10 @@ if nargout > 1
     diag.Al3_diluted_input = Al3_d;
     diag.PO4_diluted_input = PO4_d;
     diag.CO2_air_extract = CO2_air_extract;
-    diag.CO2_ext = CO2_ext;
+    diag.CO2_ext = diag.CO2;
+    diag.DIC_ext = diag.DIC;
+    diag.pH_bulk_raw = pH_bulk_raw;
+    diag.pH_offset = pH_offset;
     diag.pH_bulk = pH_bulk;
     diag.pH_pore = pH_pw;
 
@@ -347,9 +432,9 @@ function [H, solver_diag] = newton_raphson_H(R_fn,H0,H_a,H_b)
 %%% same root selected by the original pH scan.
 
 max_iter = 100;
-abs_tol  = 1e-8;
-rel_tol  = 1e-8;
-rel_charge_tol = 1e-7;
+abs_tol  = 1e-10;
+rel_tol  = 1e-10;
+rel_charge_tol = 1e-9;
 fallback_steps = 0;
 last_derivative = NaN;
 step_rel = Inf;
@@ -418,7 +503,7 @@ else
         H = H_trial;
         R = R_trial;
 
-        if abs(R) < abs_tol || abs(R) < charge_scale * rel_charge_tol || step_rel < rel_tol
+        if abs(R) < abs_tol || abs(R) < charge_scale * rel_charge_tol
             converged = true;
             break;
         end
@@ -430,15 +515,16 @@ else
     end
 end
 
-if ~newton_failed && ~converged && abs(H_right-H_left)/max(abs(H),eps) < rel_tol
-    converged = true;
-end
 if ~converged
     %% [H_left,H_right] still brackets the root (opposite-sign residuals),
     %% so bisection converges without aborting the run.
-    [H, R, bisect_iter] = bisect_bracket_H(R_fn, H_left, H_right, ...
+    [H, R, bisect_iter, bisect_converged] = bisect_bracket_H(R_fn, H_left, H_right, ...
         abs_tol, rel_tol, rel_charge_tol);
     iter = iter + bisect_iter;
+    if ~bisect_converged
+        error('ERW:bulkPHSolverNoConvergence', ...
+            'Bulk extract charge balance did not converge inside its physical bracket.');
+    end
     converged = true;
     solver_name = 'bisection_fallback';
 end
@@ -454,12 +540,13 @@ solver_diag.bracket_H = [H_left H_right];
 end
 
 %% =======================================================================
-function [H, R, iter] = bisect_bracket_H(R_fn, H_left, H_right, abs_tol, rel_tol, rel_charge_tol)
+function [H, R, iter, converged] = bisect_bracket_H(R_fn, H_left, H_right, abs_tol, rel_tol, rel_charge_tol)
 %%% Bisection on a sign-bracketed charge residual; unconditionally
 %%% convergent.  Used as the no-abort fallback when Newton-Raphson stalls
 %%% or wanders non-finite.  Uses the same tolerances as the Newton solve.
 [R_left, ~]  = R_fn(H_left);
 [R_right, ~] = R_fn(H_right);
+converged = false;
 if ~(isfinite(R_left) && isfinite(R_right)) || sign(R_left) == sign(R_right)
     %% No usable sign bracket (should not occur for a pH-scan bracket):
     %% return the finite endpoint with the smaller residual magnitude.
@@ -484,6 +571,7 @@ for iter = 1:200
     charge_scale = state.charge_scale;
     if abs(R) < abs_tol || abs(R) < charge_scale*rel_charge_tol || ...
             abs(H_right - H_left)/max(abs(H),eps) < rel_tol
+        converged = abs(R) < abs_tol || abs(R) < charge_scale*rel_charge_tol;
         return
     end
     if sign(R) == sign(R_left)
@@ -516,13 +604,15 @@ end
 
 %% =======================================================================
 function [R, state] = charge_residual(H, Ca_d, Mg_d, K_d, Na_d, Al_d, ...
-    NO3_d, PO4_d, NH4_d, An_d, CO2_ext, k1, k2, k_w, ~, ...
+    NO3_d, PO4_d, NH4_d, An_d, DIC_d, k1, k2, k_w, ~, ...
     K1_Al, K2_Al, K3_Al, K4_Al, ...
     K_Ca_Mg, K_Ca_K, K_Ca_Na, K_Ca_Al, K_Ca_H, ...
     f_Ca_0, f_Mg_0, f_K_0, f_Na_0, f_Al_0, cec_factor, conv_mol, ...
     scheme_is_appelo, appelo_alpha, K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3)
 
-%%% Carbonate at extract pCO2; concentration-based.
+%%% Closed-extract carbonate speciation conserves transferred field DIC.
+carbonate_den = 1+k1/H+k1*k2/H^2;
+CO2_ext = DIC_d/carbonate_den;
 HCO3 = k1 * CO2_ext / H;
 CO3  = k2 * HCO3 / H;
 OH   = k_w / H;
@@ -552,9 +642,188 @@ R = cations - anions;
 state.charge_scale = max(abs(cations) + abs(anions), eps);
 state.HCO3 = HCO3;
 state.CO3 = CO3;
+state.CO2 = CO2_ext;
+state.DIC = CO2_ext+HCO3+CO3;
 state.OH = OH;
 state.pH = -log10(H / conv_mol);
 
+end
+
+%% =======================================================================
+function [R, state] = charge_residual_calcite(H, Ca_d, Mg_d, K_d, Na_d, Al_d, ...
+    NO3_d, PO4_d, NH4_d, An_d, CO2_ext, k1, k2, k_w, ...
+    K1_Al, K2_Al, K3_Al, K4_Al, ...
+    K_Ca_Mg, K_Ca_K, K_Ca_Na, K_Ca_Al, K_Ca_H, ...
+    f_Ca_0, f_Mg_0, f_K_0, f_Na_0, f_Al_0, cec_factor, conv_mol, ...
+    scheme_is_appelo, appelo_alpha, K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3, ...
+    solid_CaCO3_umol_L, K_CaCO3)
+
+HCO3 = k1 * CO2_ext / H;
+CO3  = k2 * HCO3 / H;
+OH   = k_w / H;
+Ca_total_all = Ca_d + cec_factor*f_Ca_0/2 + solid_CaCO3_umol_L;
+Ca_sat = K_CaCO3 / CO3;
+
+calcite_equilibrium_active = false;
+calcite_remaining = 0;
+if isfinite(Ca_sat) && Ca_sat > 0 && Ca_sat < Ca_total_all
+    state_sat = exchange_state_fixed_ca(H, Ca_sat, Mg_d, K_d, Na_d, NH4_d, Al_d, ...
+        K1_Al, K2_Al, K3_Al, K4_Al, ...
+        K_Ca_Mg, K_Ca_K, K_Ca_Na, K_Ca_Al, K_Ca_H, ...
+        f_Mg_0, f_K_0, f_Na_0, f_Al_0, cec_factor, ...
+        scheme_is_appelo, appelo_alpha, K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3);
+    Ca_used = state_sat.Ca + cec_factor*state_sat.f_Ca/2;
+    Ca_tol = 1e-10*max(Ca_total_all,1);
+    if Ca_used <= Ca_total_all + Ca_tol
+        state = state_sat;
+        calcite_remaining = max(Ca_total_all - Ca_used,0);
+        calcite_equilibrium_active = true;
+    end
+end
+if ~calcite_equilibrium_active
+    state = exchange_state(H, Ca_d + solid_CaCO3_umol_L, Mg_d, K_d, Na_d, NH4_d, Al_d, ...
+        K1_Al, K2_Al, K3_Al, K4_Al, ...
+        K_Ca_Mg, K_Ca_K, K_Ca_Na, K_Ca_Al, K_Ca_H, ...
+        f_Ca_0, f_Mg_0, f_K_0, f_Na_0, f_Al_0, cec_factor, ...
+        scheme_is_appelo, appelo_alpha, K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3);
+end
+
+cations = H + 2*state.Ca + 2*state.Mg + state.K + state.Na + state.NH4 ...
+    + 3*state.Al3 + 2*state.AlOH + state.AlOH2;
+anions = OH + HCO3 + 2*CO3 + NO3_d + PO4_d + An_d + state.AlOH4;
+R = cations - anions;
+state.charge_scale = max(abs(cations) + abs(anions), eps);
+state.HCO3 = HCO3;
+state.CO3 = CO3;
+state.CO2 = CO2_ext;
+state.DIC = CO2_ext+HCO3+CO3;
+state.OH = OH;
+state.pH = -log10(H / conv_mol);
+state.calcite_equilibrium_active = calcite_equilibrium_active;
+state.calcite_remaining_umol_L = calcite_remaining;
+state.Omega_CaCO3 = state.Ca*CO3/K_CaCO3;
+state.calcite_Ca_residual_umol_L = ...
+    state.Ca + cec_factor*state.f_Ca/2 + calcite_remaining - Ca_total_all;
+end
+
+%% =======================================================================
+function state = exchange_state_fixed_ca(H, Ca, Mg_d, K_d, Na_d, NH4_d, Al_d, ...
+    K1_Al, K2_Al, K3_Al, K4_Al, ...
+    K_Ca_Mg, K_Ca_K, K_Ca_Na, K_Ca_Al, K_Ca_H, ...
+    f_Mg_0, f_K_0, f_Na_0, f_Al_0, cec_factor, ...
+    scheme_is_appelo, appelo_alpha, K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3)
+
+Mg_total = Mg_d + cec_factor*f_Mg_0/2;
+K_total  = K_d  + cec_factor*f_K_0;
+Na_total = Na_d + cec_factor*f_Na_0;
+Al_total = Al_d + cec_factor*f_Al_0/3;
+Al3_frac = al3_fraction(H,K1_Al,K2_Al,K3_Al,K4_Al);
+
+if scheme_is_appelo
+    residual_fn = @(f_H) fixed_ca_appelo_residual(f_H,H,Ca,Mg_total,K_total,Na_total,Al_total, ...
+        cec_factor,appelo_alpha,K_Na_H,K_K_H,K_Ca_H2,K_Mg_H2,K_Al_H3,Al3_frac);
+else
+    residual_fn = @(f_Ca) fixed_ca_gt_residual(f_Ca,H,Ca,Mg_total,K_total,Na_total,Al_total, ...
+        cec_factor,K_Ca_Mg,K_Ca_K,K_Ca_Na,K_Ca_Al,K_Ca_H,Al3_frac);
+end
+f_lo = 1e-24;
+f_hi = 1 - 1e-14;
+g_lo = residual_fn(f_lo);
+g_hi = residual_fn(f_hi);
+if ~(isfinite(g_lo) && isfinite(g_hi) && sign(g_lo) ~= sign(g_hi))
+    error('ERW:partitionExchange', ...
+        'No physical exchange partition is compatible with calcite saturation.');
+end
+for k = 1:300
+    f_mid = 0.5*(f_lo + f_hi);
+    g_mid = residual_fn(f_mid);
+    if abs(g_mid) < 1e-12
+        break
+    end
+    if sign(g_mid) == sign(g_lo)
+        f_lo = f_mid;
+        g_lo = g_mid;
+    else
+        f_hi = f_mid;
+    end
+end
+f_root = 0.5*(f_lo + f_hi);
+if scheme_is_appelo
+    [~,f_Na,f_K,f_Ca,f_Mg,f_Al] = residual_fn(f_root);
+    f_H = f_root;
+else
+    [~,f_Mg,f_K,f_Na,f_Al,f_H] = residual_fn(f_root);
+    f_Ca = f_root;
+end
+
+Mg = Mg_total - cec_factor*f_Mg/2;
+K  = K_total  - cec_factor*f_K;
+Na = Na_total - cec_factor*f_Na;
+Al = Al_total - cec_factor*f_Al/3;
+[Al3,AlOH,AlOH2,AlOH3,AlOH4] = al_hydrolysis_species(Al,H,K1_Al,K2_Al,K3_Al,K4_Al);
+fractions = [f_Ca,f_Mg,f_K,f_Na,f_Al,f_H];
+concentrations = [Ca,Mg,K,Na,Al];
+if any(~isfinite([fractions,concentrations])) || any(fractions < -1e-10) || ...
+        abs(sum(fractions)-1) > 1e-8 || any(concentrations < -1e-8)
+    error('ERW:partitionExchange', 'Calcite-buffered exchange partition is unphysical.');
+end
+
+state.f_Ca=f_Ca; state.f_Mg=f_Mg; state.f_K=f_K; state.f_Na=f_Na;
+state.f_Al=f_Al; state.f_H=f_H; state.site_sum=sum(fractions);
+state.Ca=Ca; state.Mg=max(Mg,0); state.K=max(K,0); state.Na=max(Na,0);
+state.NH4=NH4_d; state.Al=max(Al,0); state.Al3=Al3; state.AlOH=AlOH;
+state.AlOH2=AlOH2; state.AlOH3=AlOH3; state.AlOH4=AlOH4;
+state.exchange_mass_residuals_umol_L = [0, ...
+    state.Mg + cec_factor*f_Mg/2 - Mg_total, ...
+    state.K + cec_factor*f_K - K_total, ...
+    state.Na + cec_factor*f_Na - Na_total, ...
+    state.Al + cec_factor*f_Al/3 - Al_total];
+if scheme_is_appelo
+    gamma = 10^(appelo_alpha*f_H);
+    state.exchange_residuals = [ ...
+        f_Na-K_Na_H*state.Na*(f_H/H)*gamma, f_K-K_K_H*state.K*(f_H/H)*gamma, ...
+        f_Ca-K_Ca_H2*Ca*(f_H/H)^2*gamma^2, f_Mg-K_Mg_H2*state.Mg*(f_H/H)^2*gamma^2, ...
+        f_Al-K_Al_H3*Al3*(f_H/H)^3*gamma^3];
+else
+    state.exchange_residuals = [ ...
+        f_Mg-(state.Mg/K_Ca_Mg)*f_Ca/Ca, ...
+        f_Na-state.Na*sqrt(f_Ca/(K_Ca_Na*Ca)), ...
+        f_K-state.K*sqrt(f_Ca/(K_Ca_K*Ca)), ...
+        f_Al-Al3*sqrt(f_Ca^3/(K_Ca_Al*Ca^3)), ...
+        f_H-H*sqrt(f_Ca/(K_Ca_H*Ca))];
+end
+end
+
+%% =======================================================================
+function [residual,f_Mg,f_K,f_Na,f_Al,f_H] = fixed_ca_gt_residual( ...
+    f_Ca,H,Ca,Mg_total,K_total,Na_total,Al_total,cec_factor, ...
+    K_Ca_Mg,K_Ca_K,K_Ca_Na,K_Ca_Al,K_Ca_H,Al3_frac)
+A_Mg = f_Ca/(K_Ca_Mg*Ca);
+A_K = sqrt(f_Ca/(K_Ca_K*Ca));
+A_Na = sqrt(f_Ca/(K_Ca_Na*Ca));
+A_Al = Al3_frac*sqrt(f_Ca^3/(K_Ca_Al*Ca^3));
+f_Mg = A_Mg*Mg_total/(1+A_Mg*cec_factor/2);
+f_K = A_K*K_total/(1+A_K*cec_factor);
+f_Na = A_Na*Na_total/(1+A_Na*cec_factor);
+f_Al = A_Al*Al_total/(1+A_Al*cec_factor/3);
+f_H = H*sqrt(f_Ca/(K_Ca_H*Ca));
+residual = f_Ca+f_Mg+f_K+f_Na+f_Al+f_H-1;
+end
+
+%% =======================================================================
+function [residual,f_Na,f_K,f_Ca,f_Mg,f_Al] = fixed_ca_appelo_residual( ...
+    f_H,H,Ca,Mg_total,K_total,Na_total,Al_total,cec_factor,appelo_alpha, ...
+    K_Na_H,K_K_H,K_Ca_H2,K_Mg_H2,K_Al_H3,Al3_frac)
+gamma = 10^(appelo_alpha*f_H);
+rho1 = (f_H/H)*gamma;
+rho2 = rho1^2;
+rho3 = rho1^3;
+f_Na = K_Na_H*rho1*Na_total/(1+K_Na_H*rho1*cec_factor);
+f_K = K_K_H*rho1*K_total/(1+K_K_H*rho1*cec_factor);
+f_Ca = K_Ca_H2*Ca*rho2;
+f_Mg = K_Mg_H2*rho2*Mg_total/(1+K_Mg_H2*rho2*cec_factor/2);
+f_Al = K_Al_H3*Al3_frac*rho3*Al_total/(1+K_Al_H3*Al3_frac*rho3*cec_factor/3);
+residual = f_H+f_Na+f_K+f_Ca+f_Mg+f_Al-1;
 end
 
 %% =======================================================================

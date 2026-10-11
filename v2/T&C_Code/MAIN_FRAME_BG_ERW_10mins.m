@@ -192,7 +192,9 @@ R_ew=zeros(NNd,1);
 VOL=zeros(NNd,1);
 N2flx = zeros(NNd,1);
 N2Oflx = zeros(NNd,1);
-PH_d = zeros(NNd,1);
+NITflx = zeros(NNd,1); DENITflx = zeros(NNd,1); N2Oflx_nit = zeros(NNd,1);
+FertN_d = zeros(NNd,1); DepN_d = zeros(NNd,1);
+PH_d = zeros(NNd,1); PH_pore_d = zeros(NNd,1); PH_bulk_d = zeros(NNd,1);
 Min_N = zeros(NNd,1);
 Min_P = zeros(NNd,1);
 R_bacteria= zeros(NNd,1);
@@ -219,6 +221,7 @@ LEAK_Si = zeros(NNd,1);
 
 %%%%%%%%%%%%%%%%%
 AgrHarNut =  zeros(NNd,6);
+SeedInput =  zeros(NNd,7); %% [C N P K Ca Mg Si], [g element m-2 ground]
 jDay=zeros(NNd,1);L_day=zeros(NNd,1);
 
 Ccrown_t =ones(NNd,cc);
@@ -239,7 +242,18 @@ OPT_EnvLimitGrowth = 1; % limit plant growth based on available nutrient concnet
 %%%%%%%%% CALL PARAMETERS AND INITIAL CONDITION
 run(PARAM_IC);
 Restating_parameters;
+biogeo_exchange_scheme = 'TC_GT';
+if exist('bulk_pH_params','var') && isstruct(bulk_pH_params) && ...
+        isfield(bulk_pH_params,'scheme')
+    biogeo_exchange_scheme = bulk_pH_params.scheme;
+end
 PH_d(1) = PH(1);
+PH_pore_d(1) = PH(1); PH_bulk = PH(1);
+if exist('ERW_biogeochem','var') && isfield(ERW_biogeochem,'pH_bulk') && ...
+        isfinite(ERW_biogeochem.pH_bulk(1))
+    PH_bulk = ERW_biogeochem.pH_bulk(1);
+end
+PH_bulk_d(1) = PH_bulk;
 if length(Oice)==1
     Oice=zeros(NN,ms);
 end
@@ -343,7 +357,7 @@ for i=2:NN
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %%% Biogeochemistry Unit
-        [Se_bio,Se_fc,Psi_bio,Tdp_bio,VSUM,VTSUM,L_bio]=Biogeo_environment(Tdp(pdind,:),O(pdind,:),V(pdind,:),Soil_Param,Phy,SPAR,Bio_Zs,Zbio);
+        [Se_bio,Se_fc,Psi_bio,Tdp_bio,VSUM,VTSUM,f_anaer_bio,WFPS_bio]=Biogeo_environment(Tdp(pdind,:),O(pdind,:),V(pdind,:),Soil_Param,Phy,SPAR,Bio_Zs,Zbio);
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         if OPT_SoilBiogeochemistry == 1
             IS= Ccrown*squeeze(ISOIL_L(j-1,:,:)) + Ccrown*squeeze(ISOIL_H(j-1,:,:));
@@ -354,7 +368,15 @@ for i=2:NN
             else
                 OPT_BfixN = 0;
             end
-            PH_d(j) = PH(1); %% bulk-extract pH (air-dried 1:n) driving today's biogeochemistry
+            if ~(isscalar(PH) && isfinite(PH) && PH > 0 && PH < 14)
+                error('BIOGEO:InvalidPorePH','Pore-water pH must be finite and within (0,14).');
+            end
+            if ~(isscalar(PH_bulk) && isfinite(PH_bulk) && PH_bulk > 0 && PH_bulk < 14)
+                error('BIOGEO:InvalidBulkPH','Microbial bulk-soil pH must be finite and within (0,14).');
+            end
+            PH_d(j) = PH_bulk;
+            PH_pore_d(j) = PH(1);
+            PH_bulk_d(j) = PH_bulk;
             [P(j,:),LEAK_NH4(j),LEAK_NO3(j),LEAK_P(j),LEAK_K(j),LEAK_DOC(j),LEAK_DON(j),LEAK_DOP(j),...
                 LEAK_Ca(j),LEAK_Mg(j),LEAK_Si(j),...
                 Nuptake_H(j,:),NH4uptake_H(j,:),NO3uptake_H(j,:),...
@@ -363,14 +385,16 @@ for i=2:NN
                 Cauptake_H(j,:),Mguptake_H(j,:),Siuptake_H(j,:),Cauptake_L(j,:),Mguptake_L(j,:),Siuptake_L(j,:),...
                 RexmyI(j,:),...
                 R_litter(j),R_microbe(j),R_litter_sur(j),R_ew(j),VOL(j),N2flx(j),Min_N(j),Min_P(j),...
-                R_bacteria(j),RmycAM(j),RmycEM(j),Prod_B(j),Prod_F(j),BfixN(j),NavlI(j,:),LitFirEmi(j,:),N2Oflx(j)]=BIOGEO_UNIT(P(j-1,:),IS,Zbio,sum(Bio_Zs.*rsd),...
-                PH,Tdp_bio,mean(Ta(pdind)),Psi_bio,Se_bio,Se_fc,VSUM,VTSUM,Ccrown,Bio_Zs,RfH_Zs,RfL_Zs,...
+                R_bacteria(j),RmycAM(j),RmycEM(j),Prod_B(j),Prod_F(j),BfixN(j),NavlI(j,:),LitFirEmi(j,:),N2Oflx(j),...
+                FertN_d(j),DepN_d(j),NITflx(j),DENITflx(j),N2Oflx_nit(j)]=BIOGEO_UNIT(P(j-1,:),IS,Zbio,sum(Bio_Zs.*rsd),...
+                PH_bulk,Tdp_bio,mean(Ta(pdind)),Psi_bio,Se_bio,Se_fc,VSUM,VTSUM,Ccrown,Bio_Zs,RfH_Zs,RfL_Zs,...
                 sum(Lk(pdind)),sum(T_H(pdind,:),1),sum(T_L(pdind,:),1),B_H(j-1,:,3),B_L(j-1,:,3),LAI_H(j-1,:),LAI_L(j-1,:),...
                 SupN_H(j-1,:),SupP_H(j-1,:),SupK_H(j-1,:),SupN_L(j-1,:),SupP_L(j-1,:),SupK_L(j-1,:),...
                 SupCa_H(j-1,:),SupMg_H(j-1,:),SupSi_H(j-1,:),SupCa_L(j-1,:),SupMg_L(j-1,:),SupSi_L(j-1,:),...
                 REXMY,RexmyI(j-1,:),ExEM,NavlI(j-1,:),Pcla,Psan,...
                 B_IO,Datam(i,:),FireA,0,...
-                OPT_ERW,OPT_BfixN,L_bio);
+                OPT_ERW,OPT_BfixN,f_anaer_bio,WFPS_bio, ...
+                biogeo_exchange_scheme,[]);
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -422,7 +446,7 @@ for i=2:NN
                     Careserve_H(j,cc),Mgreserve_H(j,cc),Sireserve_H(j,cc),...
                     rNc_H(j,cc),rPc_H(j,cc),rKc_H(j,cc),...
                     rCac_H(j,cc),rMgc_H(j,cc),rSic_H(j,cc),...
-                    ManIH(cc)]= ...
+                    ManIH(cc),SeedInput_cc]= ...
                     VEGGIE_UNIT(...
                     B_H(j-1,cc,:),PHE_S_H(j-1,cc),dflo_H(j-1,cc),AgeL_H(j-1,cc),AgeDL_H(j-1,cc),...
                     Ta(pdind),Tdp_H(pdind,cc),PARB(pdind)+PARD(pdind),Psi_x_H(pdind,cc),Psi_l_H(pdind,cc),...
@@ -458,13 +482,17 @@ for i=2:NN
                 if aSE_H(cc) == 2
                     [hc_H(j,cc)] = GrassHeight(LAI_H(j,cc),LAIdead_H(j,cc));
                 elseif aSE_H(cc) == 5
-                    [hc_H(j,cc),SAI_H(j,cc),B_H(j,:,:),Ccrown,ZR95_H,Nreserve_H(j-1:j,:),Preserve_H(j-1:j,:),Kreserve_H(j-1:j,:),...
-                        Careserve_H(j-1:j,:),Mgreserve_H(j-1:j,:),Sireserve_H(j-1:j,:),...
-                        AgrHarNut(j,:),RfH_Zs] = CropHeightType(LAI_H(j,cc),LAIdead_H(j,cc),cc,ZR95_H,B_H(j,:,:),...
+                    [hc_H(j,cc),SAI_H(j,cc),B_H(j,:,:),Ccrown,ZR95_H,Nreserve_H(j,:),Preserve_H(j,:),Kreserve_H(j,:),...
+                        Careserve_H(j,:),Mgreserve_H(j,:),Sireserve_H(j,:),...
+                        AgrHarNut_cc,RfH_Zs] = CropHeightType(LAI_H(j,cc),LAIdead_H(j,cc),cc,ZR95_H,B_H(j,:,:),...
                         Zs,CASE_ROOT,Ccrown,Cbare+Cwat+Curb+Crock,...
                         Nreserve_H(j,:),Preserve_H(j,:),Kreserve_H(j,:),...
                         Careserve_H(j,:),Mgreserve_H(j,:),Sireserve_H(j,:),...
                         ManIH,Mpar_H,VegH_Param_Dyn,OPT_SoilBiogeochemistry);
+                    AgrHarNut(j,:) = Plant_Harvest_Reserve_Export( ...
+                        AgrHarNut(j,:),AgrHarNut_cc,Ccrown(cc));
+                    SeedInput(j,:) = Plant_Seed_Input_Accumulator( ...
+                        SeedInput(j,:),SeedInput_cc,Ccrown(cc));
                     %%%%
                 else
                     hc_H(j,cc)= hc_H(j-1,cc); %%%[m]
@@ -515,7 +543,7 @@ for i=2:NN
                     Careserve_L(j,cc),Mgreserve_L(j,cc),Sireserve_L(j,cc),...
                     rNc_L(j,cc),rPc_L(j,cc),rKc_L(j,cc),...
                     rCac_L(j,cc),rMgc_L(j,cc),rSic_L(j,cc),...
-                    ManIL(cc)]= ...
+                    ManIL(cc),SeedInput_cc]= ...
                     VEGGIE_UNIT(...
                     B_L(j-1,cc,:),PHE_S_L(j-1,cc),dflo_L(j-1,cc),AgeL_L(j-1,cc),AgeDL_L(j-1,cc),...
                     Ta(pdind),Tdp_L(pdind,cc),PARB(pdind)+PARD(pdind),Psi_x_L(pdind,cc),Psi_l_L(pdind,cc),...
@@ -552,11 +580,15 @@ for i=2:NN
                 elseif aSE_L(cc) == 5
                     [hc_L(j,cc),SAI_L(j,cc),B_L(j,:,:),Ccrown,ZR95_L,Nreserve_L(j,:),Preserve_L(j,:),Kreserve_L(j,:),...
                         Careserve_L(j,:),Mgreserve_L(j,:),Sireserve_L(j,:),...
-                        AgrHarNut(j,:),RfL_Zs] = CropHeightType(LAI_L(j,cc),LAIdead_L(j,cc),cc,ZR95_L,B_L(j,:,:),...
+                        AgrHarNut_cc,RfL_Zs] = CropHeightType(LAI_L(j,cc),LAIdead_L(j,cc),cc,ZR95_L,B_L(j,:,:),...
                         Zs,CASE_ROOT,Ccrown,Cbare+Cwat+Curb+Crock,...
                         Nreserve_L(j,:),Preserve_L(j,:),Kreserve_L(j,:),...
                         Careserve_L(j,:),Mgreserve_L(j,:),Sireserve_L(j,:),...
                         ManIL,Mpar_L,VegL_Param_Dyn,OPT_SoilBiogeochemistry);
+                    AgrHarNut(j,:) = Plant_Harvest_Reserve_Export( ...
+                        AgrHarNut(j,:),AgrHarNut_cc,Ccrown(cc));
+                    SeedInput(j,:) = Plant_Seed_Input_Accumulator( ...
+                        SeedInput(j,:),SeedInput_cc,Ccrown(cc));
                 else
                     hc_L(j,cc)= hc_L(j-1,cc); %%%[m]
                     if OPT_VCA == 1
@@ -820,6 +852,8 @@ for i=2:NN
 
 
             if ERW_PARAM_input.diss_f>0
+                [kinetic_mass_fraction, direct_carbonate_mass_fraction, rock_f_in_erw] = ...
+                    ERW_Feedstock_Pathway(ERW_PARAM_input.mineral, ERW_PARAM_input.rock_f_in);
                 ta1 = days(datetime([2016 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
                 ta2 = days(datetime([2017 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
                 ta3 = days(datetime([2018 11 10 0 0 0])-datetime([Datam(1,:) 0 0]));
@@ -828,7 +862,8 @@ for i=2:NN
                 % rock application schedule
                 ERW_TC_const.M_rock_add = zeros(length(t),1); 
                 ERW_TC_const.M_rock_add_CaCO3 = zeros(length(t),1);
-                ERW_TC_const.M_rock_add(1) = ERW_PARAM_input.M_rock_in;  
+                ERW_TC_const.M_rock_add(1) = ERW_PARAM_input.M_rock_in*kinetic_mass_fraction;
+                ERW_TC_const.M_rock_add_CaCO3(1) = ERW_PARAM_input.M_rock_in*direct_carbonate_mass_fraction/100.087*1e6;
                 
                 %% Keep only applications that fall inside this run. MATLAB
                 %% grows an array on assignment past its end, so an
@@ -837,20 +872,21 @@ for i=2:NN
                 %% num_rock_app nonzero for rock that is never applied. The
                 %% 2-D driver already filters this way; on a full-length run
                 %% every date is in range and the two agree.
-                idx_app = time_application/dtw;
-                idx_app = idx_app(idx_app >= 1 & idx_app <= length(t));
-                if contains(ERW_PARAM_input.ExperimentalDescription,"Beerling")
-                    ERW_TC_const.M_rock_add(idx_app) = 5000*(1-0.026);
-                    ERW_TC_const.M_rock_add_CaCO3(idx_app) = 5000*0.026/100.087*1e6; % umol
-                else
-                    ERW_TC_const.M_rock_add(idx_app) = 5000;
-                end
-                ERW_PARAM_input.num_rock_app = sum(ERW_TC_const.M_rock_add>0);
+                idx_app = ERW_Application_Indices(time_application,dtw,length(t));
+                ERW_TC_const.M_rock_add(idx_app) = ...
+                    ERW_TC_const.M_rock_add(idx_app) + 5000*kinetic_mass_fraction;
+                ERW_TC_const.M_rock_add_CaCO3(idx_app) = ...
+                    ERW_TC_const.M_rock_add_CaCO3(idx_app) + ...
+                    5000*direct_carbonate_mass_fraction/100.087*1e6;
+                ERW_PARAM_input.num_rock_app = sum(ERW_TC_const.M_rock_add>0 | ERW_TC_const.M_rock_add_CaCO3>0);
             else
+                [kinetic_mass_fraction, direct_carbonate_mass_fraction, rock_f_in_erw] = ...
+                    ERW_Feedstock_Pathway(ERW_PARAM_input.mineral, ERW_PARAM_input.rock_f_in);
                 ERW_TC_const.M_rock_add = zeros(length(t),1); 
-                ERW_TC_const.M_rock_add(1) = ERW_PARAM_input.M_rock_in;
-                ERW_PARAM_input.num_rock_app = sum(ERW_TC_const.M_rock_add>0);
                 ERW_TC_const.M_rock_add_CaCO3 = zeros(length(t),1);
+                ERW_TC_const.M_rock_add(1) = ERW_PARAM_input.M_rock_in*kinetic_mass_fraction;
+                ERW_TC_const.M_rock_add_CaCO3(1) = ERW_PARAM_input.M_rock_in*direct_carbonate_mass_fraction/100.087*1e6;
+                ERW_PARAM_input.num_rock_app = sum(ERW_TC_const.M_rock_add>0);
             end
 
 
@@ -877,24 +913,28 @@ for i=2:NN
             TT_m=TT_m(1:length(t),:);
             
             %%%%%%%%%%%%%%%%%% initilising first inputs %%%%%%%%%%%%%%%%%%%
+            P_prev_for_erw_delta = P(j-1,:);
             if first_erw_step
                 %%%%%%%%%%%%%%
                 [ERW_biogeochem, ERW_plant, ERW_weathering, ERW_const, ERW_var, ERW_biogeochem_varnames, ERW_weathering_varnames, ERW_plant_varnames, ERW_const_varnames, ERW_var_varnames, ERW_all]=...
                   ERW_MOD_PARAM_excel(t, TT_m, ERW_TC_const, ERW_biogeochem, ERW_PARAM_input, opt_ERW_preprocessing);
+                P(j-1,:) = ERW_Initialize_TC_Cation_Pools( ...
+                    P(j-1,:), ERW_biogeochem, ERW_const, TT_m.s(1,:));
                 ERW_initialized = true;
             end
 
             % changes in Xtot calculated from TC-BG (further distributed at dtw inside ERW_function)
             % [g X/m2 d-1]->[umol/d]
-            if j>2
-                ERW_biogeochem.dCa_tot(j,:) = (P(j,60) - P(j-1,60))/40*1e6;
-                ERW_biogeochem.dMg_tot(j,:) = (P(j,68) - P(j-1,68))/24.3*1e6;
-                ERW_biogeochem.dK_tot(j,:) = (P(j,52) - P(j-1,52))/39.1*1e6;
-                ERW_biogeochem.dSi_tot(j,:) = (P(j,76) - P(j-1,76))/28.1*1e6;
+            apply_tc_daily_delta = ERW_Should_Apply_TC_Daily_Delta(j,i,NN,Datam);
+            if apply_tc_daily_delta
+                ERW_biogeochem.dCa_tot(j,:) = ((P(j,60) + P(j,61)) - (P_prev_for_erw_delta(60) + P_prev_for_erw_delta(61)))/40*1e6;
+                ERW_biogeochem.dMg_tot(j,:) = ((P(j,68) + P(j,69)) - (P_prev_for_erw_delta(68) + P_prev_for_erw_delta(69)))/24.3*1e6;
+                ERW_biogeochem.dK_tot(j,:) = ((P(j,52) + P(j,53)) - (P_prev_for_erw_delta(52) + P_prev_for_erw_delta(53)))/39.1*1e6;
+                ERW_biogeochem.dSi_tot(j,:) = (P(j,76) - P_prev_for_erw_delta(76))/28.1*1e6;
 
-                ERW_biogeochem.dPO4_tot(j,:) = ERW_biogeo_PO4_fraction * (P(j,43) - P(j-1,43))/31*1e6;
-                ERW_biogeochem.dNO3_tot(j,:) = ERW_biogeo_NO3_fraction * (P(j,32) - P(j-1,32))/14*1e6;
-                ERW_biogeochem.dNH4_tot(j,:) = ERW_biogeo_NH4_fraction * (P(j,31) - P(j-1,31))/14*1e6;
+                ERW_biogeochem.dPO4_tot(j,:) = ERW_biogeo_PO4_fraction * (P(j,43) - P_prev_for_erw_delta(43))/31*1e6;
+                ERW_biogeochem.dNO3_tot(j,:) = ERW_biogeo_NO3_fraction * (P(j,32) - P_prev_for_erw_delta(32))/14*1e6;
+                ERW_biogeochem.dNH4_tot(j,:) = ERW_biogeo_NH4_fraction * (P(j,31) - P_prev_for_erw_delta(31))/14*1e6;
 
             else
                 ERW_biogeochem.dCa_tot(j,:) = 0;
@@ -929,6 +969,35 @@ for i=2:NN
              
             dm_start = find(TT_m.tt_h==TT_h_linear.tt_h(pmind(1)),1,'first');
             dm_end = find(TT_m.tt_h<TT_h_linear.tt_h(pmind(end)),1,'last');
+
+            erw_window_days = (dm_end-max(dm_start,2)+1)*dtw;
+            d_erw = ERW_Normalize_TC_Daily_Deltas([ ...
+                ERW_biogeochem.dCa_tot(j,:); ERW_biogeochem.dMg_tot(j,:); ...
+                ERW_biogeochem.dK_tot(j,:); ERW_biogeochem.dSi_tot(j,:); ...
+                ERW_biogeochem.dPO4_tot(j,:); ERW_biogeochem.dNO3_tot(j,:); ...
+                ERW_biogeochem.dNH4_tot(j,:)],erw_window_days);
+            ERW_biogeochem.dCa_tot(j,:)=d_erw(1,:);
+            ERW_biogeochem.dMg_tot(j,:)=d_erw(2,:);
+            ERW_biogeochem.dK_tot(j,:)=d_erw(3,:);
+            ERW_biogeochem.dSi_tot(j,:)=d_erw(4,:);
+            ERW_biogeochem.dPO4_tot(j,:)=d_erw(5,:);
+            ERW_biogeochem.dNO3_tot(j,:)=d_erw(6,:);
+            ERW_biogeochem.dNH4_tot(j,:)=d_erw(7,:);
+
+            %% NH4, NO3 and dissolved PO4 are biogeochemical boundary
+            %% conditions. The PO4 partition follows the same daily
+            %% equilibrium fraction used by T&C uptake and leakage. The
+            %% final flush reuses P(j) without its delta again.
+            if j >= 2
+                anchor_row = max(dm_start,2) - 1;
+                anchor_state_row = j - double(apply_tc_daily_delta);
+                ERW_biogeochem.PO4_tot(anchor_row,:) = ...
+                    ERW_biogeo_PO4_fraction * P(anchor_state_row,43)/31 * 1e6;
+                ERW_biogeochem.NH4_tot(anchor_row,:) = ...
+                    ERW_biogeo_NH4_fraction * P(anchor_state_row,31)/14 * 1e6;
+                ERW_biogeochem.NO3_tot(anchor_row,:) = ...
+                    ERW_biogeo_NO3_fraction * P(anchor_state_row,32)/14 * 1e6;
+            end
             
             for dt_m = max(dm_start,2):dm_end
 
@@ -959,7 +1028,7 @@ for i=2:NN
                 ERW_biogeochem.M_min(max(dt_m-1,1),:), ERW_const.M_iner, ERW_const.a, ERW_weathering.psd, ERW_const.d_in, ERW_weathering.lamb, dt_m, ERW_var.mineral, ERW_const.K_sp, ERW_const.diss_f, ERW_const.n_H, ERW_const.n_OH,...
                 opt_TC_biochem,...
                 ERW_biogeochem.dCa_tot(j,:), ERW_biogeochem.dMg_tot(j,:), ERW_biogeochem.dK_tot(j,:), ERW_biogeochem.dSi_tot(j,:),...
-                ERW_TC_const.cov_moll, ERW_TC_const.M_rock_add(dt_m,:),ERW_const.psd_perc_in, ERW_const.rock_f_in, ERW_const.SSA_in, rock_app,...
+                ERW_TC_const.cov_moll, ERW_TC_const.M_rock_add(dt_m,:),ERW_const.psd_perc_in, rock_f_in_erw, ERW_const.SSA_in, rock_app,...
                 ERW_TC.f_Lw_bio(j),ERW_TC.f_T_bio(j),...
                 ERW_biogeochem.PO4_tot(max(dt_m-1,1),:),ERW_biogeochem.PO4(max(dt_m-1,1),:),ERW_biogeochem.dPO4_tot(j,:),...
                 ERW_biogeochem.NO3_tot(max(dt_m-1,1),:),ERW_biogeochem.NO3(max(dt_m-1,1),:),ERW_biogeochem.dNO3_tot(j,:),...
@@ -967,105 +1036,6 @@ for i=2:NN
                 ERW_PARAM_input.keyword_add,...
                 ERW_TC_const.M_rock_add_CaCO3(dt_m,:),...
                 ERW_const.K_AlOH3, bulk_pH_params_erw);
-
-              if ERW_Should_Substep(ERW_var_ittn)
-                  ERW_probe_var_ittn = ERW_var_ittn;
-                  ERW_best_data_ittn = ERW_data_ittn;
-                  ERW_best_TC_ittn = ERW_TC_ittn;
-                  ERW_best_biogeochem_ittn = ERW_biogeochem_ittn;
-                  ERW_best_weathering_ittn = ERW_weathering_ittn;
-                  ERW_best_plant_ittn = ERW_plant_ittn;
-                  ERW_best_var_ittn = ERW_var_ittn;
-                  ERW_best_const_ittn = ERW_const_ittn;
-
-                  ERW_sub_state = ERW_Substep_State(ERW_biogeochem, ERW_weathering, ERW_const, dt_m);
-
-                  for erw_sub_i = 1:2
-                      erw_frac0 = (erw_sub_i-1)/2;
-                      erw_frac1 = erw_sub_i/2;
-                      erw_s_pre = ERW_const.s_pre + (TT_m.s(dt_m,:) - ERW_const.s_pre)*erw_frac0;
-                      erw_s = ERW_const.s_pre + (TT_m.s(dt_m,:) - ERW_const.s_pre)*erw_frac1;
-                      erw_Iw = TT_m.Iw(dt_m,:)/2;
-                      erw_M_rock_add = zeros(size(ERW_TC_const.M_rock_add(dt_m,:)));
-                      erw_CaCO3_rock = zeros(size(ERW_TC_const.M_rock_add_CaCO3(dt_m,:)));
-                      if erw_sub_i == 1
-                          erw_M_rock_add = ERW_TC_const.M_rock_add(dt_m,:);
-                          erw_CaCO3_rock = ERW_TC_const.M_rock_add_CaCO3(dt_m,:);
-                      end
-
-                      [ERW_data_try, ERW_TC_try, ERW_biogeochem_try, ERW_weathering_try, ERW_plant_try, ERW_var_try, ERW_const_try]=...
-                        ERW_function(...
-                        ERW_const.n, erw_s_pre, erw_s, TT_m.Lw(dt_m - 1,:), TT_m.Tw(dt_m - 1,:), erw_Iw,...
-                        ERW_const.Zrw, TT_m.r_het(dt_m - 1,:), TT_m.r_aut(dt_m - 1,:), TT_m.temp_soil(dt_m,:), ERW_const.K_CEC, ERW_sub_state.biogeochem.CEC_tot,...
-                        ERW_const.M_rock_in, ERW_const.k_diss_H, ERW_const.k_diss_w, ERW_const.k_diss_OH, ERW_const.E_H, ERW_const.E_w, ERW_const.E_OH, ERW_const.R, ERW_const.T_ref(dt_m - 1,:), ERW_const.K1, ERW_const.K2, ERW_const.K3, ERW_const.K4,...
-                        ERW_const.rho_rock, ERW_const.b, ERW_const.K_CaCO3, ERW_const.K_MgCO3, ERW_const.MM_min,...
-                        ERW_const.min_st, dtw/2, ERW_const.Al_CEC_scale, conv_mol,...
-                        ERW_sub_state.biogeochem.Ca, ERW_sub_state.biogeochem.Mg, ERW_sub_state.biogeochem.Na, ERW_sub_state.biogeochem.K, ERW_sub_state.biogeochem.An,...
-                        ERW_var.fsolve_options, ERW_const.Dw_0, ERW_const.D_0, ERW_const.pH_rain, TT_m.CO2_atm(dt_m,:), ERW_sub_state.biogeochem.CO2_air, ERW_const.Z_CO2,...
-                        ERW_sub_state.biogeochem.Ca_tot, ERW_sub_state.biogeochem.Mg_tot, ERW_sub_state.biogeochem.K_tot, ERW_sub_state.biogeochem.Na_tot, ERW_sub_state.biogeochem.An_tot, ERW_sub_state.biogeochem.Al_tot, ERW_sub_state.biogeochem.Si_tot,...
-                        ERW_sub_state.biogeochem.Al, ERW_sub_state.biogeochem.AlOH4, ERW_sub_state.biogeochem.Si,...
-                        ERW_sub_state.biogeochem.R_alk, ERW_sub_state.biogeochem.H,...
-                        ERW_sub_state.weathering.EW, ERW_sub_state.biogeochem.IC_tot, ERW_sub_state.weathering.Wr, ERW_sub_state.weathering.psd, ERW_sub_state.weathering.d, ERW_sub_state.weathering.lamb, ERW_sub_state.weathering.SSA,...
-                        ERW_sub_state.biogeochem.Fs, ERW_sub_state.biogeochem.DIC,...
-                        ERW_const.I_Ca, ERW_const.I_Mg, ERW_const.I_Na, ERW_const.I_K, ERW_const.I_An, ERW_const.I_Si, ERW_sub_state.weathering.W_CaCO3, ERW_sub_state.weathering.W_MgCO3, j_only,...
-                        ERW_sub_state.biogeochem.CaCO3, ERW_sub_state.biogeochem.MgCO3,...
-                        ERW_sub_state.biogeochem.f_CEC, ERW_sub_state.biogeochem.f_Ca, ERW_sub_state.biogeochem.f_Mg, ERW_sub_state.biogeochem.f_K, ERW_sub_state.biogeochem.f_Na, ERW_sub_state.biogeochem.f_Al, ERW_sub_state.biogeochem.f_H,...
-                        ERW_const.r_CaCO3, ERW_const.r_MgCO3, ERW_const.tau_CaCO3, ERW_const.tau_MgCO3,...
-                        ERW_sub_state.biogeochem.M_min, ERW_sub_state.M_iner, ERW_const.a, ERW_weathering.psd, ERW_const.d_in, ERW_weathering.lamb, dt_m, ERW_var.mineral, ERW_const.K_sp, ERW_const.diss_f, ERW_const.n_H, ERW_const.n_OH,...
-                        opt_TC_biochem,...
-                        ERW_biogeochem.dCa_tot(j,:), ERW_biogeochem.dMg_tot(j,:), ERW_biogeochem.dK_tot(j,:), ERW_biogeochem.dSi_tot(j,:),...
-                        ERW_TC_const.cov_moll, erw_M_rock_add,ERW_const.psd_perc_in, ERW_const.rock_f_in, ERW_const.SSA_in, rock_app,...
-                        ERW_TC.f_Lw_bio(j),ERW_TC.f_T_bio(j),...
-                        ERW_sub_state.biogeochem.PO4_tot,ERW_sub_state.biogeochem.PO4,ERW_biogeochem.dPO4_tot(j,:),...
-                        ERW_sub_state.biogeochem.NO3_tot,ERW_sub_state.biogeochem.NO3,ERW_biogeochem.dNO3_tot(j,:),...
-                        ERW_sub_state.biogeochem.NH4_tot,ERW_sub_state.biogeochem.NH4,ERW_biogeochem.dNH4_tot(j,:),...
-                        ERW_PARAM_input.keyword_add,...
-                        erw_CaCO3_rock,...
-                        ERW_const.K_AlOH3, bulk_pH_params_erw);
-
-                      if erw_sub_i == 2 && ERW_Is_Better_Attempt(ERW_best_var_ittn, ERW_var_try)
-                          ERW_best_data_ittn = ERW_data_try;
-                          ERW_best_TC_ittn = ERW_TC_try;
-                          ERW_best_biogeochem_ittn = ERW_biogeochem_try;
-                          ERW_best_weathering_ittn = ERW_weathering_try;
-                          ERW_best_plant_ittn = ERW_plant_try;
-                          ERW_best_var_ittn = ERW_var_try;
-                          ERW_best_const_ittn = ERW_const_try;
-                      end
-
-                      if ERW_Should_Substep(ERW_var_try)
-                          break
-                      end
-                      ERW_sub_state.biogeochem = ERW_biogeochem_try;
-                      ERW_sub_state.weathering = ERW_weathering_try;
-                      ERW_sub_state.M_iner = ERW_const_try.M_iner;
-                  end
-
-                  if erw_sub_i == 2 && ~ERW_Should_Substep(ERW_var_try)
-                      ERW_data_ittn = ERW_data_try;
-                      ERW_TC_ittn = ERW_TC_try;
-                      ERW_biogeochem_ittn = ERW_biogeochem_try;
-                      ERW_weathering_ittn = ERW_weathering_try;
-                      ERW_plant_ittn = ERW_plant_try;
-                      ERW_var_ittn = ERW_var_try;
-                      ERW_const_ittn = ERW_const_try;
-                      fprintf('  ERW substep retry: step=%d accepted with 2 substeps (probe res=%.3g, final res=%.3g)\n', ...
-                          dt_m, ERW_probe_var_ittn.max_scaled_res, ERW_var_ittn.max_scaled_res);
-                  else
-                      if ERW_Is_Better_Attempt(ERW_var_ittn, ERW_best_var_ittn)
-                          ERW_data_ittn = ERW_best_data_ittn;
-                          ERW_TC_ittn = ERW_best_TC_ittn;
-                          ERW_biogeochem_ittn = ERW_best_biogeochem_ittn;
-                          ERW_weathering_ittn = ERW_best_weathering_ittn;
-                          ERW_plant_ittn = ERW_best_plant_ittn;
-                          ERW_var_ittn = ERW_best_var_ittn;
-                          ERW_const_ittn = ERW_best_const_ittn;
-                      end
-                      if ERW_var_ittn.max_scaled_res > 10*ERW_var_ittn.res_threshold
-                          ERW_Report_NoConverge(dt_m, ERW_TC_ittn, ERW_biogeochem_ittn, ERW_var_ittn);
-                      end
-                  end
-              end
 
               % biogeochemical
               for var_index = 1:size(ERW_biogeochem_varnames, 1)
@@ -1091,7 +1061,7 @@ for i=2:NN
               ERW_const.M_iner = ERW_const_ittn.M_iner;
 
             end
-            
+
             %%%%%%%%%%%%%%%%%% ERW -> update TC %%%%%%%%%%%%%%%%%%%%%%%%%%%      
             % update pH
             PH_pore_now = ERW_biogeochem.pH(dm_end,:);
@@ -1099,8 +1069,9 @@ for i=2:NN
             % bulk pH from extract conversion
             % Transfer the complete current field dissolved inventory to
             % the air-dried extract, as in the 2-D driver (ERW_Daily_Step_2D).
-            % PH (and so PH_d) is the bulk extract pH the observations see;
-            % PH_pore_now stays in ERW_biogeochem.pH for diagnostics.
+            % Bulk extract pH is retained in ERW_biogeochem.pH_bulk for
+            % comparison with observations. Aqueous reactions use pore-water
+            % pH; biological response functions use the bulk extract pH.
             k1_b  = ERW_biogeochem.k1(dm_end, 1);
             k2_b  = ERW_biogeochem.k2(dm_end, 1);
             kw_b  = ERW_biogeochem.k_w(dm_end, 1);
@@ -1113,7 +1084,10 @@ for i=2:NN
                 s_col = TT_m.s(dm_end, min(col, size(TT_m.s,2)));
                 bulk_pH_params_now.field_water_L_m2 = ...
                     n_col * s_col * ERW_const.Zrw * 1000;
-                pH_bulk_now(col) = Porewater_to_Bulk_pH(...
+                bulk_pH_params_now.DIC_field_umol_L = ...
+                    ERW_biogeochem.DIC(dm_end,col);
+                bulk_pH_params_now.solid_CaCO3_umol_m2 = 0;
+                [pH_bulk_now(col),bulk_pH_diag_now] = Porewater_to_Bulk_pH(...
                     ERW_biogeochem.H(dm_end, col), ...
                     ERW_biogeochem.Ca(dm_end, col), ERW_biogeochem.Mg(dm_end, col), ...
                     ERW_biogeochem.K(dm_end, col), ERW_biogeochem.Na(dm_end, col), ...
@@ -1129,22 +1103,26 @@ for i=2:NN
                     ERW_biogeochem.CEC_tot(dm_end, col), ERW_const.rho_bulk, ...
                     ERW_const.Zrw, conv_mol, bulk_pH_params_now, ...
                     ERW_const.Al_CEC_scale);
+                ERW_const.bulk_pH_params.H_prev = bulk_pH_diag_now.H;
+                ERW_const.bulk_pH_params.H_prev_valid = true;
             end
             ERW_biogeochem.pH_bulk(dm_end, :) = pH_bulk_now;
-            PH = pH_bulk_now;
+            PH = PH_pore_now;
+            PH_bulk = pH_bulk_now(1);
             
             % update Xtot based on X conc from ERW module: [umol/l] -> [gX /m^2 d] 
-            P(j, 60)= ERW_biogeochem.Ca(dm_end,:)* 40 * cov_moll / 1e6; %  Ca [g /m^2 d]
-            P(j, 68)= ERW_biogeochem.Mg(dm_end,:)* 24.3 * cov_moll / 1e6; %  Mg [g /m^2 d]
-            P(j, 52)= ERW_biogeochem.K(dm_end,:)* 39.1 * cov_moll / 1e6; %  K [g /m^2 d]
-            P(j, 76)= ERW_biogeochem.Si(dm_end,:)* 28.1 * cov_moll / 1e6; % Si [g /m^2 d]
-            % Only write the phosphate pool back when ERW was handed all of it.
-            % With a solution fraction < 1 the solver carries the dissolved
-            % subset, and overwriting the whole labile pool with it would
-            % destroy the sorbed remainder (a ~200x pool loss at aP = 0.005).
-            if ERW_biogeo_PO4_fraction >= 1
-                P(j, 43)= ERW_biogeochem.PO4(dm_end,:)* 31 * cov_moll / 1e6; % PO4 [g /m^2 d]
-            end
+            cov_moll_end = ERW_const.n * ERW_const.Zrw * TT_m.s(dm_end,:) * 1000;
+            P(j, 60)= ERW_biogeochem.Ca(dm_end,:)* 40 * cov_moll_end / 1e6; %  Ca [g /m^2 d]
+            P(j, 61)= ERW_biogeochem.f_Ca(dm_end,:).*ERW_biogeochem.CEC_tot(dm_end,:)/2*40/1e6;
+            P(j, 68)= ERW_biogeochem.Mg(dm_end,:)* 24.3 * cov_moll_end / 1e6; %  Mg [g /m^2 d]
+            P(j, 69)= ERW_biogeochem.f_Mg(dm_end,:).*ERW_biogeochem.CEC_tot(dm_end,:)/2*24.3/1e6;
+            P(j, 52)= ERW_biogeochem.K(dm_end,:)* 39.1 * cov_moll_end / 1e6; %  K [g /m^2 d]
+            P(j, 53)= ERW_biogeochem.f_K(dm_end,:).*ERW_biogeochem.CEC_tot(dm_end,:)*39.1/1e6;
+            P(j, 76)= ERW_biogeochem.Si(dm_end,:)* 28.1 * cov_moll_end / 1e6; % Si [g /m^2 d]
+            P(j, 43) = ERW_Return_Weathered_Phosphorus( ...
+                P(j,43),ERW_biogeochem.PO4_tot(dm_end,:), ...
+                ERW_biogeo_PO4_fraction, ...
+                ERW_weathering.P_weathering_release(max(dm_start,2):dm_end,:));
 
             
         end
@@ -1293,114 +1271,4 @@ clear dB_H  dB_L dNres_H  dNres_L  dPres_H dKres_H  dPres_L dKres_L ed dCares_H 
 clear Se_bio Psi_bio Tdp_bio VSUM VTSUM IS Tex 
 clear  Tstm0 snow_alb  kj m p  pdind STOT  PARAM_IC
 clear Bam Bem FireA Se_fc REXMY
-
-function tf = ERW_Should_Substep(ERW_var)
-tf = false;
-if ~(isstruct(ERW_var) && isfield(ERW_var, 'max_scaled_res'))
-    return
-end
-if isfield(ERW_var, 'no_converge')
-    tf = logical(ERW_var.no_converge);
-    return
-end
-if isfield(ERW_var, 'res_threshold') && isfinite(ERW_var.res_threshold)
-    tf = ERW_var.max_scaled_res > 10*ERW_var.res_threshold;
-end
-end
-
-function tf = ERW_Is_Better_Attempt(best_var, try_var)
-tf = false;
-if ~(isstruct(best_var) && isstruct(try_var))
-    return
-end
-if ~(isfield(best_var, 'max_scaled_res') && isfield(try_var, 'max_scaled_res'))
-    return
-end
-tf = isfinite(try_var.max_scaled_res) && ...
-    (~isfinite(best_var.max_scaled_res) || try_var.max_scaled_res < best_var.max_scaled_res);
-end
-
-function state = ERW_Substep_State(ERW_biogeochem, ERW_weathering, ERW_const, dt_m)
-idx = max(dt_m-1,1);
-bio_fields = {'Ca','Mg','Na','K','An','CO2_air','CEC_tot','Ca_tot','Mg_tot','K_tot', ...
-    'Na_tot','An_tot','Al_tot','Si_tot','Al','AlOH4','Si','R_alk','H','IC_tot', ...
-    'Fs','DIC','CaCO3','MgCO3','f_CEC','f_Ca','f_Mg','f_K','f_Na','f_Al', ...
-    'f_H','M_min','PO4_tot','PO4','NO3_tot','NO3','NH4_tot','NH4'};
-weathering_fields = {'EW','Wr','psd','d','lamb','SSA','W_CaCO3','W_MgCO3'};
-state = struct();
-state.biogeochem = struct();
-state.weathering = struct();
-for ii = 1:numel(bio_fields)
-    vn = bio_fields{ii};
-    state.biogeochem.(vn) = ERW_Row_Field(ERW_biogeochem.(vn), idx);
-end
-for ii = 1:numel(weathering_fields)
-    vn = weathering_fields{ii};
-    state.weathering.(vn) = ERW_Row_Field(ERW_weathering.(vn), idx);
-end
-state.M_iner = ERW_const.M_iner;
-end
-
-function row = ERW_Row_Field(x, idx)
-if isvector(x)
-    row = x(min(idx, numel(x)));
-elseif ndims(x) == 2
-    row = x(min(idx, size(x,1)),:);
-else
-    row = x(min(idx, size(x,1)),:,:);
-end
-end
-
-function ERW_Report_NoConverge(dt_m, ERW_TC, ERW_biogeochem, ERW_var)
-dominant = 'unknown';
-if isfield(ERW_var, 'dominant_residual_name') && ~isempty(ERW_var.dominant_residual_name)
-    dominant = ERW_var.dominant_residual_name;
-end
-raw_dominant = NaN;
-if isfield(ERW_var, 'raw_residual') && isfield(ERW_var, 'errors') && numel(ERW_var.raw_residual) == numel(ERW_var.errors)
-    [~,idx] = max(abs(ERW_var.errors(:)));
-    raw_dominant = abs(ERW_var.raw_residual(idx));
-end
-soil_water_l = NaN;
-if isfield(ERW_biogeochem, 'Dw') && isfield(ERW_TC, 's')
-    soil_water_l = ERW_TC.s;
-end
-fprintf('[ERW diag] step=%d  s=%.4f  Al_tot=%.3g  res=%.3g\n', ...
-    dt_m, ERW_TC.s, ERW_biogeochem.Al_tot, ERW_var.max_scaled_res);
-if isfield(ERW_var, 'candidate_summary') && ~isempty(ERW_var.candidate_summary)
-    fprintf('[ERW candidate summary] step=%d %s\n', dt_m, ERW_var.candidate_summary);
-end
-if isfield(ERW_var, 'errors') && isfield(ERW_var, 'equation_names')
-    fprintf('[ERW resdetail] step=%d raw:', dt_m);
-    for rq = 1:numel(ERW_var.errors)
-        fprintf(' %s=%.4g', ERW_var.equation_names{rq}, ERW_var.errors(rq));
-    end
-    fprintf('\n');
-end
-if isfield(ERW_var, 'x0')
-    fprintf('[ERW x0] step=%d: ', dt_m);
-    fprintf('%.6g ', ERW_var.x0);
-    fprintf('\n');
-end
-if isfield(ERW_biogeochem, 'R_alk') && isfield(ERW_biogeochem, 'Alk_tot')
-    idx_st = min(dt_m, numel(ERW_biogeochem.R_alk));
-    fprintf('[ERW state] step=%d R_alk=%.6g Alk_tot=%.6g diff=%.6g CEC=%.6g', dt_m, ...
-        ERW_biogeochem.R_alk(idx_st), ERW_biogeochem.Alk_tot(idx_st), ...
-        ERW_biogeochem.Alk_tot(idx_st)-ERW_biogeochem.R_alk(idx_st), ERW_biogeochem.CEC_tot(idx_st));
-    for fq = {'f_Ca','f_Mg','f_Na','f_K','f_Al','f_H'}
-        if isfield(ERW_biogeochem, fq{1})
-            fprintf(' %s=%.4g', fq{1}, ERW_biogeochem.(fq{1})(min(idx_st,numel(ERW_biogeochem.(fq{1})))));
-        end
-    end
-    for cq = {'H','CO2_w','Alk','IC_tot','Ca','Mg','Na','K','Al_w'}
-        if isfield(ERW_biogeochem, cq{1})
-            fprintf(' %s=%.6g', cq{1}, ERW_biogeochem.(cq{1})(min(idx_st,numel(ERW_biogeochem.(cq{1})))));
-        end
-    end
-    fprintf('\n');
-end
-warning('ERW:NoConverge', ...
-    'Step %d: solver did not converge after adaptive substepping (dominant=%s, max scaled|res|=%.2e, raw dominant=%.2e, max raw|res|=%.2e).', ...
-    dt_m, dominant, ERW_var.max_scaled_res, raw_dominant, ERW_var.max_raw_res);
-end
 

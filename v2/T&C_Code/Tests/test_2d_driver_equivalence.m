@@ -99,12 +99,34 @@ for k = 1:numel(exact_names)
 end
 
 fprintf('\nERW-coupled chemistry (relative tol = %.0e):\n',tol_chem);
-chem_names  = {'P','PH_d','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI'};
-chem_labels = {'P   BG pools','PH_d pore pH','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI'};
+chem_names  = {'P','PH_d','VOL','NITflx','DENITflx','N2Oflx_nit', ...
+    'N2flx','N2Oflx','LEAK_NO3','LEAK_NH4','NavlI'};
+chem_labels = {'P   BG pools','PH_d pore pH','VOL','NITflx', ...
+    'DENITflx','N2Oflx_nit','N2flx','N2Oflx','LEAK_NO3', ...
+    'LEAK_NH4','NavlI'};
 for k = 1:numel(chem_names)
     ok = compare_field(chem_labels{k},R1.(chem_names{k}),S2.(chem_names{k}),tol_chem);
     if ok; n_pass = n_pass + 1; else; n_fail = n_fail + 1; end
 end
+
+fprintf('\nERW mineral-N handoff at ordinary daily calls (relative tol = 1e-10):\n');
+BiogeoPar = Biogeochemistry_Parameter(1);
+handoff = { ...
+    '1-D NH4 boundary',R1.ERW_biogeochem.NH4_tot,R1.P,R1.Datam, ...
+        R1.MOD_PARAM_input.t_res,BiogeoPar.aNH4,31; ...
+    '1-D NO3 boundary',R1.ERW_biogeochem.NO3_tot,R1.P,R1.Datam, ...
+        R1.MOD_PARAM_input.t_res,BiogeoPar.aNO3,32; ...
+    '2-D NH4 boundary',S2.ERW{1}.bg.NH4_tot,S2.P,R1.Datam, ...
+        S2.ERW{1}.res,BiogeoPar.aNH4,31; ...
+    '2-D NO3 boundary',S2.ERW{1}.bg.NO3_tot,S2.P,R1.Datam, ...
+        S2.ERW{1}.res,BiogeoPar.aNO3,32};
+for k = 1:size(handoff,1)
+    ok = compare_handoff(handoff{k,:});
+    if ok; n_pass = n_pass + 1; else; n_fail = n_fail + 1; end
+end
+ok = compare_field('ERW IC_tot',R1.ERW_biogeochem.IC_tot, ...
+    S2.ERW{1}.bg.IC_tot,tol_chem);
+if ok; n_pass = n_pass + 1; else; n_fail = n_fail + 1; end
 
 fprintf('\n  ---------------------------------------\n');
 fprintf('  %d passed, %d failed\n\n', n_pass, n_fail);
@@ -113,6 +135,36 @@ if n_fail > 0
 end
 fprintf('2-D driver reproduces the single-column frame at N_col = 1.\n\n');
 
+end
+
+%% =======================================================================
+function ok = compare_handoff(name,total,P,Datam,res,fraction,pool_column)
+daily_i = find(Datam(:,4) == 1);
+if numel(daily_i) < 2
+    fprintf('  FAIL  %-18s fewer than two ordinary daily calls\n',name);
+    ok = false; return
+end
+anchor_rows = round(res*(daily_i(1:end-1)-1));
+pool_rows = (2:numel(daily_i)).';
+P = squeeze(P);
+if any(anchor_rows < 1) || max(anchor_rows) > size(total,1) || ...
+        max(pool_rows) > size(P,1)
+    fprintf('  FAIL  %-18s boundary indices are outside the saved state\n',name);
+    ok = false; return
+end
+actual = total(anchor_rows,1);
+expected = fraction*P(pool_rows,pool_column)/14*1e6;
+if any(~isfinite(actual)) || any(actual < 0) || any(~isfinite(expected))
+    fprintf('  FAIL  %-18s nonphysical boundary inventory\n',name);
+    ok = false; return
+end
+rel = max(abs(actual(:)-expected(:))./max(1,abs(expected(:))));
+ok = rel < 1e-10;
+if ok
+    fprintf('  PASS  %-18s max relative error %.3e\n',name,rel);
+else
+    fprintf('  FAIL  %-18s max relative error %.3e\n',name,rel);
+end
 end
 
 %% =======================================================================
@@ -201,6 +253,8 @@ cleanup = onCleanup(@() cd(old));
 MAIN_FRAME_BG_ERW_2D;
 
 S2 = struct('O',O,'V',V,'Ts',Ts,'Tdp',Tdp,'Lk',Lk,'T_H',T_H,'T_L',T_L, ...
-    'EG',EG,'LAI_L',LAI_L,'B_L',B_L,'P',P,'PH_d',PH_d,'N2Oflx',N2Oflx, ...
-    'LEAK_NO3',LEAK_NO3,'LEAK_NH4',LEAK_NH4,'NavlI',NavlI);
+    'EG',EG,'LAI_L',LAI_L,'B_L',B_L,'P',P,'PH_d',PH_d,'VOL',VOL, ...
+    'NITflx',NITflx,'DENITflx',DENITflx,'N2Oflx_nit',N2Oflx_nit, ...
+    'N2flx',N2flx,'N2Oflx',N2Oflx,'LEAK_NO3',LEAK_NO3, ...
+    'LEAK_NH4',LEAK_NH4,'NavlI',NavlI,'ERW',{ERW});
 end

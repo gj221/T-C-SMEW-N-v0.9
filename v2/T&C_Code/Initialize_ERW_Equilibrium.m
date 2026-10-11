@@ -42,8 +42,7 @@
 %%%   K1_Al..K4_Al Al hydrolysis constants [umol/L]  (pK1=5, pK2=5.1, pK3=6.7, pK4=6.2)
 %%%   conv_mol     unit conversion mol/L -> umol/L (= 1e6)
 %%%   K_AlOH3      log10 *Kso for Al(OH)3 dissolution [mol/L convention].
-%%%                Microcrystalline/proto-gibbsite in agricultural soils: 9.66.
-%%%                Crystalline gibbsite lower bound: 8.04.  Amorphous upper bound: 10.8.
+%%%                Crystalline gibbsite: 8.04.  Amorphous Al(OH)3: 10.8.
 %%%   Al_CEC_scale ERW solver Al storage scaling (conv_Al = 1e3); result is
 %%%                multiplied by this so that Al_w_eq is in model units.
 %%% OUTPUT

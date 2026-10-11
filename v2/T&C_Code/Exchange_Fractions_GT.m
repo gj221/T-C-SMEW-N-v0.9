@@ -68,7 +68,10 @@ den_H = H^4 + H^3*K1_Al + H^2*K1_Al*K2_Al + H*K1_Al*K2_Al*K3_Al + K1_Al*K2_Al*K3
 if ~(isfinite(den_H) && den_H > 0)
     error('ERW:invalidState', 'Exchange_Fractions_GT: invalid Al hydrolysis denominator.');
 end
-Al3 = (H^4/den_H) * max(Al_w, 0);
+if ~(isfinite(Al_w) && Al_w >= 0)
+    error('ERW:invalidState', 'Exchange_Fractions_GT requires nonnegative dissolved Al.');
+end
+Al3 = (H^4/den_H) * Al_w;
 
 %%% Gaines-Thomas coefficients (f_X / f_Ca^power) evaluated at the given solution
 A_Mg  = Mg  / (K_Ca_Mg  * Ca);
@@ -77,42 +80,33 @@ A_K   = K   / sqrt(K_Ca_K  * Ca);
 A_H   = H   / sqrt(K_Ca_H  * Ca);
 A_Al  = (Al3/Al_CEC_scale) / sqrt(K_Ca_Al * Ca^3);
 
-%%% Solve the site balance sum = 1 for f_Ca.  Bracketed fzero with a
-%%% bisection fallback mirrors the existing Zhang/conc_to_f_CEC init solves.
-%%% fzero_opts is built once per MATLAB session (persistent) rather than via
-%%% a fresh optimset() call every invocation: this function runs inside the
-%%% daily ERW pH solve, so the per-call optimset overhead was paid on every
-%%% timestep of every transient/spinup run.
-persistent fzero_opts
-if isempty(fzero_opts)
-    fzero_opts = optimset('Display','off');
+%%% Solve in y=sqrt(f_Ca).  The residual is continuous and strictly increasing
+%%% on [0,1], while y remains numerically resolvable when f_Ca tends to zero.
+site_sum = @(y) A_Al*y^3 + (1 + A_Mg)*y^2 ...
+    + (A_K + A_Na + A_H)*y - 1;
+lo = 0;
+hi = 1;
+for iter = 1:80
+    mid = 0.5*(lo + hi);
+    if site_sum(mid) > 0
+        hi = mid;
+    else
+        lo = mid;
+    end
 end
-site_sum = @(x) x*(1 + A_Mg) ...
-    + (A_K + A_Na + A_H) * sqrt(max(x, 0)) ...
-    + A_Al * sqrt(max(x, 0)^3) - 1;
-g_lo = site_sum(1e-12);
-g_hi = site_sum(1 - 1e-12);
-if sign(g_lo) ~= sign(g_hi)
-    f_Ca = fzero(site_sum, [1e-12, 1-1e-12], fzero_opts);
-else
-    f_Ca = 1 / (1 + A_Mg);   %% Ca-Mg dominated fallback when other cations vanish
-end
-f_Ca = max(1e-6, min(f_Ca, 1 - 1e-6));
+y = 0.5*(lo + hi);
+f_Ca = y^2;
 
-f_Mg  = max(0, A_Mg  * f_Ca);
-f_Na  = max(0, A_Na  * sqrt(f_Ca));
-f_K   = max(0, A_K   * sqrt(f_Ca));
-f_H   = max(0, A_H   * sqrt(f_Ca));
-f_Al  = max(0, A_Al  * sqrt(f_Ca^3));
+f_Mg  = A_Mg * f_Ca;
+f_Na  = A_Na * y;
+f_K   = A_K  * y;
+f_H   = A_H  * y;
+f_Al  = A_Al * y^3;
 
-% Normalize to sum = 1.  The Gaines-Thomas site-balance solver should already
-% satisfy this, but pathological inputs (e.g. Na >> Ca from rain-budget
-% derivations in the transient) can push the numeric sum far above 1.
-% Normalization guarantees the exchange site balance invariant.
 f_tot = f_Ca + f_Mg + f_K + f_Na + f_Al + f_H;
-if f_tot > 0
-    f_Ca = f_Ca / f_tot; f_Mg = f_Mg / f_tot; f_K = f_K / f_tot;
-    f_Na = f_Na / f_tot; f_Al = f_Al / f_tot; f_H = f_H / f_tot;
+if ~(all(isfinite([f_Ca,f_Mg,f_K,f_Na,f_Al,f_H])) && ...
+        all([f_Ca,f_Mg,f_K,f_Na,f_Al,f_H] >= 0) && abs(f_tot - 1) <= 1e-11)
+    error('ERW:exchangeClosure', 'Gaines-Thomas exchange fractions do not close.');
 end
 end
 

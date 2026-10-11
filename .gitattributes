@@ -3,3 +3,5 @@
 # back CRLF and the cluster fails them with $'\r': command not found.
 *.sbatch text eol=lf
 *.sh     text eol=lf
+runtime/bouchet_all_12_package_manifest.txt text eol=lf
+runtime/bouchet_moisture_sweep_package_manifest.txt text eol=lf

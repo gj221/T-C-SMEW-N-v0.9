@@ -165,13 +165,12 @@ addpath(test_dir,one_d_runtime);
 old_dir = pwd;
 cleanup = onCleanup(@() cd(old_dir));
 cd(test_dir);
-%% Hashing the test files proves only that they exist.  The 2-D gate runs
-%% the same authoritative suite as the 1-D gate, so chemistry, nutrient,
-%% conservation and error-path coverage stands behind both campaigns.
-run_post_legacy_equation_audit_tests(1);
+%% Production also depends on the complete 1-D audit. This element checks
+%% the 2-D wrapper and Linux deployment without repeating the four long
+%% pre-application trajectories on a second node.
+test_bouchet_2d_parallel_configuration;
 test_biogeochemistry_io_path_portability;
 test_bouchet_linux_portability(campaign_dir);
-Validate_Bouchet_1D_Preapplication_Identity;
 logs_dir = fullfile(repo_root,'v2','logs','Subfield_12',campaign_tag);
 fingerprint = Bouchet_Campaign_Validation_Fingerprint( ...
     fullfile(repo_root,'v2'),campaign_dir,campaign_tag,12,6, ...

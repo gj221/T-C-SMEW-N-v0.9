@@ -7,16 +7,23 @@ function[P,LEAK_NH4,LEAK_NO3,LEAK_P,LEAK_K,LEAK_DOC,LEAK_DON,LEAK_DOP,...
     Cauptake_H,Mguptake_H,Siuptake_H,Cauptake_L,Mguptake_L,Siuptake_L,...
     RexmyI,...
     R_litter,R_microbe,R_litter_sur,R_ew,VOL,N2flx,Min_N,Min_P,...
-    R_bacteria,RmycAM,RmycEM,Prod_B,Prod_F,BfixN,NavlI,LitFirEmi,N2Oflx]= BIOGEO_UNIT(Ptm1,IS,ZBIOG,rsd,...
-    PH,Ts,Ta,Psi_s,Se,Se_fc,V,VT,Ccrown,Bio_Zs,RfH_Zs,RfL_Zs,...
+    R_bacteria,RmycAM,RmycEM,Prod_B,Prod_F,BfixN,NavlI,LitFirEmi,N2Oflx,...
+    FertN,DepN,NITflx,DENITflx,N2Oflx_nit]= BIOGEO_UNIT(Ptm1,IS,ZBIOG,rsd,...
+    PH_bulk,Ts,Ta,Psi_s,Se,Se_fc,V,VT,Ccrown,Bio_Zs,RfH_Zs,RfL_Zs,...
     Lk,T_H,T_L,Broot_H,Broot_L,LAI_H,LAI_L,...
     SupN_H,SupP_H,SupK_H,SupN_L,SupP_L,SupK_L,...
     SupCa_H,SupMg_H,SupSi_H,SupCa_L,SupMg_L,SupSi_L,...
     Rexmy,RexmyI,ExEM,NavlI,Pcla,Psan,...
     B_IO,Date,FireA,AAET,...
-    opt_ERW,opt_BfixN,L_pore)
+    opt_ERW,opt_BfixN,f_anaer,WFPS,exchange_scheme,KNmaxd_override)
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%% INPUT
+if ~exist('exchange_scheme','var') || isempty(exchange_scheme)
+    exchange_scheme = 'TC_GT';
+end
+if ~exist('KNmaxd_override','var')
+    KNmaxd_override = [];
+end
 ZBIOG=ZBIOG/1000; %% [m]
 %%%%%%%
 %%% Mean value of an exponential distribution MV = Zperc/(-ln(1-perc)); %%
@@ -160,7 +167,7 @@ IMAN(9)=  ManF./Si_Man; % [gSi/m^2 day]
 
 %%%%%%%%%%%%%%%%%%%%%%%%
 opt_cons_CUE=1;
-[BiogeoPar]=Biogeochemistry_Parameter(opt_cons_CUE);
+[BiogeoPar]=Biogeochemistry_Parameter(opt_cons_CUE,KNmaxd_override);
 %%%%%%%%%
 [LEAK_NH4,LEAK_NO3,LEAK_P,LEAK_K,LEAK_DOC,LEAK_DON,LEAK_DOP,...
     LEAK_Ca,LEAK_Mg,LEAK_Si]= Biogeo_Leakage(Ptm1,Lk,V,BiogeoPar);
@@ -225,12 +232,12 @@ Mg_Uptake  = Mg_Uptake*uptake_scale(6);
 Si_Uptake  = Si_Uptake*uptake_scale(7);
 
 %%%%
-[BfixN]= Biogeo_Bio_fixation(AAET,LAI,Ptm1,RexmyI,Ts,opt_BfixN);
+[BfixN]= Biogeo_Bio_fixation(AAET,LAI,Ptm1,Rexmy,Ts,opt_BfixN);
 %%%%%
 t=[];
 [dP,R_litter,R_microbe,R_litter_sur,R_ew,VOL,N2flx,Min_N,Min_P,...
-    R_bacteria,RmycAM,RmycEM,Prod_B,Prod_F,N2Oflx]= BIOGEOCHEMISTRY_DYNAMIC3(t,Ptm1,ZBIOG,rsd,...
-    IS,Ts,Ta,Psi_s,PH,Se,Se_fc,...
+    R_bacteria,RmycAM,RmycEM,Prod_B,Prod_F,N2Oflx,NITflx,DENITflx,N2Oflx_nit]= BIOGEOCHEMISTRY_DYNAMIC3(t,Ptm1,ZBIOG,rsd,...
+    IS,Ts,Ta,Psi_s,PH_bulk,Se,Se_fc,...
     FertN,DepN,BfixN,FertP,DepP,FertK,DepK,...
     FertCa,DepCa,FertMg,DepMg,FertSi,DepSi,...
     NH4_Uptake,NO3_Uptake,P_Uptake,K_Uptake,...
@@ -239,61 +246,40 @@ t=[];
     LEAK_Ca,LEAK_Mg,LEAK_Si,...
     Tup_P,Tup_K,...
     Tup_Ca,Tup_Mg,Tup_Si, ...
-    ExEM,Pcla,Psan,BiogeoPar,SC_par,IMAN,opt_cons_CUE,opt_ERW,L_pore);
+    ExEM,Pcla,Psan,BiogeoPar,SC_par,IMAN,opt_cons_CUE,opt_ERW,f_anaer,WFPS,exchange_scheme);
 %%%%%%
-if isreal(sum(dP))==0 || isnan(sum(dP)) == 1
-    disp('NaN in Biogeochemistry Pools')
-    return
+if ~isreal(dP) || any(~isfinite(dP))
+    error('BIOGEO_UNIT:InvalidPoolIncrement', ...
+        'Biogeochemistry pool increments must be finite and real.')
 end
 %%%
 P=Ptm1+dP;
-if (sum(P>(10^15)))>1 
-    disp('Issue in the Biogeochemistry Pools')
-    return
+if ~isreal(P) || any(~isfinite(P))
+    error('BIOGEO_UNIT:InvalidPoolState', ...
+        'Biogeochemistry pools must remain finite and real.')
 end
-%%%%%  Passing External Uptakes in units of [./m2 PFT]  
-Nuptake_H=(NH4_Uptake_H+NO3_Uptake_H).*(1-SupN_H)./Ccrown;
-NH4uptake_H = NH4_Uptake_H.*(1-SupN_H)./Ccrown;
-NO3uptake_H = NO3_Uptake_H.*(1-SupN_H)./Ccrown;
+if (sum(P>(10^15)))>1 
+    error('BIOGEO_UNIT:ExcessivePoolState', ...
+        'Multiple biogeochemistry pools exceeded the legacy 1e15 limit.')
+end
+%%%%%  Passing External Uptakes in units of [./m2 PFT]
+Nuptake_H = Biogeo_Per_Crown_Flux(NH4_Uptake_H+NO3_Uptake_H,SupN_H,Ccrown);
+NH4uptake_H = Biogeo_Per_Crown_Flux(NH4_Uptake_H,SupN_H,Ccrown);
+NO3uptake_H = Biogeo_Per_Crown_Flux(NO3_Uptake_H,SupN_H,Ccrown);
+Puptake_H = Biogeo_Per_Crown_Flux(P_Uptake_H,SupP_H,Ccrown);
+Kuptake_H = Biogeo_Per_Crown_Flux(K_Uptake_H,SupK_H,Ccrown);
+Cauptake_H = Biogeo_Per_Crown_Flux(Ca_Uptake_H,SupCa_H,Ccrown);
+Mguptake_H = Biogeo_Per_Crown_Flux(Mg_Uptake_H,SupMg_H,Ccrown);
+Siuptake_H = Biogeo_Per_Crown_Flux(Si_Uptake_H,SupSi_H,Ccrown);
 
-Puptake_H=P_Uptake_H.*(1-SupP_H)./Ccrown;
-Kuptake_H=K_Uptake_H.*(1-SupK_H)./Ccrown;
-
-Cauptake_H=Ca_Uptake_H.*(1-SupCa_H)./Ccrown;
-Mguptake_H=Mg_Uptake_H.*(1-SupMg_H)./Ccrown;
-Siuptake_H=Si_Uptake_H.*(1-SupSi_H)./Ccrown;
-
-%%%%
-Nuptake_L=(NH4_Uptake_L+NO3_Uptake_L).*(1-SupN_L)./Ccrown;
-NH4uptake_L = NH4_Uptake_L.*(1-SupN_L)./Ccrown;
-NO3uptake_L = NO3_Uptake_L.*(1-SupN_L)./Ccrown;
-
-Puptake_L=P_Uptake_L.*(1-SupP_L)./Ccrown;
-Kuptake_L=K_Uptake_L.*(1-SupK_L)./Ccrown;
-
-Cauptake_L=Ca_Uptake_L.*(1-SupCa_L)./Ccrown;
-Mguptake_L=Mg_Uptake_L.*(1-SupMg_L)./Ccrown;
-Siuptake_L=Si_Uptake_L.*(1-SupSi_L)./Ccrown;
-
-%%%%
-Nuptake_H(Ccrown == 0) = 0;
-Nuptake_L(Ccrown == 0) = 0;
-NH4uptake_H(Ccrown == 0) = 0;
-NH4uptake_L(Ccrown == 0) = 0;
-NO3uptake_H(Ccrown == 0) = 0;
-NO3uptake_L(Ccrown == 0) = 0;
-
-Puptake_H(Ccrown == 0) = 0;
-Puptake_L(Ccrown == 0) = 0;
-Kuptake_H(Ccrown == 0) = 0;
-Kuptake_L(Ccrown == 0) = 0;
-
-Cauptake_H(Ccrown == 0) = 0;
-Cauptake_L(Ccrown == 0) = 0;
-Mguptake_H(Ccrown == 0) = 0;
-Mguptake_L(Ccrown == 0) = 0;
-Siuptake_H(Ccrown == 0) = 0;
-Siuptake_L(Ccrown == 0) = 0;
+Nuptake_L = Biogeo_Per_Crown_Flux(NH4_Uptake_L+NO3_Uptake_L,SupN_L,Ccrown);
+NH4uptake_L = Biogeo_Per_Crown_Flux(NH4_Uptake_L,SupN_L,Ccrown);
+NO3uptake_L = Biogeo_Per_Crown_Flux(NO3_Uptake_L,SupN_L,Ccrown);
+Puptake_L = Biogeo_Per_Crown_Flux(P_Uptake_L,SupP_L,Ccrown);
+Kuptake_L = Biogeo_Per_Crown_Flux(K_Uptake_L,SupK_L,Ccrown);
+Cauptake_L = Biogeo_Per_Crown_Flux(Ca_Uptake_L,SupCa_L,Ccrown);
+Mguptake_L = Biogeo_Per_Crown_Flux(Mg_Uptake_L,SupMg_L,Ccrown);
+Siuptake_L = Biogeo_Per_Crown_Flux(Si_Uptake_L,SupSi_L,Ccrown);
 
 %%%%% Updating Mineral Nutrient in the soil mean of last 365 days 
 n4=365; 

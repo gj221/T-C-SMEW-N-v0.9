@@ -6,16 +6,24 @@ function plan = Run_All_12_Parallel(varargin)
 %%   MaxConcurrent   maximum live child processes                 [2]
 %%   Runs            matrix ids                         [10:12 1:9]
 %%   NDays           optional shortened run                       []
+%%   StartDate      optional forcing start date                    []
 %%   GridNx, GridNy  optional main-grid overrides                 []
+%%   AppeloAlpha     optional run-local Appelo alpha              []
+%%   AppeloLogKH     optional [Na K Ca Mg Al] logKH vector        []
+%%   ParallelWorkers daily ERW workers inside each run             []
+%%   ResultDirectory optional result and checkpoint directory      ''
+%%   PreferenceDirectoryRoot optional root for isolated MATLAB prefs ''
 %%   PollSeconds     status polling interval                      [20]
 %%   MaxRuntimeHours stop waiting after this time per child      [168]
 %%   DryRun          return and print commands without launching  [false]
 %%   Overwrite       rerun when the result already exists         [false]
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-opt = struct('MaxConcurrent',2,'Runs',[10:12 1:9],'NDays',[], ...
-    'GridNx',[],'GridNy',[],'PollSeconds',20, ...
-    'MaxRuntimeHours',168,'DryRun',false,'Overwrite',false);
+opt = struct('MaxConcurrent',2,'Runs',[10:12 1:9],'NDays',[],'StartDate',[], ...
+    'GridNx',[],'GridNy',[],'AppeloAlpha',[],'AppeloLogKH',[], ...
+    'ParallelWorkers',[],'PollSeconds',20, ...
+    'MaxRuntimeHours',168,'DryRun',false,'Overwrite',false, ...
+    'ResultDirectory','','LogDirectory','','PreferenceDirectoryRoot','');
 if mod(numel(varargin),2) ~= 0
     error('Run_All_12_Parallel:BadOptions','Options must be name/value pairs.');
 end
@@ -47,6 +55,37 @@ validateattributes(opt.MaxRuntimeHours,{'numeric'},{'scalar','positive','finite'
 validate_optional_integer(opt.NDays,'NDays');
 validate_optional_integer(opt.GridNx,'GridNx');
 validate_optional_integer(opt.GridNy,'GridNy');
+validate_optional_nonnegative_scalar(opt.AppeloAlpha,'AppeloAlpha');
+validate_optional_nonnegative_integer(opt.ParallelWorkers,'ParallelWorkers');
+if ~isempty(opt.AppeloLogKH) && ~(isnumeric(opt.AppeloLogKH) && ...
+        isvector(opt.AppeloLogKH) && numel(opt.AppeloLogKH) == 5 && ...
+        all(isfinite(opt.AppeloLogKH)))
+    error('Run_All_12_Parallel:BadOptions', ...
+        'AppeloLogKH must be five finite values ordered [Na K Ca Mg Al].');
+end
+opt.AppeloLogKH = reshape(opt.AppeloLogKH,1,[]);
+if ~isempty(opt.StartDate)
+    try
+        opt.StartDate = datenum(opt.StartDate);
+    catch
+        error('Run_All_12_Parallel:BadStartDate', ...
+            'StartDate must be a scalar date accepted by datenum.');
+    end
+    if ~(isnumeric(opt.StartDate) && isscalar(opt.StartDate) && isfinite(opt.StartDate))
+        error('Run_All_12_Parallel:BadStartDate', ...
+            'StartDate must be a scalar date accepted by datenum.');
+    end
+end
+if ~(ischar(opt.ResultDirectory) || ...
+        (isstring(opt.ResultDirectory) && isscalar(opt.ResultDirectory))) || ...
+        ~(ischar(opt.LogDirectory) || ...
+        (isstring(opt.LogDirectory) && isscalar(opt.LogDirectory))) || ...
+        ~(ischar(opt.PreferenceDirectoryRoot) || ...
+        (isstring(opt.PreferenceDirectoryRoot) && isscalar(opt.PreferenceDirectoryRoot)))
+    error('Run_All_12_Parallel:BadOptions', ...
+        ['ResultDirectory, LogDirectory and PreferenceDirectoryRoot must be ' ...
+        'character vectors or scalar strings.']);
+end
 
 %% This launcher and its worker live in v2/run; results, logs and status
 %% files belong to the repository root one level up.
@@ -54,19 +93,42 @@ here = fileparts(mfilename('fullpath'));
 root = fileparts(here);
 RM = Run_Matrix_12();
 runs = opt.Runs(:)';
-log_dir = fullfile(root,'logs','Subfield_12');
-out_dir = fullfile(root,'SIM','Subfield_12');
+requires_explicit_alpha = any(ismember(runs,10:12)) && ...
+    (isempty(opt.NDays) || opt.NDays >= 679);
+if requires_explicit_alpha && isempty(opt.AppeloAlpha)
+    error('Run_All_12_Parallel:MissingAppeloAlpha', ...
+        'Runs 10-12 reaching day 679 require an explicit prescribed AppeloAlpha.');
+end
+log_dir = char(opt.LogDirectory);
+if isempty(log_dir); log_dir = fullfile(root,'logs','Subfield_12'); end
+out_dir = char(opt.ResultDirectory);
+if isempty(out_dir); out_dir = fullfile(root,'SIM','Subfield_12'); end
 status_dir = fullfile(log_dir,'status');
+pref_root = char(opt.PreferenceDirectoryRoot);
 
 extra = {};
 if ~isempty(opt.NDays);  extra = [extra {'NDays',opt.NDays}]; end
+if ~isempty(opt.StartDate); extra = [extra {'StartDate',opt.StartDate}]; end
 if ~isempty(opt.GridNx); extra = [extra {'GridNx',opt.GridNx}]; end
 if ~isempty(opt.GridNy); extra = [extra {'GridNy',opt.GridNy}]; end
-
+if ~isempty(opt.AppeloAlpha)
+    extra = [extra {'AppeloAlpha',opt.AppeloAlpha}];
+end
+if ~isempty(opt.AppeloLogKH)
+    extra = [extra {'AppeloLogKH',opt.AppeloLogKH}];
+end
+if ~isempty(opt.ParallelWorkers)
+    extra = [extra {'ParallelWorkers',opt.ParallelWorkers}];
+end
+if ~isempty(opt.ResultDirectory)
+    extra = [extra {'ResultDirectory',out_dir}];
+end
 matlab_exe = fullfile(matlabroot,'bin','matlab.exe');
 if ~isfile(matlab_exe); matlab_exe = fullfile(matlabroot,'bin','matlab'); end
 plan = repmat(struct('run_id',0,'name','','result_file','', ...
-    'status_file','','log_file','','batch','','command',''),numel(runs),1);
+    'status_file','','log_file','','runtime_directory','', ...
+    'preference_directory','','temporary_directory','', ...
+    'batch','','command',''),numel(runs),1);
 for q = 1:numel(runs)
     id = runs(q);
     tag = result_tag(RM(id),opt);
@@ -78,11 +140,25 @@ for q = 1:numel(runs)
         sprintf('run_%02d_%s.status',id,tag));
     plan(q).log_file = fullfile(log_dir, ...
         sprintf('run_%02d_%s.log',id,tag));
+    if ~isempty(pref_root)
+        plan(q).runtime_directory = fullfile(pref_root, ...
+            sprintf('run_%02d',id));
+        plan(q).preference_directory = fullfile(plan(q).runtime_directory,'pref');
+        plan(q).temporary_directory = fullfile(plan(q).runtime_directory,'temp');
+    end
     args = worker_args(id,plan(q).status_file,extra);
     plan(q).batch = sprintf("cd('%s'); Run_Subfield_Worker(%s)", ...
         strrep(here,"'","''"),args);
-    plan(q).command = sprintf('"%s" -batch "%s" > "%s" 2>&1', ...
-        matlab_exe,plan(q).batch,plan(q).log_file);
+    if isempty(plan(q).preference_directory)
+        plan(q).command = sprintf('"%s" -batch "%s" > "%s" 2>&1', ...
+            matlab_exe,plan(q).batch,plan(q).log_file);
+    else
+        plan(q).command = sprintf( ...
+            ['set "MATLAB_PREFDIR=%s" && set "TEMP=%s" && set "TMP=%s" && ' ...
+             '"%s" -batch "%s" > "%s" 2>&1'], ...
+            plan(q).preference_directory,plan(q).temporary_directory, ...
+            plan(q).temporary_directory,matlab_exe,plan(q).batch,plan(q).log_file);
+    end
 end
 
 fprintf('\n=== Twelve simulations ===\n');
@@ -100,6 +176,7 @@ end
 if ~exist(log_dir,'dir'); mkdir(log_dir); end
 if ~exist(status_dir,'dir'); mkdir(status_dir); end
 if ~exist(out_dir,'dir'); mkdir(out_dir); end
+if ~isempty(pref_root) && ~exist(pref_root,'dir'); mkdir(pref_root); end
 
 pending = true(size(plan));
 if ~opt.Overwrite
@@ -127,7 +204,17 @@ while (~isempty(queue) || ~isempty(running)) && ~abort
         q = queue(1); queue(1) = [];
         if isfile(plan(q).status_file); delete(plan(q).status_file); end
         if opt.Overwrite && isfile(plan(q).result_file); delete(plan(q).result_file); end
-        process{q} = launch_process(matlab_exe,plan(q).batch,plan(q).log_file);
+        if ~isempty(plan(q).preference_directory) && ...
+                ~exist(plan(q).preference_directory,'dir')
+            mkdir(plan(q).preference_directory);
+        end
+        if ~isempty(plan(q).temporary_directory) && ...
+                ~exist(plan(q).temporary_directory,'dir')
+            mkdir(plan(q).temporary_directory);
+        end
+        process{q} = launch_process(matlab_exe,plan(q).batch, ...
+            plan(q).log_file,plan(q).preference_directory, ...
+            plan(q).temporary_directory);
         process_guard{q} = onCleanup(@() Terminate_Process_Tree(process{q}));
         started(q) = now;
         %% Index from numel rather than end: deleting the last entry from a
@@ -142,9 +229,11 @@ while (~isempty(queue) || ~isempty(running)) && ~abort
     for r = 1:numel(running)
         q = running(r);
         state = read_state(plan(q).status_file);
-        if strcmp(state,'complete') && isfile(plan(q).result_file)
+        alive = process_is_alive(process{q});
+        if strcmp(state,'complete') && isfile(plan(q).result_file) && ~alive
             fprintf('  [%s] done run %d  %s\n',datestr(now,'HH:MM:SS'), ...
                 plan(q).run_id,plan(q).name);
+            cleanup_preference_directory(plan(q).runtime_directory);
             finished(r) = true;
         elseif strcmp(state,'failed')
             fprintf(2,'  [%s] FAILED run %d  %s; see %s\n', ...
@@ -153,7 +242,7 @@ while (~isempty(queue) || ~isempty(running)) && ~abort
             failed(end+1,1) = q; %#ok<AGROW>
             finished(r) = true;
             abort = true;
-        elseif ~process_is_alive(process{q})
+        elseif ~alive
             fprintf(2,'  [%s] FAILED run %d  %s (child exit %d); see %s\n', ...
                 datestr(now,'HH:MM:SS'),plan(q).run_id,plan(q).name, ...
                 process_exit_value(process{q}),plan(q).log_file);
@@ -190,6 +279,9 @@ if ~isempty(failed)
         'Run(s) %s failed or timed out.',mat2str([plan(failed).run_id]));
 end
 fprintf('All requested simulations completed.\n');
+if ~isempty(pref_root) && isfolder(pref_root) && isempty(dir(fullfile(pref_root,'*')))
+    rmdir(pref_root);
+end
 
 end
 
@@ -202,19 +294,35 @@ if R.use_subdomains && (~isempty(opt.GridNx) || ~isempty(opt.GridNy))
     if ~isempty(opt.GridNy); ny = opt.GridNy; end
     tag = sprintf('%s__grid%dx%d',tag,nx,ny);
 end
+if ~isempty(opt.AppeloAlpha)
+    alpha_tag = number_tag(opt.AppeloAlpha);
+    tag = sprintf('%s__alpha%s',tag,alpha_tag);
+end
+if ~isempty(opt.AppeloLogKH)
+    logkh_tag = arrayfun(@number_tag,opt.AppeloLogKH,'UniformOutput',false);
+    tag = sprintf('%s__logkh%s',tag,strjoin(logkh_tag,'_'));
+end
 if ~isempty(opt.NDays); tag = sprintf('%s__%dd',tag,opt.NDays); end
+if ~isempty(opt.StartDate)
+    tag = sprintf('%s__from%s',tag,datestr(opt.StartDate,'yyyymmdd'));
+end
 end
 
 function args = worker_args(run_id,status_file,extra)
 parts = {sprintf('%d',run_id),sprintf('''%s''',strrep(status_file,'''',''''''))};
 for k = 1:2:numel(extra)
     parts{end+1} = sprintf('''%s''',extra{k}); %#ok<AGROW>
-    parts{end+1} = mat2str(extra{k+1}); %#ok<AGROW>
+    value = extra{k+1};
+    if ischar(value) || (isstring(value) && isscalar(value))
+        parts{end+1} = sprintf('''%s''',strrep(char(value),'''','''''')); %#ok<AGROW>
+    else
+        parts{end+1} = mat2str(value); %#ok<AGROW>
+    end
 end
 args = strjoin(parts,',');
 end
 
-function process = launch_process(matlab_exe,batch,log_file)
+function process = launch_process(matlab_exe,batch,log_file,preference_directory,temporary_directory)
 if ispc
     cmd_exe = fullfile(getenv('SystemRoot'),'System32','cmd.exe');
     args = sprintf('/d /s /c ""%s" -batch "%s" > "%s" 2>&1"', ...
@@ -222,6 +330,21 @@ if ispc
     start_info = System.Diagnostics.ProcessStartInfo(cmd_exe,args);
     start_info.UseShellExecute = false;
     start_info.CreateNoWindow = true;
+    if ~isempty(preference_directory)
+        if start_info.EnvironmentVariables.ContainsKey('MATLAB_PREFDIR')
+            start_info.EnvironmentVariables.Remove('MATLAB_PREFDIR');
+        end
+        start_info.EnvironmentVariables.Add( ...
+            'MATLAB_PREFDIR',preference_directory);
+    end
+    if ~isempty(temporary_directory)
+        for key = {'TEMP','TMP'}
+            if start_info.EnvironmentVariables.ContainsKey(key{1})
+                start_info.EnvironmentVariables.Remove(key{1});
+            end
+            start_info.EnvironmentVariables.Add(key{1},temporary_directory);
+        end
+    end
     process = System.Diagnostics.Process.Start(start_info);
     return
 end
@@ -230,9 +353,28 @@ command.add(matlab_exe);
 command.add('-batch');
 command.add(batch);
 builder = java.lang.ProcessBuilder(command);
+if ~isempty(preference_directory)
+    builder.environment().put('MATLAB_PREFDIR',preference_directory);
+end
+if ~isempty(temporary_directory)
+    builder.environment().put('TEMP',temporary_directory);
+    builder.environment().put('TMP',temporary_directory);
+end
 builder.redirectErrorStream(true);
 builder.redirectOutput(java.io.File(log_file));
 process = builder.start();
+end
+
+function cleanup_preference_directory(preference_directory)
+if ~isempty(preference_directory) && isfolder(preference_directory)
+    rmdir(preference_directory,'s');
+end
+end
+
+function tag = number_tag(value)
+tag = strrep(sprintf('%.17g',value),'.','p');
+tag = strrep(tag,'-','m');
+tag = strrep(tag,'+','');
 end
 
 function state = read_state(status_file)
@@ -273,5 +415,22 @@ if ~(isnumeric(value) && isscalar(value) && isfinite(value) && ...
         value == fix(value) && value >= 1)
     error('Run_All_12_Parallel:BadOptions', ...
         '%s must be a positive integer.',name);
+end
+end
+
+function validate_optional_nonnegative_scalar(value,name)
+if isempty(value); return; end
+if ~(isnumeric(value) && isscalar(value) && isfinite(value) && value >= 0)
+    error('Run_All_12_Parallel:BadOptions', ...
+        '%s must be a finite nonnegative scalar.',name);
+end
+end
+
+function validate_optional_nonnegative_integer(value,name)
+if isempty(value); return; end
+if ~(isnumeric(value) && isscalar(value) && isfinite(value) && ...
+        value == fix(value) && value >= 0)
+    error('Run_All_12_Parallel:BadOptions', ...
+        '%s must be a nonnegative integer.',name);
 end
 end

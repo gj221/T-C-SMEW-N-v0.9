@@ -72,6 +72,9 @@ function [H_pw, bulk_pH_params, f_Ca_eq, f_Mg_eq, f_K_eq, f_Na_eq, f_Al_eq, f_H_
 warning_state = warning('query', 'ERW:bulkPHLargeOffset');
 warning_cleanup = onCleanup(@() warning(warning_state.state, 'ERW:bulkPHLargeOffset'));
 warning('off', 'ERW:bulkPHLargeOffset'); % large offsets expected at scan trial values
+inverse_bulk_pH_params = bulk_pH_params;
+inverse_bulk_pH_params.H_extract_anchor_umolL = ...
+    10^(-pH_bulk_obs)*conv_mol;
 trial_fn = @(Ht, bpp) Initial_Bulk_pH_Trial( ...
     Ht, Ca_pw, Mg_pw, K_pw, Na_pw, NO3_pw, PO4_pw, NH4_pw, ...
     CO2_air_ref, CO2_w_ref, ...
@@ -99,11 +102,13 @@ narrow_logH_hi = log(10^(-narrow_pH_lo) * conv_mol);
 narrow_logH_lo = log(10^(-narrow_pH_hi) * conv_mol);
 narrow_n_points = max(2, round((narrow_logH_hi - narrow_logH_lo) / log_step) + 1);
 [logH_grid, f_grid] = invert_bulk_pH_residual_scan( ...
-    trial_fn, bulk_pH_params, pH_bulk_obs, narrow_logH_lo, narrow_logH_hi, narrow_n_points);
+    trial_fn, inverse_bulk_pH_params, pH_bulk_obs, ...
+    narrow_logH_lo, narrow_logH_hi, narrow_n_points);
 idx_root = invert_bulk_pH_sign_changes(f_grid);
 if isempty(idx_root)
     [logH_grid, f_grid] = invert_bulk_pH_residual_scan( ...
-        trial_fn, bulk_pH_params, pH_bulk_obs, full_logH_lo, full_logH_hi, full_n_points);
+        trial_fn, inverse_bulk_pH_params, pH_bulk_obs, ...
+        full_logH_lo, full_logH_hi, full_n_points);
     idx_root = invert_bulk_pH_sign_changes(f_grid);
 end
 
@@ -126,15 +131,28 @@ end
 H_lo = logH_grid(idx_root(i_best));
 H_hi = logH_grid(idx_root(i_best)+1);
 f_lo = f_grid(idx_root(i_best));
+f_hi = f_grid(idx_root(i_best)+1);
 
 %%% Bisect the same fixed-parameter residual in log-H space.
-H_pw = exp(0.5*(H_lo + H_hi));
+if abs(f_lo) <= abs(f_hi)
+    H_best = H_lo;
+    f_best = f_lo;
+else
+    H_best = H_hi;
+    f_best = f_hi;
+end
 for i_inv = 1:80
     H_mid = 0.5*(H_lo + H_hi);
-    pH_bulk_mid = trial_fn(exp(H_mid), bulk_pH_params);
+    if H_mid == H_lo || H_mid == H_hi
+        break
+    end
+    pH_bulk_mid = trial_fn(exp(H_mid), inverse_bulk_pH_params);
     f_mid = pH_bulk_mid - pH_bulk_obs;
-    H_pw  = exp(H_mid);
-    if abs(f_mid) < 1e-4 || abs(H_hi - H_lo) < 1e-10
+    if abs(f_mid) < abs(f_best)
+        H_best = H_mid;
+        f_best = f_mid;
+    end
+    if abs(f_mid) < 1e-10
         break;
     end
     if sign(f_mid) == sign(f_lo)
@@ -142,11 +160,18 @@ for i_inv = 1:80
         f_lo = f_mid;
     else
         H_hi = H_mid;
+        f_hi = f_mid;
     end
 end
+H_pw = exp(H_best);
 
-%%% Re-evaluate the converged trial to return the self-consistent state
-[~, trial_state] = trial_fn(H_pw, bulk_pH_params);
+%%% Re-evaluate the converged trial to return the self-consistent state.
+[pH_bulk_final, trial_state] = trial_fn(H_pw, inverse_bulk_pH_params);
+if abs(pH_bulk_final-pH_bulk_obs) > 1e-8
+    error('ERW:invertBulkPHNoConvergence', ...
+        'Bulk-pH inversion residual %.6g exceeds 1e-8.', pH_bulk_final-pH_bulk_obs);
+end
+bulk_pH_params.DIC_field_umol_L = trial_state.DIC_field_umol_L;
 f_Ca_eq = trial_state.f_Ca;  f_Mg_eq = trial_state.f_Mg;  f_K_eq = trial_state.f_K;
 f_Na_eq = trial_state.f_Na;  f_Al_eq = trial_state.f_Al;  f_H_eq = trial_state.f_H;
 An_eq   = trial_state.An;    Al_w_eq = trial_state.Al_w;
@@ -224,16 +249,22 @@ else
     appelo_alpha_t = 0;
 end
 
+Al_pin = isfield(bulk_pH_params_trial, 'Al_solubility_pin') && ...
+    isequal(bulk_pH_params_trial.Al_solubility_pin, true);
 initial_f_CEC = [];
+has_conserved_exchange = false;
 if isfield(bulk_pH_params_trial, 'initial_f_CEC')
     initial_f_CEC = bulk_pH_params_trial.initial_f_CEC(:).';
-end
-if numel(initial_f_CEC) == 6 && all(isfinite(initial_f_CEC)) && sum(initial_f_CEC) > 0
-    initial_f_CEC = initial_f_CEC ./ sum(initial_f_CEC);
-    if any(initial_f_CEC < 0) || initial_f_CEC(1) <= 0
+    if numel(initial_f_CEC) ~= 6 || any(~isfinite(initial_f_CEC)) || ...
+            any(initial_f_CEC < 0) || initial_f_CEC(1) <= 0 || ...
+            abs(sum(initial_f_CEC)-1) > 1e-10
         error('ERW:invertBulkPH', ...
-            'initial_f_CEC must be nonnegative with a positive Ca fraction.');
+            'initial_f_CEC must contain six nonnegative fractions that sum to one with positive Ca.');
     end
+    initial_f_CEC = initial_f_CEC ./ sum(initial_f_CEC);
+    has_conserved_exchange = true;
+end
+if has_conserved_exchange
     if ~isfield(bulk_pH_params_trial, 'field_water_L_m2') || ...
             ~(isfinite(bulk_pH_params_trial.field_water_L_m2) && ...
             bulk_pH_params_trial.field_water_L_m2 > 0)
@@ -254,8 +285,8 @@ if numel(initial_f_CEC) == 6 && all(isfinite(initial_f_CEC)) && sum(initial_f_CE
             'A positive initial Al exchange fraction requires finite initial_Al_w.');
     end
     cec_per_L = CEC_tot_trial / bulk_pH_params_trial.field_water_L_m2;
-    Al_pin = isfield(bulk_pH_params_trial, 'Al_solubility_pin') && ...
-        isequal(bulk_pH_params_trial.Al_solubility_pin, true);
+end
+if has_conserved_exchange
     [f_Ca_t, f_Mg_t, f_K_t, f_Na_t, f_Al_t, f_H_t, ...
         Ca_trial, Mg_trial, K_trial, Na_trial, Al_w_trial, Al_trial] = ...
         equilibrate_exchange_totals(Ht, Ca_trial, Mg_trial, K_trial, Na_trial, ...
@@ -284,35 +315,52 @@ else
         exchange_scheme, appelo_params);
 end
 
-%%% Residual non-Al anion closing the pore-water charge balance at soil CO2.
-%%% This must close charge balance after explicit Al speciation; otherwise the
-%%% inversion trial is not the same chemical state passed into the daily ERW
-%%% solver.
-An_trial = ERW_Residual_An_From_Charge( ...
-    Ht, CO2_w_trial, Ca_trial, Mg_trial, Na_trial, K_trial, ...
-    NH4_trial, NO3_trial, PO4_trial, Al_w_trial, ...
-    k1_trial, k2_trial, k_w_trial, k_nh3_trial, K1_Al, K2_Al, K3_Al, K4_Al, ...
-    Al_CEC_scale_trial);
+%%% Use the same strong-anion charge basis as the retained daily state.
+anion_convention = 'full_charge';
+if isfield(bulk_pH_params_trial, 'initial_anion_convention')
+    anion_convention = char(string(bulk_pH_params_trial.initial_anion_convention));
+end
+if strcmpi(anion_convention, 'carbonate_frame')
+    HCO3_trial = k1_trial*CO2_w_trial/Ht;
+    CO3_trial = k2_trial*k1_trial*CO2_w_trial/Ht^2;
+    Alk_trial = HCO3_trial+2*CO3_trial-Ht+k_w_trial/Ht;
+    An_trial = 2*Mg_trial+2*Ca_trial+Na_trial+K_trial+NH4_trial- ...
+        Alk_trial-PO4_trial-NO3_trial;
+elseif strcmpi(anion_convention, 'full_charge')
+    An_trial = ERW_Residual_An_From_Charge( ...
+        Ht, CO2_w_trial, Ca_trial, Mg_trial, Na_trial, K_trial, ...
+        NH4_trial, NO3_trial, PO4_trial, Al_w_trial, ...
+        k1_trial, k2_trial, k_w_trial, k_nh3_trial, K1_Al, K2_Al, K3_Al, K4_Al, ...
+        Al_CEC_scale_trial);
+else
+    error('ERW:invalidParam', ...
+        'initial_anion_convention must be full_charge or carbonate_frame.');
+end
 if ~(isfinite(An_trial) && An_trial >= 0)
     error('ERW:invertBulkPH', ...
         'Trial pH requires a negative residual strong-anion concentration.');
 end
 
-%%% Forward bulk pH at the lab-air extract CO2 boundary.
+%%% Forward bulk pH with the trial field DIC conserved in the closed extract.
+bulk_pH_params_forward = bulk_pH_params_trial;
+DIC_field_trial = CO2_w_trial * ...
+    (1+k1_trial/Ht+k1_trial*k2_trial/Ht^2);
+bulk_pH_params_forward.DIC_field_umol_L = DIC_field_trial;
 pH_bulk = Porewater_to_Bulk_pH( ...
     Ht, Ca_trial, Mg_trial, K_trial, Na_trial, ...
     Al_w_trial, Al_trial, An_trial, NO3_trial, PO4_trial, NH4_trial, ...
     CO2_air_trial, k1_trial, k2_trial, k_w_trial, k_nh3_trial, k_H_trial, ...
     K1_Al, K2_Al, K3_Al, K4_Al, ...
     f_Ca_t, f_Mg_t, f_K_t, f_Na_t, f_Al_t, f_H_t, ...
-    CEC_tot_trial, rho_bulk_trial, Zrw_trial, conv_mol_trial, bulk_pH_params_trial, ...
+    CEC_tot_trial, rho_bulk_trial, Zrw_trial, conv_mol_trial, bulk_pH_params_forward, ...
     Al_CEC_scale_trial);
 
 if nargout > 1
     trial_state = struct('f_Ca', f_Ca_t, 'f_Mg', f_Mg_t, 'f_K', f_K_t, ...
         'f_Na', f_Na_t, 'f_Al', f_Al_t, 'f_H', f_H_t, ...
         'An', An_trial, 'Al_w', Al_w_trial, 'Al', Al_trial, ...
-        'Ca', Ca_trial, 'Mg', Mg_trial, 'K', K_trial, 'Na', Na_trial);
+        'Ca', Ca_trial, 'Mg', Mg_trial, 'K', K_trial, 'Na', Na_trial, ...
+        'DIC_field_umol_L', DIC_field_trial);
 end
 
 end % Initial_Bulk_pH_Trial
@@ -399,8 +447,9 @@ state = [f_Ca, f_Mg, f_K, f_Na, f_Al, f_H, Ca, Mg, K, Na, Al_w, Al];
 if any(~isfinite(state)) || any(state < -1e-9) || abs(sum(state(1:6)) - 1) > 1e-8
     error('ERW:invertBulkPH', 'Conserved exchange equilibration produced an unphysical state.');
 end
-Ca = max(Ca, 0); Mg = max(Mg, 0); K = max(K, 0);
-Na = max(Na, 0); Al_w = max(Al_w, 0); Al = max(Al, 0);
+if any([Ca,Mg,K,Na,Al_w,Al] < 0)
+    error('ERW:invertBulkPH', 'Conserved exchange equilibration produced a negative state.');
+end
 end
 
 function [f_Ca, f_Mg, f_K, f_Na, f_Al, f_H, ...
@@ -456,7 +505,8 @@ if ~(isfinite(Al3_frac) && Al3_frac > 0 && isfinite(Ca_total) && Ca_total > 0)
 end
 site_residual = @(x) appelo_site_residual(x, H, Ca_total, Mg_total, ...
     K_total, Na_total, Al_total, cec_per_L, appelo_alpha, ...
-    K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3, Al3_frac);
+    K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3, Al3_frac, ...
+    Al_solubility_pin);
 f_lo = 1e-24;
 f_hi = 1 - 1e-14;
 g_lo = site_residual(f_lo);
@@ -494,13 +544,15 @@ state = [f_Ca, f_Mg, f_K, f_Na, f_Al, f_H, Ca, Mg, K, Na, Al_w, Al];
 if any(~isfinite(state)) || any(state < -1e-9) || abs(sum(state(1:6)) - 1) > 1e-8
     error('ERW:invertBulkPH', 'Conserved Appelo equilibration produced an unphysical state.');
 end
-Ca = max(Ca, 0); Mg = max(Mg, 0); K = max(K, 0);
-Na = max(Na, 0); Al_w = max(Al_w, 0); Al = max(Al, 0);
+if any([Ca,Mg,K,Na,Al_w,Al] < 0)
+    error('ERW:invertBulkPH', 'Conserved Appelo equilibration produced a negative state.');
+end
 end
 
 function [residual, f_Na, f_K, f_Ca, f_Mg, f_Al] = appelo_site_residual( ...
     f_H, H, Ca_total, Mg_total, K_total, Na_total, Al_total, cec_per_L, ...
-    appelo_alpha, K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3, Al3_frac)
+    appelo_alpha, K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3, Al3_frac, ...
+    Al_solubility_pin)
 if ~(isfinite(f_H) && f_H > 0)
     residual = NaN;
     f_Na = NaN; f_K = NaN; f_Ca = NaN; f_Mg = NaN; f_Al = NaN;
@@ -514,12 +566,16 @@ A_Na = K_Na_H * rho1;
 A_K  = K_K_H  * rho1;
 A_Ca = K_Ca_H2* rho2;
 A_Mg = K_Mg_H2* rho2;
-A_Al = K_Al_H3 * Al3_frac * rho3;
 f_Na = A_Na * Na_total / (1 + A_Na*cec_per_L);
 f_K  = A_K  * K_total  / (1 + A_K *cec_per_L);
 f_Ca = A_Ca * Ca_total / (1 + A_Ca*cec_per_L/2);
 f_Mg = A_Mg * Mg_total / (1 + A_Mg*cec_per_L/2);
-f_Al = A_Al * Al_total / (1 + A_Al*cec_per_L/3);
+if Al_solubility_pin
+    f_Al = K_Al_H3 * Al_total * rho3;
+else
+    A_Al = K_Al_H3 * Al3_frac * rho3;
+    f_Al = A_Al * Al_total / (1 + A_Al*cec_per_L/3);
+end
 residual = f_H + f_Na + f_K + f_Ca + f_Mg + f_Al - 1;
 end
 

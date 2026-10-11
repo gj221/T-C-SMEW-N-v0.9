@@ -119,6 +119,7 @@ for run_id in 10 11 12; do
         export TMP="$TMPDIR"
         export TEMP="$TMPDIR"
         srun --exclusive --nodes=1 --ntasks=1 --cpus-per-task=1 \
+            --mem=8G \
             --cpu-bind=cores \
             --output="$logs_dir/srun_run${run_id}_%j.out" \
             --error="$logs_dir/srun_run${run_id}_%j.err" \

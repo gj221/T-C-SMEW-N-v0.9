@@ -59,7 +59,22 @@ Silf = St.Silf; %%%  [gC/gSi]
 Silh = St.Silh;  %%%  [gC/gSi]
 
 %%%%%
-FiS = St.FiS; %%[-] ; %%% Factor to increment nutrient reserve buffer 
+FiS = St.FiS; %%[-] ; %%% Factor to increment nutrient reserve buffer
+if isfield(St,'rCa_min')
+    rCa_min = St.rCa_min;
+else
+    rCa_min = 0.65;
+end
+if isfield(St,'rMg_min')
+    rMg_min = St.rMg_min;
+else
+    rMg_min = 0.65;
+end
+reserve = [Nreserve,Preserve,Kreserve,Careserve,Mgreserve,Sireserve];
+if any(~isfinite(reserve)) || any(reserve < 0)
+    error('Nutrients_Available:InvalidReserve',...
+        'Plant nutrient reserves must be finite and nonnegative.');
+end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%% Total Nutrient Content 
 %TNIT =  B(1)/Nl + B(2)/Ns + B(3)/Nr + B(4)/Nc + B(5)/Nf  + B(6)./Nh  ;  %% Total Nitrogen Plant [gN/m^2]
@@ -148,30 +163,46 @@ end
 
 if sum(B) == 0
     rNc=1; rPc=1; rKc=1; rCac=1; rMgc=1; rSic=1;
-end 
-if OPT_SoilBiogeochemistry == 1 
-    if rNc < 0.64 || rPc <0.64 || rKc <0.64 || rCac <0.64 || rMgc <0.64 || rSic <0.64 %% || rNc > 1.85 || rPc > 1.85 || rKc > 1.85
-        disp('Error Nutrient Concentrations outside allowed bounds!!')
-        return
+end
+persistent nw_Nl nw_active nw_count nw_sup;
+if isempty(nw_Nl); nw_Nl=[]; nw_active=logical([]); nw_count=[]; nw_sup=[]; end
+if OPT_SoilBiogeochemistry == 1
+    oob = rNc<0.64 || rPc<0.64 || rKc<0.64 || ...
+        rCac<(rCa_min-0.01) || rMgc<(rMg_min-0.01) || rSic<0.64;
+    ki = find(nw_Nl == St.Nl, 1);
+    if isempty(ki)
+        ki = numel(nw_Nl)+1;
+        nw_Nl(ki)=St.Nl; nw_active(ki)=false; nw_count(ki)=0; nw_sup(ki)=0;
     end
-end 
+    if oob
+        if ~nw_active(ki)
+            nw_active(ki)=true; nw_count(ki)=1; nw_sup(ki)=0;
+            warning('Nutrient Concentrations outside allowed bounds (rNc=%.3f rPc=%.3f rKc=%.3f rCac=%.3f rMgc=%.3f rSic=%.3f)', ...
+                rNc,rPc,rKc,rCac,rMgc,rSic);
+        elseif nw_count(ki) < 10
+            nw_count(ki) = nw_count(ki)+1;
+            warning('Nutrient Concentrations outside allowed bounds (rNc=%.3f rPc=%.3f rKc=%.3f rCac=%.3f rMgc=%.3f rSic=%.3f)', ...
+                rNc,rPc,rKc,rCac,rMgc,rSic);
+        else
+            nw_sup(ki) = nw_sup(ki)+1;
+        end
+    else
+        if nw_active(ki)
+            if nw_sup(ki) > 0
+                fprintf('[Nutrient warning episode ended: %d further events suppressed]\n', nw_sup(ki));
+            end
+            nw_active(ki)=false; nw_count(ki)=0; nw_sup(ki)=0;
+        end
+    end
+end
 rMc = min([rNc,rPc,rKc,rCac,rMgc,rSic]); %% Overall nutrient limitation used by exudation; 
-%%%%%%%%%%%%%%%%%%%%%%%%% Minimum Nutriennt concentration is 0.65 of Non-struct nutrients 
-Navail= Nreserve + 0.35*TNITns ;  %% Available Nitrogen Plant [gN/m^2]
-Pavail= Preserve + 0.35*TPHOns ;  %% Available Phosporus Plant [gP/m2] 
-Kavail= Kreserve + 0.35*TPOTns;   %% Available Potassium Plant [gK/m2] 
-Navail(Navail<0)=0; 
-Pavail(Pavail<0)=0; 
-Kavail(Kavail<0)=0; 
-
-Caavail= Careserve + 0.35*TCALns;   %% Available Calcium Plant [gCa/m2] 
-Caavail(Caavail<0)=0; 
-
-Mgavail= Mgreserve + 0.35*TMAGns;   %% Available Magnesium Plant [gMg/m2] 
-Mgavail(Mgavail<0)=0; 
-
-Siavail= Sireserve + 0.35*TSILns;   %% Available Silicon Plant [gSi/m2] 
-Siavail(Siavail<0)=0; 
+%%%%%%%%%%%%%%%%%%%%%%%%% Physical nutrient reserve available for growth
+Navail= Nreserve;  %% Available Nitrogen Plant [gN/m^2]
+Pavail= Preserve;  %% Available Phosporus Plant [gP/m2]
+Kavail= Kreserve;  %% Available Potassium Plant [gK/m2]
+Caavail= Careserve;  %% Available Calcium Plant [gCa/m2]
+Mgavail= Mgreserve;  %% Available Magnesium Plant [gMg/m2]
+Siavail= Sireserve;  %% Available Silicon Plant [gSi/m2]
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 n4=90; %% 90 days 
@@ -188,4 +219,4 @@ if OPT_SoilBiogeochemistry == 0
     e_relN=1;  FNC = 1; rNcR = 1; 
     rNc=1; rPc=1; rKc=1; rCac=1; rMgc=1; rSic=1; rMc = 1; 
 end 
-end 
+end

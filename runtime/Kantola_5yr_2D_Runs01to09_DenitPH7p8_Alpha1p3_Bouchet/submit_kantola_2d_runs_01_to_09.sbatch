@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=Kantola2D
 #SBATCH --array=1-9%9
-#SBATCH --partition=week
+#SBATCH --partition=day
 #SBATCH --constraint=cpumodel:9575f
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=6
-#SBATCH --mem=64G
-#SBATCH --time=4-00:00:00
+#SBATCH --mem=32G
+#SBATCH --time=23:30:00
 #SBATCH --requeue
 #SBATCH --output=runtime/Kantola_5yr_2D_Runs01to09_DenitPH7p8_Alpha1p3_Bouchet/slurm_%A_%a.out
 #SBATCH --error=runtime/Kantola_5yr_2D_Runs01to09_DenitPH7p8_Alpha1p3_Bouchet/slurm_%A_%a.err

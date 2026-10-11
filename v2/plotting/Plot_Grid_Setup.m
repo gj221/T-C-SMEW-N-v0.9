@@ -1,5 +1,5 @@
-﻿%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Plot_Grid_Setup â€” simple schematic of the T&C-SMEW-N v0.9 grid
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Plot_Grid_Setup and simple schematic of the T&C-SMEW-N v0.9 grid
 %%
 %% Standalone script; run it directly (e.g.  run Plot_Grid_Setup).
 %%

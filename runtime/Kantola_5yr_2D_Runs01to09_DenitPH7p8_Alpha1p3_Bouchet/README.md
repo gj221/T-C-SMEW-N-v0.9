@@ -1,6 +1,7 @@
-# Kantola five-year 2-D runs 1-9 on Bouchet
+# Energy Farm (Kantola) five-year 2-D runs 1-9 on Bouchet
 
-This campaign runs the nine retained 2-D configurations from `Run_Matrix_12`:
+This Energy Farm campaign runs the nine retained 2-D configurations from
+`Run_Matrix_12`:
 
 | Runs | Layout | Treatments |
 |---|---|---|
@@ -10,36 +11,59 @@ This campaign runs the nine retained 2-D configurations from `Run_Matrix_12`:
 
 Each Slurm array element runs one configuration. Every run uses a 2 x 2 main grid, 12 columns, 20 lateral edges, 1826 days from 2016-01-01, a 300 mm active biogeochemical depth and `AppeloAlpha = 1.3`.
 
+The `DenitPH7p8` tag identifies the configured gross-denitrification pH
+sensitivity. It does not mean that total denitrification is a nitrate
+Michaelis-Menten rate. The packaged solver uses the Dickinson and legacy
+T&C-SMEW first-order nitrate sink, with temperature, moisture, reconstructed
+bulk-pH and volumetric DOC factors. `Kc = 17.5 g C m^-3`; the volumetric
+`Kn = 82.5 g N m^-3` is retained for provenance but is inactive. The 7.8 pH
+plateau adapts the Blanc-Betes response shape using the soil-specific evidence
+from Simek et al. and is not a universal optimum. N2 and
+denitrification-derived N2O sum to the gross sink. Volatilization retains the
+legacy first-order NH4 term with no direct pH multiplier. Its pH effect is
+indirect through NH4 availability. The equations, units and citations are in
+[`v2/POST_LEGACY_EQUATION_AUDIT.md`](../../v2/POST_LEGACY_EQUATION_AUDIT.md),
+which is included in the deployment manifest.
+
 Run 9 applies calcite to the 1100 m2 prairie margin only. The 2500 m2 cropped center receives no direct calcite. Each prescribed 5000 g m^-2 event therefore adds 5.5 t to the margin, with four events adding 22 t over the simulation. This is a high-dose model treatment, not a field recommendation. Compare run 9 with run 7 to isolate calcite under the same prairie vegetation. Compare run 9 with run 6 to isolate prairie vegetation under the same margin-only calcite placement.
 
 The job reserves 6 CPUs per run. MATLAB uses a six-worker thread pool only for the independent daily ERW chemistry calculations. Daily biology, hourly column physics, lateral routing and state write-back remain serial. BLAS and OpenMP are restricted to one thread to prevent oversubscription.
 
-Rebuild the ten-day 1-D equivalence baseline under Bouchet R2025a after
-installing a code patch:
+Do not call this batch file directly for the twelve-run campaign. From a new,
+empty deployment root, run the coordinated controller after `slurm_checkup.sh`
+confirms the account:
 
 ```bash
-sbatch --partition=day --array=1 --time=01:00:00 --cpus-per-task=1 --mem=16G --job-name=Kantola2Dbase --export=ALL,TC_REBUILD_EQUIVALENCE=1 runtime/Kantola_5yr_2D_Runs01to09_DenitPH7p8_Alpha1p3_Bouchet/submit_kantola_2d_runs_01_to_09.sbatch
+MATLAB_MODULE=MATLAB/2025a TC_BOUCHET_ACCOUNT=pi_np363 bash runtime/submit_bouchet_all_12.sh
 ```
 
-Run the R2025a validation job only after that job completes:
+The controller rebuilds the ten-day 1-D equivalence baseline under R2025a.
+After it succeeds, the 1-D and 2-D validation allocations may run concurrently.
+The 1-D allocation uses four MATLAB process workers for the 315-day control,
+basalt, calcite and repeated-calcite trajectories. The separate 2-D validation
+uses array element 1 with 6 CPUs and 32 GB. Production becomes eligible only
+if both jobs succeed. The 2-D validation must end with `PASS: Bouchet R2025a
+parallel 2-D validation`. It writes a content and numerical-platform stamp.
+Production stops if the stamp is missing or stale.
 
-```bash
-sbatch --partition=day --array=1 --time=04:00:00 --job-name=Kantola2Dcheck --export=ALL,TC_VALIDATE_ONLY=1 runtime/Kantola_5yr_2D_Runs01to09_DenitPH7p8_Alpha1p3_Bouchet/submit_kantola_2d_runs_01_to_09.sbatch
-```
+`TC_VALIDATE_ONLY` is set to `1` only for validation. It stays unset for
+production.
 
-Do not submit the production array unless this job ends with `PASS: Bouchet R2025a parallel 2-D validation`. Validation writes a content and numerical-platform stamp. Production stops if the stamp is missing or stale.
+After each production run, the wrapper checks the sum of absolute ERW mass residuals against gross lateral transport. It checks soil-atmosphere inorganic carbon exchange the same way. Opposing errors on different hours cannot cancel and pass the run.
 
-Submit from the repository root:
-
-```bash
-sbatch runtime/Kantola_5yr_2D_Runs01to09_DenitPH7p8_Alpha1p3_Bouchet/submit_kantola_2d_runs_01_to_09.sbatch
-```
-
-Production uses Bouchet's `week` partition with a four-day walltime and the
-`cpumodel:9575f` constraint. The job records the node, CPU details and source
-hashes before MATLAB starts. A
+Production uses Bouchet's `day` partition with a 23:30:00 walltime, 32 GB per
+array element and the `cpumodel:9575f` constraint. The job records the node,
+CPU details and source hashes before MATLAB starts. A
 matching checkpoint is loaded when an unfinished array task is submitted
 again.
+
+The controller submits this array and the three-task 1-D allocation held, builds
+the complete dependency graph, then releases it. Both production allocations
+depend on both R2025a validations and become eligible together. Slurm controls
+their actual start times. Runs 10 to 12 start as steps only after the 1-D
+allocation starts. This array permits nine active elements, so all nine 2-D
+runs and all three 1-D steps can run concurrently when Bouchet has the
+resources. Eligibility does not guarantee that all twelve start together.
 
 A final MAT only stops a resubmission after the run has finished. While a run
 is live, exclusion comes from the lock directory each array element takes
@@ -56,11 +80,8 @@ starting. A result produced under an earlier validation stops the campaign
 rather than being silently mixed with newer runs. Move it out of the campaign
 directory, or rerun every treatment under one validation.
 
-Bouchet currently provides MATLAB R2025a. Override the module only if the cluster module name changes:
-
-```bash
-MATLAB_MODULE=MATLAB/2025a sbatch runtime/Kantola_5yr_2D_Runs01to09_DenitPH7p8_Alpha1p3_Bouchet/submit_kantola_2d_runs_01_to_09.sbatch
-```
+This campaign requires MATLAB R2025a. The coordinated controller checks that
+the module exists before creating any job and stops if it is unavailable.
 
 Results are written to:
 

@@ -50,7 +50,8 @@ function [Q_edge, dtheta_lat, sub_steps] = Darcy_Lateral_Topology( ...
 %   matric-head-driven.  Mass conservation is exact at the finite-volume
 %   level (every face is shared by exactly two cells); the sub-step is
 %   adaptively rescaled to keep theta within [0, Osat] without ever
-%   clipping a volume. Ice impedance follows Hansson et al. (2004).
+%   clipping a volume. Ice impedance uses the empirical Swenson et al.
+%   (2012) form with their published Omega = 6.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 N_cells = topo.N_cells;
@@ -155,7 +156,7 @@ function [K_cell, h_cell, Osat_cell, Ohy_cell] = eval_soil_curves( ...
     topo,theta,soilpar_cell,ms,Oice_cell)
 % K [mm/h] and matric HEAD h [mm, negative when unsaturated] per cell-layer.
 N_cells = topo.N_cells;
-ice_impedance = 5;
+ice_impedance = 6;
 K_cell    = zeros(N_cells, ms);
 h_cell    = zeros(N_cells, ms);
 Osat_cell = zeros(N_cells, ms);
@@ -340,6 +341,7 @@ if isscalar(x)
 elseif numel(x) >= k
     v = x(k);
 else
-    v = x(end);
+    error('Darcy_Lateral_Topology:BadLayerParameter', ...
+        'Each soil parameter must be scalar or contain every active layer.');
 end
 end

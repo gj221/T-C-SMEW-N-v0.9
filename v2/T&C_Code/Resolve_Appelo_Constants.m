@@ -5,7 +5,7 @@
 %%%
 %%%     .logKH  [log10 KH-Na, KH-K, KH-Ca, KH-Mg, KH-Al],
 %%%             SCEPTER defaults [5.9 4.8 10.47 10.786 16.47]
-%%%     .alpha  Appelo exponent, SCEPTER default 3.4
+%%%     .alpha  Appelo exponent, SCEPTER default value 3.4
 %%% logKH is the H-over-cation selectivity of the FULL exchange
 %%% reaction, e.g. Ca2+ + 2X-H = X2-Ca + 2H+ has log K = -10.47
 %%% (derived in scepter.f90 as log KCa\Na*2 - log KH\Na*2; the Z
@@ -30,13 +30,23 @@
 %%%   K_Mg_H2 = 10^(-logKH(4)) * 1e6        [umol/L]
 %%%   K_Al_H3 = 10^(-logKH(5)) * 1e12       [(umol/L)^2]
 %%%   appelo_alpha                          [-]
-function [K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3, appelo_alpha] = ...
+%%%   appelo_logKH                          [-]
+function [K_Na_H, K_K_H, K_Ca_H2, K_Mg_H2, K_Al_H3, appelo_alpha, ...
+    appelo_logKH] = ...
     Resolve_Appelo_Constants(appelo_params)
 
 appelo_logKH_default = [5.9 4.8 10.47 10.786 16.47];   %% Na K Ca Mg Al
+%%% Appelo proton-loading exponent.  It enters only through the activity
+%%% term gamma = 10^(alpha*Z*f_H), so it sets how hard the exchanger
+%%% competes for base cations as protons accumulate on the sites.
+%%%
+%%% SCEPTER v1.0 uses 3.4 for the default exchanger.  The manuscript's
+%%% optimized mesocosm fit uses 1.3 together with a different logKH set;
+%%% non-default values must therefore be supplied explicitly.
+appelo_alpha_default = 3.4;
 if nargin < 1 || isempty(appelo_params)
     appelo_logKH = appelo_logKH_default;
-    appelo_alpha = 3.4;
+    appelo_alpha = appelo_alpha_default;
 else
     if ~isstruct(appelo_params) || ~isscalar(appelo_params)
         error('ERW:invalidParam', 'Appelo parameters must be a scalar struct.');
@@ -60,7 +70,7 @@ else
                 'Appelo alpha must be a finite nonnegative scalar.');
         end
     else
-        appelo_alpha = 3.4;
+        appelo_alpha = appelo_alpha_default;
     end
 end
 

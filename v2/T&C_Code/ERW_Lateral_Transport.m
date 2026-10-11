@@ -85,8 +85,11 @@ for c = 1:N_cells
     layer_weight = water_volume(c,:)/V_vertical(c);
     for s = 1:N_sp
         dissolved = concentration(s)*V_before(c);
-        total_mass = max(0,E.bg.(total_fields{s})(row)* ...
-            A_cell(c)*total_to_umol(s));
+        total_mass = E.bg.(total_fields{s})(row)*A_cell(c)*total_to_umol(s);
+        if ~(isfinite(total_mass) && total_mass >= 0)
+            error('ERW_Lateral_Transport:NegativeInventory', ...
+                'ERW %s inventory is negative in cell %d.',names{s},c);
+        end
         available = min(total_mass,dissolved);
         M_full(c,s) = available;
         C_aq(c,:,s) = (available/V_vertical(c)).* ...
@@ -139,14 +142,21 @@ for c = 1:N_cells
             error('ERW_Lateral_Transport:NegativePool', ...
                 'Lateral transfer overdraws ERW %s in cell %d.',names{s},c);
         end
-        ERW{c}.bg.(total_fields{s})(row) = max(0,value);
+        if value < 0
+            error('ERW_Lateral_Transport:NegativeInventory', ...
+                'Lateral transfer leaves ERW %s negative in cell %d.',names{s},c);
+        end
+        ERW{c}.bg.(total_fields{s})(row) = value;
     end
     if isfield(ERW{c}.bg,'Alk_tot')
         ERW{c}.bg.Alk_tot(row) = ERW{c}.bg.Alk_tot(row) + ...
             dM_area(c,1)-dM_area(c,3);
     end
-    dissolved = max(0,M_full(c,:) + ...
-        reshape(sum(dM_aq(c,:,:),2),1,N_sp));
+    dissolved = M_full(c,:) + reshape(sum(dM_aq(c,:,:),2),1,N_sp);
+    if any(dissolved < 0)
+        error('ERW_Lateral_Transport:NegativeInventory', ...
+            'Lateral transfer leaves a dissolved ERW inventory negative in cell %d.',c);
+    end
     if V_after(c) <= 0
         if any(dissolved > mass_tol)
             error('ERW_Lateral_Transport:DryAqueousPool', ...
@@ -189,7 +199,11 @@ for c = 1:N_cells
     IC_initial = IC_initial+E.bg.IC_tot(row)*A_cell(c);
     old_air_volume = pore_volume(c)-V_before(c);
     air_volume(c) = pore_volume(c)-V_after(c);
-    gas_mass = max(0,E.bg.CO2_air(row)*1000*old_air_volume);
+    gas_mass = E.bg.CO2_air(row)*1000*old_air_volume;
+    if ~(isfinite(gas_mass) && gas_mass >= 0)
+        error('ERW_Lateral_Transport:NegativeGas', ...
+            'Soil-gas CO2 inventory is negative in cell %d.',c);
+    end
     [gas_mass,atmosphere_exchange] = piston_gas_volume( ...
         gas_mass,old_air_volume,air_volume(c),CO2_atm(c));
     diag.CO2_atmosphere_umol_cell(c) = atmosphere_exchange;
@@ -202,8 +216,12 @@ for c = 1:N_cells
         error('ERW_Lateral_Transport:DryGasVolume', ...
             'Soil-gas CO2 remains in a saturated weathering zone.');
     end
-    available_gas(c) = min(gas_mass, ...
-        max(0,ERW{c}.bg.IC_tot(row)*A_cell(c)));
+    IC_available = ERW{c}.bg.IC_tot(row)*A_cell(c);
+    if ~(isfinite(IC_available) && IC_available >= 0)
+        error('ERW_Lateral_Transport:NegativeGas', ...
+            'Total inorganic carbon is negative in cell %d.',c);
+    end
+    available_gas(c) = min(gas_mass,IC_available);
 end
 for e = 1:N_edges
     if isfield(topo,'edge_active') && ~topo.edge_active(e); continue; end
@@ -280,7 +298,11 @@ for c = 1:N_cells
             error('ERW_Lateral_Transport:NegativeGas', ...
                 'Lateral diffusion overdraws soil-gas CO2 in cell %d.',c);
         end
-        ERW{c}.bg.CO2_air(row) = max(0,CO2_air);
+        if CO2_air < 0
+            error('ERW_Lateral_Transport:NegativeGas', ...
+                'Lateral diffusion leaves soil-gas CO2 negative in cell %d.',c);
+        end
+        ERW{c}.bg.CO2_air(row) = CO2_air;
     elseif abs(dIC(c)) > 1e-9
         error('ERW_Lateral_Transport:DryGasVolume', ...
             'CO2 cannot diffuse into a cell with zero soil-air volume.');
@@ -330,7 +352,6 @@ if gas_mass < -gas_tol
     error('ERW_Lateral_Transport:NegativeGas', ...
         'Piston exchange overdraws soil-gas CO2.');
 end
-gas_mass = max(0,gas_mass);
 end
 
 function bm_sign = edge_sign_buffer_to_main(topo)

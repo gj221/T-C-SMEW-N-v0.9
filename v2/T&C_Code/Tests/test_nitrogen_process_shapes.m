@@ -1,0 +1,65 @@
+function test_nitrogen_process_shapes
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Source and shape checks for the active mineral-N transformations.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+test_dir = fileparts(mfilename('fullpath'));
+code_dir = fileparts(test_dir);
+addpath(code_dir);
+
+p = Biogeochemistry_Parameter(1);
+assert(abs(p.kv-1e-9*86400) < 5e-7, ...
+    'Ammonia volatilization no longer retains the Dickinson coefficient.');
+assert(abs(p.KNmaxn-1e-6*86400) < 5e-4, ...
+    'Nitrification no longer retains the Dickinson coefficient.');
+%% Denitrification is the one Dickinson coefficient this model no longer
+%% carries. It is calibrated to the Energy Farm chamber record; the reasoning
+%% and the cost are recorded at the assignment in Biogeochemistry_Parameter.
+%% Volatilization and nitrification above are still the literature values.
+assert(abs(p.KNmaxd-0.0271) < 2e-3, ...
+    'Denitrification no longer carries the Energy Farm calibrated coefficient.');
+
+T = [-20 0 20 38 50 69.9];
+fT_nit = ((70-T)/(70-38)).^12.*exp(12*(T-38)/(70-38));
+assert(all(isfinite(fT_nit)) && fT_nit(4) == max(fT_nit) && ...
+    abs(fT_nit(4)-1) < 1e-12, ...
+    'The nitrification temperature response must peak at 38 degC.');
+Se = [0 0.25 0.5 0.75 1];
+fW_nit = Se.*(1-Se)/0.25;
+assert(isequal(fW_nit,[0 0.75 1 0.75 0]), ...
+    'The nitrification moisture response must peak at Se=0.5.');
+
+L = 0.15;
+fW_den = Se.^(1/L);
+assert(all(diff(fW_den) >= 0) && fW_den(1) == 0 && fW_den(end) == 1, ...
+    'The denitrification moisture response must increase to saturation.');
+
+pH = [4 5 6 7 7.8 8];
+[fPH_den,ratio] = Biogeo_Denitrification_PH_Response(pH);
+assert(all(diff(fPH_den) >= 0) && fPH_den(5) == 1 && fPH_den(6) == 1, ...
+    'Gross denitrification must reach its configured plateau at pH 7.8.');
+assert(all(ratio > 0) && any(ratio < 0.1), ...
+    'The N2:N2O pH factor is Blanc-Betes Eq. 9 and carries no floor.');
+assert(all(arrayfun(@(r) Biogeo_Denitrification_Product_Ratio( ...
+    r,0.6,50,20),ratio) >= 0.1), ...
+    'The complete N2:N2O product must retain its source floor.');
+assert(all(diff(Biogeo_Nitrification_PH_Response(pH)) >= 0), ...
+    'Gross nitrification must increase monotonically over the treatment pH range.');
+assert(all(diff(Biogeo_Nitrification_N2O_Fraction(pH)) <= 0), ...
+    'The nitrification N2O fraction must decline over the treatment pH range.');
+
+source = fileread(fullfile(code_dir,'BIOGEOCHEMISTRY_DYNAMIC3.m'));
+assert(contains(source,'VOL = kv*B(31)'), ...
+    'Volatilization must retain the legacy first-order NH4 form.');
+assert(contains(source,'NO3flx = KNmax*ftemp*fmoist*fpH_nit*B(31)'), ...
+    'Nitrification must retain the legacy first-order NH4 form.');
+assert(contains(source,'DOC_gC_m3 = (B(12)+B(13))*rsd'), ...
+    'DOC limitation must compare volumetric DOC with volumetric Kc.');
+assert(~contains(source,'f_NO3_den'), ...
+    'The unsupported hybrid nitrate saturation remains active.');
+assert(contains(source, ...
+    'DENITflx = KNmax*ftemp*fmoist*fpH_den*f_DOC_den*B(32)'), ...
+    'Denitrification must retain the legacy first-order NO3 form.');
+
+fprintf('PASS: active nitrogen process shapes and source units are consistent.\n');
+end

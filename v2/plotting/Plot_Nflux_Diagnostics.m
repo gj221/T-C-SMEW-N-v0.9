@@ -23,7 +23,7 @@ all_col = [0 0 0; 0 0.20 0.55; 0.35 0.70 0.90]; % control, basalt, calcite
 col_appl = [0.45 0.45 0.45]; % rock/calcite application date markers
 lw_appl = 1.8;               % their line width
 
-vars = {'N2Oflx','N2flx','VOL','LEAK_NO3','LEAK_NH4','P','PH_d','Datam','NNd'};
+vars = {'N2Oflx','N2Oflx_nit','N2flx','VOL','LEAK_NO3','LEAK_NH4','P','PH_d','Datam','NNd'};
 scen_names = {}; scen_col = []; n_sc = 0;
 for k = 1:3
     res_file = fullfile(res_dir,all_files{k});
@@ -176,12 +176,14 @@ title('NO_3^- leaching response to feedstock')
 %%%% (6) realized N2O/(N2O+N2) ratio vs pH, against the model partition curve
 nexttile; hold on; grid on;
 for sc = 1:n_sc
-    den_gas = S(sc).N2Oflx+S(sc).N2flx;
-    ok = den_gas > 0;
-    scatter(S(sc).PH_d(ok),S(sc).N2Oflx(ok)./den_gas(ok),6,scen_col(sc,:),'filled','MarkerFaceAlpha',0.35)
+    den_n2o = S(sc).N2Oflx-S(sc).N2Oflx_nit;
+    den_gas = den_n2o+S(sc).N2flx;
+    ok = den_gas > 0 & den_n2o >= 0;
+    scatter(S(sc).PH_d(ok),den_n2o(ok)./den_gas(ok),6,scen_col(sc,:),'filled','MarkerFaceAlpha',0.35)
 end
 pH_th = linspace(4.5,8.5,200);
-plot(pH_th,1./(1+exp(1.5*(pH_th-6.2))),':','Color',col_appl,'LineWidth',lw_appl)
+[~,n2_to_n2o] = Biogeo_Denitrification_PH_Response(pH_th);
+plot(pH_th,1./(1+n2_to_n2o),':','Color',col_appl,'LineWidth',lw_appl)
 xlabel('pore-water pH [-]'); ylabel('N_2O/(N_2O+N_2) [-]')
 title('Denitrification product ratio vs pH')
 legend([scen_names {'partition curve'}],'Location','best','AutoUpdate','off')
@@ -195,5 +197,5 @@ fprintf('\n%-10s %13s %13s %13s %13s %13s %9s\n','scenario','N2O [gN/m2]','N2 [g
 for sc = 1:n_sc
     fprintf('%-10s %13.4f %13.4f %13.4f %13.4f %13.4f %9.3f\n',scen_names{sc},...
         sum(S(sc).N2Oflx),sum(S(sc).N2flx),sum(S(sc).VOL),sum(S(sc).LEAK_NO3),...
-        sum(S(sc).LEAK_NH4),mean(S(sc).PH_d(S(sc).PH_d>0)))
+        sum(S(sc).LEAK_NH4),-log10(mean(10.^(-S(sc).PH_d(S(sc).PH_d>0)))))
 end

@@ -145,9 +145,22 @@ else
                     Nui_am = (1-EM).*Rexmy./CostactAM_si ;
             end
             Nui_tot = Nui_bnf + Nui_ex +  Nui_em +  Nui_am;
-            RexmyT(1) = Rexmy*Nui_ex/Nui_tot ;   %% [gC / m^2 d]
-            RexmyT(2) = Rexmy*(Nui_em+Nui_am)/Nui_tot; %% [gC / m^2 d]
-            RexmyT(3) = Rexmy*Nui_bnf/Nui_tot; %% [gC / m^2 d]
+            %%% An exhausted carbohydrate reserve clamps Rexmy to zero at the
+            %%% min above, zeroing every Nui term and leaving Nui_tot at zero,
+            %%% so this partitioning is 0/0 and returns NaN. That NaN reaches
+            %%% fixed_demand in VEGETATION_DYNAMIC and stops the run at the
+            %%% Plant_Reserve_Growth_Limit finite check. There is no exudation
+            %%% to divide when Rexmy is zero, so each pathway takes none: the
+            %%% safe_fraction guard from BIOGEOCHEMISTRY_DYNAMIC3.
+            if Nui_tot > 0
+                RexmyT(1) = Rexmy*Nui_ex/Nui_tot ;   %% [gC / m^2 d]
+                RexmyT(2) = Rexmy*(Nui_em+Nui_am)/Nui_tot; %% [gC / m^2 d]
+                RexmyT(3) = Rexmy*Nui_bnf/Nui_tot; %% [gC / m^2 d]
+            else
+                RexmyT(1) = 0;
+                RexmyT(2) = 0;
+                RexmyT(3) = 0;
+            end
         else
             RexmyT(1) = 0;
             RexmyT(2) = 0;
@@ -248,9 +261,22 @@ else
                     Nui_am = (1-EM).*Rexmy./CostactAM_si ;
             end
             Nui_tot = Nui_bnf + Nui_ex +  Nui_em +  Nui_am;
-            RexmyT(1) = Rexmy*Nui_ex/Nui_tot ;   %% [gC / m^2 d]
-            RexmyT(2) = Rexmy*(Nui_em+Nui_am)/Nui_tot; %% [gC / m^2 d]
-            RexmyT(3) = Rexmy*Nui_bnf/Nui_tot; %% [gC / m^2 d]
+            %%% An exhausted carbohydrate reserve clamps Rexmy to zero at the
+            %%% min above, zeroing every Nui term and leaving Nui_tot at zero,
+            %%% so this partitioning is 0/0 and returns NaN. That NaN reaches
+            %%% fixed_demand in VEGETATION_DYNAMIC and stops the run at the
+            %%% Plant_Reserve_Growth_Limit finite check. There is no exudation
+            %%% to divide when Rexmy is zero, so each pathway takes none: the
+            %%% safe_fraction guard from BIOGEOCHEMISTRY_DYNAMIC3.
+            if Nui_tot > 0
+                RexmyT(1) = Rexmy*Nui_ex/Nui_tot ;   %% [gC / m^2 d]
+                RexmyT(2) = Rexmy*(Nui_em+Nui_am)/Nui_tot; %% [gC / m^2 d]
+                RexmyT(3) = Rexmy*Nui_bnf/Nui_tot; %% [gC / m^2 d]
+            else
+                RexmyT(1) = 0;
+                RexmyT(2) = 0;
+                RexmyT(3) = 0;
+            end
         else
             RexmyT(1) = 0;
             RexmyT(2) = 0;
