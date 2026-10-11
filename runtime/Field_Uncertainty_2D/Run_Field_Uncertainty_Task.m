@@ -2,9 +2,10 @@ function Run_Field_Uncertainty_Task(array_index)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% One array element of the Kantola uncertainty ensemble on a field grid:
 %% the lower or upper parameter set (Uncertainty_Members, Uncertainty_Knobs)
-%% on one run of the 35-year SSP campaign on that grid, for the campaign
+%% on one run of the central campaign on that grid, over its horizon (the
+%% 35-year projection, or the five-year field record), for the campaign
 %% the controller's environment names (Field_Uncertainty_Campaign). The
-%% original set is the field SSP campaign's result (runtime/Field_SSP_2D).
+%% original set is the central field campaign's result (runtime/Field_SSP_2D).
 %%
 %% The gates are Field_2D's, as runtime/Field_SSP_2D applies them: a
 %% validation element (TC_VALIDATE_ONLY=1, array index 1) runs the complete
@@ -62,7 +63,7 @@ if ~license('test','Distrib_Computing_Toolbox')
         'Parallel Computing Toolbox is required for the 2-D runs.');
 end
 required_files = { ...
-    fullfile(code_dir,'Inputs',sprintf('Data_Kantola_%s.mat',C.scenario)), ...
+    fullfile(code_dir,'Inputs',C.forcing), ...
     fullfile(repo_root,'v2','SIM','EQUIV_1D_TMP','TC_ERW_results_Kantola_crop_control.mat')};
 for k = 1:numel(required_files)
     if ~isfile(required_files{k})

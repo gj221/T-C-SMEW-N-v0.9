@@ -1,10 +1,11 @@
 function varargout = Field_Campaign_Grid(action,varargin)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% The field grid of a 35-year field campaign (Field_SSP_2D and
+%% The field grid of a field campaign of the three sets (Field_SSP_2D and
 %% Field_Uncertainty_2D), as runtime/Field_2D checks it for the five-year
 %% runs: a file saved by Build_Field_Grid_Topology, beside the deployed root
 %% (a validated root never gains files), named by at most 32 letters,
-%% digits and underscores, which name the campaign.
+%% digits and underscores, which name the campaign. And the campaign's
+%% horizon, the one rule both tasks read.
 %%
 %%   [file,name] = Field_Campaign_Grid('read',repo_root,prefix)
 %%       TC_FIELD_TOPOLOGY, resolved, outside the root, well named
@@ -25,6 +26,15 @@ function varargout = Field_Campaign_Grid(action,varargin)
 %%       only one a field run runs (unset reads as fast)
 %%   Field_Campaign_Grid('kernel_provenance',p,kernel,prefix)
 %%       a saved run_provenance records that kernel
+%%   H = Field_Campaign_Grid('horizon',prefix)
+%%       the campaign's horizon from TC_SSP and TC_HORIZON: without TC_SSP
+%%       the five-year field record as runtime/Field_2D runs it (the
+%%       calibrated days on the legacy forcing, rock to 2019, the driver's
+%%       default; TC_HORIZON unset or 5yr), with TC_SSP the 35-year
+%%       projection (12784 days on the scenario forcing, rock to 2050;
+%%       TC_HORIZON unset or 35yr). H holds horizon, name, scenario,
+%%       n_days, last_application_year, the campaign tag's token, the
+%%       forcing file and the driver options the horizon adds
 %%
 %% prefix is the calling campaign's error identifier prefix.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -46,6 +56,8 @@ switch action
         varargout{1} = erw_kernel(varargin{:});
     case 'kernel_provenance'
         assert_kernel_provenance(varargin{:});
+    case 'horizon'
+        varargout{1} = campaign_horizon(varargin{:});
     otherwise
         error('Field_Campaign_Grid:UnknownAction','Unknown action %s.',action);
 end
@@ -159,6 +171,40 @@ if ~isfield(p,'erw_kernel') || ~strcmp(char(p.erw_kernel),kernel)
     error([prefix ':WrongKernel'], ...
         'The result does not record the ERW kernel %s it ran with.',kernel);
 end
+end
+
+function H = campaign_horizon(prefix)
+%% The five-year horizon is Field_2D's run exactly: Campaign_Parameters'
+%% days on the legacy forcing with no Scenario or LastApplicationYear
+%% option, so the driver's default rock schedule (to 2019, the field
+%% record) and the result names of that campaign hold.
+ssp = strtrim(getenv('TC_SSP'));
+horizon = strtrim(getenv('TC_HORIZON'));
+if isempty(ssp)
+    if ~isempty(horizon) && ~strcmp(horizon,'5yr')
+        error([prefix ':BadHorizon'], ...
+            'Without TC_SSP the campaign is the five-year field record; TC_HORIZON=%s is not it.', ...
+            horizon);
+    end
+    P = Campaign_Parameters;
+    H = struct('horizon','5yr','name','five-year','scenario','','n_days',P.NDays, ...
+        'last_application_year',2019,'tag','5yr','forcing','Data_Kantola.mat', ...
+        'options',{{}});
+    return
+end
+if ~ismember(ssp,{'ssp126','ssp245','ssp585'})
+    error([prefix ':BadScenario'], ...
+        ['TC_SSP must be ssp126, ssp245 or ssp585, not ''%s''. It selects the ' ...
+         'forcing file Data_Kantola_<scenario>.mat; unset is the five-year field record.'], ...
+        ssp);
+end
+if ~isempty(horizon) && ~strcmp(horizon,'35yr')
+    error([prefix ':BadHorizon'], ...
+        'A scenario campaign is the 35-year projection; TC_HORIZON=%s is not it.',horizon);
+end
+H = struct('horizon','35yr','name','35-year','scenario',ssp,'n_days',12784, ...
+    'last_application_year',2050,'tag',['35yr_' ssp],'forcing',['Data_Kantola_' ssp '.mat'], ...
+    'options',{{'Scenario',ssp,'LastApplicationYear',2050}});
 end
 
 function check_memory(n_squares,n_days,prefix)

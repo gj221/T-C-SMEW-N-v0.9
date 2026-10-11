@@ -1,15 +1,19 @@
 function Run_Field_SSP_2D_Task
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Run one Slurm array element of a 35-year Kantola SSP campaign on a
+%% Run one Slurm array element of the central Kantola campaign on a
 %% field grid: run 1 to 9 of Run_Matrix_12 on T&C-SMEW-N v1.0's polygon
-%% grid of the real field (runtime/Field_2D) under the scenario forcing,
-%% rock every 10 November to 2050, as runtime/SSP_2D runs them on the
-%% 12-column plot.
+%% grid of the real field (runtime/Field_2D), over the horizon
+%% Field_Campaign_Grid reads from TC_SSP: the 35-year projection under
+%% the scenario forcing, rock every 10 November to 2050, as
+%% runtime/SSP_2D runs them on the 12-column plot, or without TC_SSP the
+%% five-year field record as runtime/Field_2D runs it, with the calcite
+%% arm that campaign lacks.
 %%
-%% The calibrated set is Campaign_Parameters with the horizon moved to
-%% 35 years, and the run options are SSP_2D's with the field grid in place
-%% of the 2x2 plot grid, so the result is the original member of the
-%% field-grid uncertainty ensemble (runtime/Field_Uncertainty_2D).
+%% The calibrated set is Campaign_Parameters with the horizon's days, and
+%% the run options are SSP_2D's with the field grid in place of the 2x2
+%% plot grid (Field_2D's own at five years), so the result is the
+%% original member of the field-grid uncertainty ensemble
+%% (runtime/Field_Uncertainty_2D).
 %%
 %% The gates are Field_2D's: the grid file beside the deployed root, its
 %% content in the validation stamp, TC_FIELD_WORKERS workers for the
@@ -39,22 +43,21 @@ if ~strcmp(matlab_release,'2025a')
 end
 Bouchet_Single_Thread_Runtime(prefix);
 P = Campaign_Parameters;
-%% The 35-year horizon of the SSP campaigns: 2016-01-01 to 2050-12-31
-%% (12784 days), rock every 10 November to the end of the forcing.
-n_days = 12784;
-last_application_year = 2050;
+H = Field_Campaign_Grid('horizon',prefix);
+n_days = H.n_days;
+last_application_year = H.last_application_year;
 P.NDays = n_days;
 
-scenario = read_scenario(prefix);
+scenario = H.scenario;
 [calcite_case,case_suffix] = Calcite_Case;
 [topology_file,topology_name] = Field_Campaign_Grid('read',repo_root,prefix);
-campaign_tag = sprintf('Field_SSP_2D_35yr_%s%s__%s',scenario,case_suffix,topology_name);
+campaign_tag = sprintf('Field_SSP_2D_%s%s__%s',H.tag,case_suffix,topology_name);
 topo = Field_Campaign_Grid('load',topology_file,prefix);
 n_columns = topo.N_cells;
 
 required_files = { ...
     fullfile(code_dir,'Inputs','ERW_MOD_PARAM_parameters.xlsx'), ...
-    fullfile(code_dir,'Inputs',sprintf('Data_Kantola_%s.mat',scenario)), ...
+    fullfile(code_dir,'Inputs',H.forcing), ...
     fullfile(code_dir,'Inputs','Data_Kantola_BG.mat'), ...
     fullfile(code_dir,'Inputs','Ca_Data.mat'), ...
     fullfile(code_dir,'Inputs','All_deposition_data.mat'), ...
@@ -125,20 +128,19 @@ stamp_dependencies = { ...
     fullfile(one_d_dir,'Assert_Base_Provenance.m'), ...
     fullfile(one_d_dir,'Fingerprint_Digest.m'), ...
     fullfile(repo_root,'runtime','Uncertainty_1D','requeue_near_limit.sh'), ...
-    fullfile(code_dir,'Inputs',sprintf('Data_Kantola_%s.mat',scenario)), ...
+    fullfile(code_dir,'Inputs',H.forcing), ...
     topology_file};
-run_options = {'NDays',n_days,'StartDate',P.StartDate, ...
+run_options = [{'NDays',n_days,'StartDate',P.StartDate, ...
     'FieldTopologyFile',topology_file, ...
     'AppeloAlpha',P.AppeloAlpha,'AppeloLogKH',P.AppeloLogKH, ...
-    'KNmaxd',P.KNmaxd,'Kbot',P.Kbot, ...
-    'Scenario',scenario,'LastApplicationYear',last_application_year};
+    'KNmaxd',P.KNmaxd,'Kbot',P.Kbot} H.options];
 if ~isempty(calcite_case)
     run_options = [run_options {'CalciteCase',calcite_case}];
 end
 if strcmp(validate_only,'1')
     run_validation(code_dir,repo_root,campaign_dir,campaign_tag,one_d_dir, ...
         stamp_dependencies,workers,topology_file,topo,run_options,calcite_case, ...
-        n_days,kernel,prefix);
+        n_days,kernel,H.name,prefix);
     return
 end
 %% Checked after validation: the validation element is array element 1.
@@ -180,11 +182,11 @@ end
 worker_log = fullfile(logs_dir,sprintf('worker_run%02d.log',run_id));
 diary(worker_log);
 diary_cleanup = onCleanup(@() diary('off')); %#ok<NASGU>
-fprintf(['Campaign: %s\nScenario: %s (%d days, rock to %d)\n' ...
+fprintf(['Campaign: %s\nHorizon: %s (%d days, rock to %d)\nForcing: %s\n' ...
     'Grid: %s (%d squares of %g m, topography %d)\nSlurm run: %d (restart %s)\n' ...
     'Workers: %d\nERW kernel: %s\nAppelo alpha: %.17g\nKNmaxd: %.17g d^-1\n' ...
     'Kbot: %.17g mm h^-1\nCEC: %g cmolc kg^-1\nStarted: %s\n'], ...
-    campaign_tag,scenario,n_days,last_application_year,topology_file,n_columns, ...
+    campaign_tag,H.name,n_days,last_application_year,H.forcing,topology_file,n_columns, ...
     topo.cell_size_m,isfield(topo,'topography_attached') && topo.topography_attached, ...
     run_id,getenv('SLURM_RESTART_COUNT'),workers,kernel,P.AppeloAlpha,P.KNmaxd,P.Kbot, ...
     P.CEC_cmolc_kg,datestr(now,'yyyy-mm-dd HH:MM:SS'));
@@ -222,8 +224,8 @@ Field_Campaign_Grid('provenance',saved.run_provenance,topology_file,topo,prefix)
 Field_Campaign_Grid('kernel_provenance',saved.run_provenance,kernel,prefix);
 assert_projection_provenance(saved.run_provenance,existing(1).name,scenario, ...
     calcite_case,last_application_year,prefix);
-fprintf('Provenance: run %d carries the calibrated CEC 13 identity on %s under %s.\n', ...
-    run_id,topology_name,scenario);
+fprintf('Provenance: run %d carries the calibrated CEC 13 identity on %s over %s.\n', ...
+    run_id,topology_name,H.tag);
 
 fprintf('Lateral conservation over the whole run:\n');
 Check_Lateral_Conservation(result_file,prefix);
@@ -232,7 +234,7 @@ end
 
 function run_validation(code_dir,repo_root,campaign_dir,campaign_tag,one_d_dir, ...
     stamp_dependencies,workers,topology_file,topo,run_options,calcite_case, ...
-    n_days,kernel,prefix)
+    n_days,kernel,horizon_name,prefix)
 test_dir = fullfile(code_dir,'Tests');
 addpath(test_dir,one_d_dir);
 old_dir = pwd;
@@ -274,32 +276,26 @@ fingerprint = Bouchet_Campaign_Validation_Fingerprint( ...
     fullfile(repo_root,'v2'),campaign_dir,campaign_tag,topo.N_cells,workers, ...
     stamp_dependencies{:});
 Bouchet_Write_Validation_Stamp(fullfile(logs_dir,'validation_stamp.txt'),fingerprint);
-fprintf('PASS: Bouchet R2025a CEC 13 field-grid 35-year validation (%s)\n',campaign_tag);
+fprintf('PASS: Bouchet R2025a CEC 13 field-grid %s validation (%s)\n',horizon_name,campaign_tag);
 end
 
 function assert_projection_provenance(p,file_name,scenario,calcite_case, ...
     last_application_year,prefix)
-%% The scenario and calcite case are in the file name alone; the rock
+%% The scenario and calcite case are in the file name alone (a five-year
+%% name carries neither scenario token nor projection); the rock
 %% schedule's last year is in the provenance.
+scenario_tag = '';
+if ~isempty(scenario); scenario_tag = ['__' scenario]; end
 case_tag = '';
 if ~isempty(calcite_case); case_tag = sprintf('__case%d',calcite_case); end
 ok = isfield(p,'last_application_year') && ...
     p.last_application_year == last_application_year && ...
-    strcmp(regexp(file_name,'__ssp[0-9]{3}(?=__)','match','once'),['__' scenario]) && ...
+    strcmp(regexp(file_name,'__ssp[0-9]{3}(?=__)','match','once'),scenario_tag) && ...
     strcmp(regexp(file_name,'__case[0-9]+(?=__)','match','once'),case_tag);
 if ~ok
     error([prefix ':WrongProjection'], ...
-        '%s is not a %s%s run with rock to %d.',file_name,scenario,case_tag, ...
-        last_application_year);
-end
-end
-
-function scenario = read_scenario(prefix)
-scenario = strtrim(getenv('TC_SSP'));
-if ~ismember(scenario,{'ssp126','ssp245','ssp585'})
-    error([prefix ':BadScenario'], ...
-        ['TC_SSP must be ssp126, ssp245 or ssp585, not ''%s''. It selects the ' ...
-        'forcing file Data_Kantola_<scenario>.mat.'],scenario);
+        '%s is not a run of scenario ''%s'', case ''%s'', with rock to %d.', ...
+        file_name,scenario,case_tag,last_application_year);
 end
 end
 

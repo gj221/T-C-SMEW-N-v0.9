@@ -6,7 +6,9 @@ function test_uncertainty_summary
 %% (O_d, Lk_d, ERW_daily) and once with full hourly and ten-minute records.
 %% Both layouts must give the same summary; the field means must be the
 %% Domain-weighted means; the yearly statistics, envelopes and checks must
-%% hold; and Plot_Uncertainty must draw the summary.
+%% hold; and Plot_Uncertainty must draw the summary. A five-year field
+%% pair (no scenario in its tags, rock to 2019) must read the same way:
+%% the horizon comes from the results, never from the summary.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 test_dir = fileparts(mfilename('fullpath'));
@@ -154,6 +156,26 @@ assert_error(@() Summarize_Uncertainty(mixed,'Runs',1:3,'Output',fullfile(root,'
     'Summarize_Uncertainty:TimeAxisMismatch');
 assert_error(@() Summarize_Uncertainty('not a cell'),'Summarize_Uncertainty:BadSources');
 
+%% The five-year field pair of a grid: tags without a scenario, names
+%% without the scenario token, the driver's default rock schedule.
+five_original = fullfile(root,'five','Field_SSP_2D_5yr__grid_a');
+five_ensemble = fullfile(root,'five','Field_Uncertainty_2D_5yr__grid_a');
+for m = 1:numel(members)
+    folder = five_original; campaign = 'Field_SSP_2D_5yr__grid_a';
+    if ~members(m).reused
+        folder = fullfile(five_ensemble,members(m).tag); campaign = 'Field_Uncertainty_2D_5yr__grid_a';
+    end
+    write_result(folder,grids(1),members(m),Uncertainty_Knobs(members(m),P),campaign,n_days,true,30+m);
+end
+V = Summarize_Uncertainty({five_original,five_ensemble},'Runs',1:3,'Output',fullfile(root,'five_summary.mat'));
+assert(strcmp(V.label,'Kantola field grids') && isequal(V.run_ids,1) && isempty(V.missing) && ...
+    ~any(isnan(V.daily.BulkPH(3:end,:,1)),'all') && isequal(V.yearly.years,[2016 2017]), ...
+    'A five-year field pair is read on its own horizon, with no scenario.');
+five_file = result_path(five_original,1);
+five_prov = load(five_file,'run_provenance');
+assert(~contains(five_file,'__ssp') && five_prov.run_provenance.last_application_year == 2019, ...
+    'The five-year results carry no scenario token and rock to 2019 (else this check is stale).');
+
 %% The figures of the summary.
 figure_dir = fullfile(root,'figures');
 [fig,plot_file] = Plot_Uncertainty(out_stores,figure_dir,'off');
@@ -169,8 +191,13 @@ end
 %% =======================================================================
 function write_result(folder,grid,member,K,campaign,n_days,stores,seed)
 %% One synthetic result as Run_One_Subfield saves it, with the fields the
-%% summary reads, in the daily-store or the full-record layout.
+%% summary reads, in the daily-store or the full-record layout. The
+%% scenario is the campaign tag's: a 35-year tag names one (rock to 2050,
+%% the token in the name), a five-year tag none (rock to 2019, no token).
 rng(seed);
+scenario = ['__' char(regexp(campaign,'ssp[0-9]{3}','match','once'))];
+last_application_year = 2050;
+if strcmp(scenario,'__'); scenario = ''; last_application_year = 2019; end
 if ~isfolder(folder); mkdir(folder); end
 n_col = grid.n_col;
 NN = 24*n_days; NNd = n_days+1;
@@ -219,7 +246,7 @@ for c = 1:n_col
         'total',struct('EW',total));
 end
 run_provenance = struct('campaign',campaign,'validation_fingerprint','synthetic', ...
-    'n_days',n_days,'n_columns',n_col,'last_application_year',2050, ...
+    'n_days',n_days,'n_columns',n_col,'last_application_year',last_application_year, ...
     'KNmaxd',K.KNmaxd,'Kbot',K.Kbot,'biogeo_overrides',K.BiogeoOverrides, ...
     'dissolution_factor',K.DissolutionFactor,'saturation_exponent',K.SaturationExponent, ...
     'AppeloAlpha',repmat(K.AppeloAlpha,n_col,1),'AppeloLogKH',repmat(K.AppeloLogKH,n_col,1), ...
@@ -242,8 +269,8 @@ if stores
 else
     vars = [vars {'O','Lk'}];
 end
-name = sprintf('TC_2D_run%02d_%s__ssp245__field_%s__%s__%dd__from20160101.mat', ...
-    grid.run,grid.run_name,grid.name,member.tag,n_days);
+name = sprintf('TC_2D_run%02d_%s%s__field_%s__%s__%dd__from20160101.mat', ...
+    grid.run,grid.run_name,scenario,grid.name,member.tag,n_days);
 save(fullfile(folder,name),vars{:},'-v7.3');
 end
 

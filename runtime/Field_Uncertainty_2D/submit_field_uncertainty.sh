@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Submit the lower and upper sets of the Kantola uncertainty ensemble on a
-# field grid for one scenario and calcite case: one validation element (the
-# complete audit, the Linux checks and one day of the grid under each set)
-# followed by an array over the sets and the runs of TC_FIELD_RUNS
-# (member-major: every run under the lower set, then under the upper). The
-# original set is not run: it is the 35-year field SSP campaign's result
-# (runtime/Field_SSP_2D) in the checkout TC_UC_ORIGINAL_ROOT, whose model
-# must be byte for byte this one's; "$PWD" when both run in this root.
+# field grid for one horizon, scenario and calcite case: one validation
+# element (the complete audit, the Linux checks and one day of the grid
+# under each set) followed by an array over the sets and the runs of
+# TC_FIELD_RUNS (member-major: every run under the lower set, then under
+# the upper). The original set is not run: it is the central field
+# campaign's result (runtime/Field_SSP_2D) in the checkout
+# TC_UC_ORIGINAL_ROOT, whose model must be byte for byte this one's;
+# "$PWD" when both run in this root. Without TC_SSP the sets run the
+# five-year field record on the legacy forcing (rock to 2019, as
+# runtime/Field_2D), with it the 35-year projection; TC_HORIZON may name
+# the horizon (5yr or 35yr) or stay unset.
 #
 # Usage, from the checkout root:
 #   TC_UC_ORIGINAL_ROOT="$PWD" \
@@ -40,12 +44,28 @@ fi
 : "${TC_BOUCHET_ACCOUNT:?Set TC_BOUCHET_ACCOUNT to the pi account reported by slurm_checkup.sh}"
 : "${TC_UC_ORIGINAL_ROOT:?Set TC_UC_ORIGINAL_ROOT to the checkout whose field SSP campaigns hold the original set}"
 : "${TC_FIELD_TOPOLOGY:?Set TC_FIELD_TOPOLOGY to the full path of the grid file}"
-: "${TC_SSP:?Set TC_SSP to ssp126, ssp245 or ssp585}"
 : "${TC_FIELD_MEM:?Set TC_FIELD_MEM (for example 96G) from the pilot; see the README}"
-case "$TC_SSP" in
-    ssp126|ssp245|ssp585) ;;
-    *) echo "Bad TC_SSP: $TC_SSP. No jobs were submitted." >&2; exit 2 ;;
-esac
+# The horizon, as the task reads it (Field_Campaign_Grid 'horizon'): the
+# five-year field record without a scenario, the 35-year projection with one.
+ssp="${TC_SSP:-}"
+horizon="${TC_HORIZON:-}"
+if [[ -z "$ssp" ]]; then
+    if [[ -n "$horizon" && "$horizon" != 5yr ]]; then
+        echo "Without TC_SSP the ensemble is the five-year field record; TC_HORIZON=$horizon is not it. No jobs were submitted." >&2
+        exit 2
+    fi
+    horizon='5yr'; horizon_tag='5yr'; forcing='Data_Kantola.mat'
+else
+    case "$ssp" in
+        ssp126|ssp245|ssp585) ;;
+        *) echo "Bad TC_SSP: $ssp. No jobs were submitted." >&2; exit 2 ;;
+    esac
+    if [[ -n "$horizon" && "$horizon" != 35yr ]]; then
+        echo "A scenario ensemble is the 35-year projection; TC_HORIZON=$horizon is not it. No jobs were submitted." >&2
+        exit 2
+    fi
+    horizon='35yr'; horizon_tag="35yr_${ssp}"; forcing="Data_Kantola_${ssp}.mat"
+fi
 if [[ ! "$TC_FIELD_MEM" =~ ^[1-9][0-9]*G$ ]]; then
     echo "TC_FIELD_MEM must be a whole number of gigabytes such as 96G. No jobs were submitted." >&2
     exit 2
@@ -148,7 +168,7 @@ if [[ "$(basename "$topology_file")" != "$topology_name.mat" || \
     echo "The grid file must be <name>.mat with a name of at most 32 letters, digits and underscores. No jobs were submitted." >&2
     exit 2
 fi
-tag="Field_Uncertainty_2D_35yr_${TC_SSP}${case_suffix}__${topology_name}"
+tag="Field_Uncertainty_2D_${horizon_tag}${case_suffix}__${topology_name}"
 results_dir="$repo_root/v2/SIM/Subfield_12/$tag"
 logs_dir="$repo_root/v2/logs/Subfield_12/$tag"
 
@@ -169,7 +189,7 @@ required_files=(
     'runtime/Base_1D/Campaign_Parameters.m'
     'runtime/Base_1D/Calcite_Case.m'
     'runtime/Base_1D/Fingerprint_Digest.m'
-    "v2/T&C_Code/Inputs/Data_Kantola_${TC_SSP}.mat"
+    "v2/T&C_Code/Inputs/$forcing"
     'v2/T&C_Code/Tests/run_post_legacy_equation_audit_tests.m'
     'v2/run/Run_One_Subfield.m'
     'v2/run/Run_Subfield_Worker.m'
@@ -248,7 +268,7 @@ release_controller_lock() {
 }
 trap release_controller_lock EXIT
 
-suffix="${TC_SSP}${case_suffix}_${topology_name}"
+suffix="${ssp:-5yr}${case_suffix}_${topology_name}"
 validation_name="FieldUC2Dchk_${suffix}"
 production_name="FieldUC2D_${suffix}"
 if ! active_jobs="$(squeue -h -u "$USER" --name="$validation_name,$production_name" -o '%A|%j|%T')"; then
@@ -304,7 +324,7 @@ n_elements=$(( run_members * n_runs ))
 # The run list holds commas, which separate the variables of --export, so
 # it reaches the jobs through the environment --export=ALL passes on.
 export TC_FIELD_RUNS="$run_list"
-export_common="ALL,TC_FIELD_UC_CONTROLLER_TOKEN=$token,TC_FIELD_TOPOLOGY=$topology_file,TC_SSP=$TC_SSP,TC_CALCITE_CASE=$calcite_case,TC_FIELD_WORKERS=$workers,TC_FIELD_RESTARTS=$restarts,TC_ERW_KERNEL=$kernel"
+export_common="ALL,TC_FIELD_UC_CONTROLLER_TOKEN=$token,TC_FIELD_TOPOLOGY=$topology_file,TC_SSP=$ssp,TC_HORIZON=$horizon,TC_CALCITE_CASE=$calcite_case,TC_FIELD_WORKERS=$workers,TC_FIELD_RESTARTS=$restarts,TC_ERW_KERNEL=$kernel"
 submit_job validation_job \
     --partition=day --array=1 --ntasks=1 --cpus-per-task="$workers" --mem=96G --time=06:00:00 \
     --no-requeue --job-name="$validation_name" \
@@ -321,7 +341,7 @@ graph_complete=1
 trap - ERR HUP INT TERM
 
 printf 'Uncertainty ensemble %s (original %s in %s)\n' "$tag" \
-    "Field_SSP_2D_35yr_${TC_SSP}${case_suffix}__${topology_name}" "$TC_UC_ORIGINAL_ROOT"
+    "Field_SSP_2D_${horizon_tag}${case_suffix}__${topology_name}" "$TC_UC_ORIGINAL_ROOT"
 printf 'Validation: %s (day, %d CPUs, 6 h)\n' "$validation_job" "$workers"
 printf 'Production: %s, %d elements (lower then upper over runs %s; %s, %d CPUs, %s, pieces of %s, up to %d requeues, ERW kernel %s), eligible after the validation passes\n' \
     "$production_job" "$n_elements" "$run_list" "$partition" "$workers" "$TC_FIELD_MEM" \

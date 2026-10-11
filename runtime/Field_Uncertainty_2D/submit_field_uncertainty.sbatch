@@ -15,8 +15,9 @@
 #SBATCH --error=runtime/Field_Uncertainty_2D/slurm_%A_%a.err
 #
 # One element of the Kantola uncertainty ensemble on a field grid: the
-# lower or upper set on one run of the 35-year SSP campaign on the grid
-# TC_FIELD_TOPOLOGY, or (TC_VALIDATE_ONLY=1) the campaign's validation.
+# lower or upper set on one run of the central campaign on the grid
+# TC_FIELD_TOPOLOGY, over 35 years under TC_SSP or the five-year field
+# record without it, or (TC_VALIDATE_ONLY=1) the campaign's validation.
 # Submit through runtime/Field_Uncertainty_2D/submit_field_uncertainty.sh,
 # which sets memory, CPUs, partition, time and the array; the directives
 # above are only the defaults. A production element requeues itself half
@@ -51,10 +52,16 @@ if [[ ! -r "$TC_FIELD_TOPOLOGY" ]]; then
     echo "The grid file is missing or unreadable: $TC_FIELD_TOPOLOGY" >&2
     exit 2
 fi
-: "${TC_SSP:?TC_SSP must be ssp126, ssp245 or ssp585}"
-case "$TC_SSP" in ssp126|ssp245|ssp585) ;; *) echo "Bad TC_SSP: $TC_SSP" >&2; exit 2 ;; esac
-if [[ ! -f "v2/T&C_Code/Inputs/Data_Kantola_${TC_SSP}.mat" ]]; then
-    echo "The scenario forcing v2/T&C_Code/Inputs/Data_Kantola_${TC_SSP}.mat is missing." >&2
+# The horizon's tag and forcing, as the controller and the task form them.
+ssp="${TC_SSP:-}"
+if [[ -z "$ssp" ]]; then
+    horizon_tag='5yr'; forcing='Data_Kantola.mat'
+else
+    case "$ssp" in ssp126|ssp245|ssp585) ;; *) echo "Bad TC_SSP: $ssp" >&2; exit 2 ;; esac
+    horizon_tag="35yr_${ssp}"; forcing="Data_Kantola_${ssp}.mat"
+fi
+if [[ ! -f "v2/T&C_Code/Inputs/$forcing" ]]; then
+    echo "The forcing v2/T&C_Code/Inputs/$forcing is missing." >&2
     exit 6
 fi
 
@@ -92,12 +99,12 @@ fi
 topology_name="$(basename "$TC_FIELD_TOPOLOGY" .mat)"
 export TC_FIELD_WORKERS="$workers"
 export TC_PARALLEL_WORKERS="$workers"
-export TC_CAMPAIGN_TAG="Field_Uncertainty_2D_35yr_${TC_SSP}${case_suffix}__${topology_name}"
+export TC_CAMPAIGN_TAG="Field_Uncertainty_2D_${horizon_tag}${case_suffix}__${topology_name}"
 export TC_NUMERICAL_IDENTITY="cpumodel=9575f;matlab_release=2025a;single_comp_thread=1;parallel_workers=${workers}"
 export TC_CKPT_MINUTES=120
 unset TC_CKPT_FORCE_RESUME || true
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
-export TC_SSP="${TC_SSP}" TC_CALCITE_CASE="${TC_CALCITE_CASE:-}" TC_FIELD_RUNS="${TC_FIELD_RUNS:-}"
+export TC_SSP="$ssp" TC_HORIZON="${TC_HORIZON:-}" TC_CALCITE_CASE="${TC_CALCITE_CASE:-}" TC_FIELD_RUNS="${TC_FIELD_RUNS:-}"
 
 # Each piece of each element keeps its own MATLAB preferences and temporary
 # files, so the thread pools of elements sharing a node never share them.

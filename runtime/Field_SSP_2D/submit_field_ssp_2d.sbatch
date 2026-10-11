@@ -14,11 +14,13 @@
 #SBATCH --output=runtime/Field_SSP_2D/slurm_%A_%a.out
 #SBATCH --error=runtime/Field_SSP_2D/slurm_%A_%a.err
 #
-# Runs 1-9 of one 35-year SSP campaign on a field grid saved by
-# Build_Field_Grid_Topology (TC_FIELD_TOPOLOGY): the scenario forcing
-# (TC_SSP), rock every 10 November to 2050, optionally the 5 t/ha calcite
-# case (TC_CALCITE_CASE). The grid's file name, the scenario and the case
-# enter the campaign tag, so every grid and scenario writes to its own tree.
+# Runs 1-9 of one central campaign on a field grid saved by
+# Build_Field_Grid_Topology (TC_FIELD_TOPOLOGY): over 35 years on the
+# scenario forcing (TC_SSP), rock every 10 November to 2050, or without
+# TC_SSP over the five-year field record on the legacy forcing; optionally
+# the 5 t/ha calcite case (TC_CALCITE_CASE). The grid's file name, the
+# horizon, the scenario and the case enter the campaign tag, so every
+# grid, horizon and scenario writes to its own tree.
 #
 # Submit through runtime/Field_SSP_2D/submit_field_ssp_2d.sh, which sets
 # --mem, --cpus-per-task, --partition, --time and the array from the
@@ -58,10 +60,16 @@ if [[ ! -r "$TC_FIELD_TOPOLOGY" ]]; then
     echo "The grid file is missing or unreadable: $TC_FIELD_TOPOLOGY" >&2
     exit 2
 fi
-: "${TC_SSP:?TC_SSP must be ssp126, ssp245 or ssp585}"
-case "$TC_SSP" in ssp126|ssp245|ssp585) ;; *) echo "Bad TC_SSP: $TC_SSP" >&2; exit 2 ;; esac
-if [[ ! -f "v2/T&C_Code/Inputs/Data_Kantola_${TC_SSP}.mat" ]]; then
-    echo "The scenario forcing v2/T&C_Code/Inputs/Data_Kantola_${TC_SSP}.mat is missing." >&2
+# The horizon's tag and forcing, as the controller and the task form them.
+ssp="${TC_SSP:-}"
+if [[ -z "$ssp" ]]; then
+    horizon_tag='5yr'; forcing='Data_Kantola.mat'
+else
+    case "$ssp" in ssp126|ssp245|ssp585) ;; *) echo "Bad TC_SSP: $ssp" >&2; exit 2 ;; esac
+    horizon_tag="35yr_${ssp}"; forcing="Data_Kantola_${ssp}.mat"
+fi
+if [[ ! -f "v2/T&C_Code/Inputs/$forcing" ]]; then
+    echo "The forcing v2/T&C_Code/Inputs/$forcing is missing." >&2
     exit 6
 fi
 
@@ -82,7 +90,7 @@ sha256sum \
     'v2/T&C_Code/ERW_Daily_Step_2D.m' \
     'v2/run/Run_One_Subfield.m' \
     'runtime/Base_1D/Campaign_Parameters.m' \
-    "v2/T&C_Code/Inputs/Data_Kantola_${TC_SSP}.mat" \
+    "v2/T&C_Code/Inputs/$forcing" \
     "$TC_FIELD_TOPOLOGY"
 
 workers="${TC_FIELD_WORKERS:-32}"
@@ -109,7 +117,7 @@ fi
 export TC_FIELD_WORKERS="$workers"
 export TC_PARALLEL_WORKERS="$workers"
 topology_name="$(basename "$TC_FIELD_TOPOLOGY" .mat)"
-export TC_CAMPAIGN_TAG="Field_SSP_2D_35yr_${TC_SSP}${case_suffix}__${topology_name}"
+export TC_CAMPAIGN_TAG="Field_SSP_2D_${horizon_tag}${case_suffix}__${topology_name}"
 export TC_NUMERICAL_IDENTITY="cpumodel=9575f;matlab_release=2025a;single_comp_thread=1;parallel_workers=${workers}"
 export TC_CKPT_MINUTES=120
 unset TC_CKPT_FORCE_RESUME || true

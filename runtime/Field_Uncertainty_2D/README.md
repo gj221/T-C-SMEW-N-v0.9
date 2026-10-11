@@ -1,8 +1,12 @@
 # Kantola uncertainty ensemble on a field grid (Bouchet, R2025a)
 
-Campaign tag: `Field_Uncertainty_2D_35yr_<ssp>[_case8]__<grid name>`, with `lower/` and `upper/` under it
+Campaign tag: `Field_Uncertainty_2D_35yr_<ssp>[_case8]__<grid name>`, or `Field_Uncertainty_2D_5yr[_case8]__<grid name>` without a scenario, with `lower/` and `upper/` under it
 
 The lower and upper parameter sets of the Kantola ensemble (`runtime/Uncertainty_1D/README.md`: all sixteen parameters at the end that pushes the basalt pH response the set's way, alpha 1.3 and 6 around the campaign's 3.4) on the runs of the 35-year SSP campaign on a field grid (`runtime/Field_SSP_2D`). The original set is that campaign's own result and is not run here. Each set runs as the original's campaign runs: the scenario forcing, 12784 days, rock to 2050, the field grid, `TC_FIELD_WORKERS` workers, the 5 t/ha calcite arm with `TC_CALCITE_CASE=8`. The members, their knobs and the provenance a result must carry are the plot ensemble's own (`Uncertainty_Members.m`, `Uncertainty_Knobs.m`, `Uncertainty_Result_Matches.m`, `Uncertainty_Result_State.m`), so a field set differs from the plot's only by the grid.
+
+## Horizon
+
+`TC_SSP` unset runs the two sets over the five-year field record, as the central campaign runs it without `TC_SSP` (`runtime/Field_SSP_2D`, Horizon): 1826 days on the legacy forcing, rock to 2019, no scenario option. The tag is then `Field_Uncertainty_2D_5yr[_case8]__<grid name>` and the original `Field_SSP_2D_5yr[_case8]__<grid name>`; `TC_HORIZON` may name the horizon or stay unset. The rule is one, `Field_Campaign_Grid('horizon')`, read by `Field_Uncertainty_Campaign`.
 
 ## Names
 

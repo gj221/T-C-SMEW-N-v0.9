@@ -1,8 +1,12 @@
 # Kantola 35-year SSP runs on a field grid (Bouchet, R2025a)
 
-Campaign tag: `Field_SSP_2D_35yr_<ssp>[_case8]__<grid name>`
+Campaign tag: `Field_SSP_2D_35yr_<ssp>[_case8]__<grid name>`, or `Field_SSP_2D_5yr[_case8]__<grid name>` without a scenario
 
 Runs 1 to 9 of `Run_Matrix_12.m` (control, basalt and calcite on the `whole_field`, `margin_crop` and `margin_prairie` layouts) on a field grid (`runtime/Field_2D`, the 10 m Kantola grids), over the 35 projection years: the scenario forcing `Data_Kantola_<ssp>.mat`, 2016-01-01 to 2050-12-31 (12784 days), rock every 10 November to 2050, as `runtime/SSP_2D` runs them on the 12-column plot. `TC_CALCITE_CASE=8` is the 5 t/ha calcite arm (runs 3, 6 and 9). Everything else is the calibrated set of `runtime/Base_1D` (`Campaign_Parameters.m`, `Assert_Base_Provenance.m`) with the horizon moved to 35 years, and the run options are `SSP_2D`'s with the field grid in place of the 2x2 plot grid. A result here is the original member of the field-grid uncertainty ensemble (`runtime/Field_Uncertainty_2D`).
+
+## Horizon
+
+`TC_SSP` unset runs the five-year field record instead of a projection: the calibrated 1826 days on the legacy forcing `Data_Kantola.mat`, rock every 10 November 2016 to 2019 (the driver's default), no scenario option, so a run is `runtime/Field_2D`'s run of the same grid, in its own tree, with the calcite arm that campaign lacks (`TC_CALCITE_CASE=8`). The tag is then `Field_SSP_2D_5yr[_case8]__<grid name>`, the job names carry `5yr` where the scenario would stand, and the result names carry no scenario token (`..._1826d__from20160101.mat`). `TC_HORIZON` may name the horizon (`5yr` without `TC_SSP`, `35yr` with it) or stay unset. The rule is `Field_Campaign_Grid('horizon')`, which this task and the ensemble's read; the controller and the batch file form the same tag and forcing. The ensemble of the two moved sets over the same five years is `runtime/Field_Uncertainty_2D` without `TC_SSP`.
 
 The model is package y's (`FIELD_RECORDS_DAILY_2026-10-08.md`): the squares' daily vegetation and biogeochemistry, hourly physics and daily ERW chemistry share `TC_FIELD_WORKERS` workers, and a result keeps per-square daily stores, hourly field means and the final state instead of every hourly and ten-minute row.
 
@@ -48,7 +52,7 @@ The controller submits one validation element and the production array.
 | `submit_field_ssp_2d.sh` | controller: preflight, overlap checks, validation element, production array |
 | `submit_field_ssp_2d.sbatch` | array batch file: validation mode, and production with the requeue |
 | `Run_Field_SSP_2D_Task.m` | one element: gates, memory floor, stamp, lock, existing-result check, `Run_Subfield_Worker` with `FieldTopologyFile` and `Scenario`, the gate recomputed, provenance (calibrated set, grid file and its SHA-256, scenario, case, last application year), lateral conservation |
-| `Field_Campaign_Grid.m` | the grid file's checks and provenance, run lists, the memory floor; shared with `runtime/Field_Uncertainty_2D` |
+| `Field_Campaign_Grid.m` | the grid file's checks and provenance, run lists, the memory floor, the horizon rule; shared with `runtime/Field_Uncertainty_2D` |
 | `Check_Lateral_Conservation.m` | byte copy of the 2-D campaigns' whole-run check |
 
 ## Outputs

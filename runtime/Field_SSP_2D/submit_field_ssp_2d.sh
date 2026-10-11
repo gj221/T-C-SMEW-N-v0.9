@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
-# Submit one 35-year Kantola SSP campaign on a field grid on Bouchet: the
+# Submit one central Kantola campaign on a field grid on Bouchet: the
 # runs of TC_FIELD_RUNS (default 1-9; 3,6,9 with TC_CALCITE_CASE) on the
-# grid TC_FIELD_TOPOLOGY under the scenario TC_SSP, rock every 10 November
-# to 2050. One validation element (the complete audit, the Linux checks
-# and a one-day run of the grid under this scenario and case) is followed
-# by the production array. The grid is a file saved by
-# Build_Field_Grid_Topology that lives beside the deployed root, never
-# inside it. One call per grid, scenario and case; each has its own tag,
-# trees and job names, so calls run side by side.
+# grid TC_FIELD_TOPOLOGY, over 35 years under the scenario TC_SSP (rock
+# every 10 November to 2050) or, without TC_SSP, over the five-year field
+# record on the legacy forcing as runtime/Field_2D runs it (rock to 2019),
+# with the calcite arm. One validation element (the complete audit, the
+# Linux checks and a one-day run of the grid under this horizon, scenario
+# and case) is followed by the production array. The grid is a file saved
+# by Build_Field_Grid_Topology that lives beside the deployed root, never
+# inside it. One call per grid, horizon, scenario and case; each has its
+# own tag, trees and job names, so calls run side by side.
 #
 # Usage, from the checkout root:
 #   TC_FIELD_TOPOLOGY=/full/path/beside/the/root/<name>.mat \
 #   TC_SSP=ssp245 TC_FIELD_RUNS=2 TC_FIELD_WORKERS=32 TC_FIELD_MEM=192G \
 #   MATLAB_MODULE=MATLAB/2025a TC_BOUCHET_ACCOUNT=<pi account> \
 #   bash runtime/Field_SSP_2D/submit_field_ssp_2d.sh
+# TC_SSP= (unset) is the five-year field record; TC_HORIZON may name the
+# horizon (5yr without TC_SSP, 35yr with it) or stay unset.
 # TC_FIELD_MEM has no default: it scales with the grid's square count and
 # is set from the pilot (README). TC_FIELD_WORKERS (default 32, 2 to 64)
 # sets the pool and the CPUs of every element and enters the validation
@@ -53,12 +57,28 @@ case "$stage" in
 esac
 : "${TC_BOUCHET_ACCOUNT:?Set TC_BOUCHET_ACCOUNT to the pi account reported by slurm_checkup.sh}"
 : "${TC_FIELD_TOPOLOGY:?Set TC_FIELD_TOPOLOGY to the full path of the grid file}"
-: "${TC_SSP:?Set TC_SSP to ssp126, ssp245 or ssp585}"
 : "${TC_FIELD_MEM:?Set TC_FIELD_MEM (for example 192G) from the pilot; see the README}"
-case "$TC_SSP" in
-    ssp126|ssp245|ssp585) ;;
-    *) echo "Bad TC_SSP: $TC_SSP. No jobs were submitted." >&2; exit 2 ;;
-esac
+# The horizon, as the task reads it (Field_Campaign_Grid 'horizon'): the
+# five-year field record without a scenario, the 35-year projection with one.
+ssp="${TC_SSP:-}"
+horizon="${TC_HORIZON:-}"
+if [[ -z "$ssp" ]]; then
+    if [[ -n "$horizon" && "$horizon" != 5yr ]]; then
+        echo "Without TC_SSP the campaign is the five-year field record; TC_HORIZON=$horizon is not it. No jobs were submitted." >&2
+        exit 2
+    fi
+    horizon='5yr'; horizon_tag='5yr'; forcing='Data_Kantola.mat'
+else
+    case "$ssp" in
+        ssp126|ssp245|ssp585) ;;
+        *) echo "Bad TC_SSP: $ssp. No jobs were submitted." >&2; exit 2 ;;
+    esac
+    if [[ -n "$horizon" && "$horizon" != 35yr ]]; then
+        echo "A scenario campaign is the 35-year projection; TC_HORIZON=$horizon is not it. No jobs were submitted." >&2
+        exit 2
+    fi
+    horizon='35yr'; horizon_tag="35yr_${ssp}"; forcing="Data_Kantola_${ssp}.mat"
+fi
 if [[ ! "$TC_FIELD_MEM" =~ ^[1-9][0-9]*G$ ]]; then
     echo "TC_FIELD_MEM must be a whole number of gigabytes such as 192G. No jobs were submitted." >&2
     exit 2
@@ -155,7 +175,7 @@ if [[ "$(basename "$topology_file")" != "$topology_name.mat" || \
     exit 2
 fi
 export TC_FIELD_TOPOLOGY="$topology_file"
-tag="Field_SSP_2D_35yr_${TC_SSP}${case_suffix}__${topology_name}"
+tag="Field_SSP_2D_${horizon_tag}${case_suffix}__${topology_name}"
 results_dir="$repo_root/v2/SIM/Subfield_12/$tag"
 logs_dir="$repo_root/v2/logs/Subfield_12/$tag"
 
@@ -174,7 +194,7 @@ required_files=(
     'v2/T&C_Code/MAIN_FRAME_BG_ERW_2D.m'
     'v2/T&C_Code/Bouchet_Campaign_Validation_Fingerprint.m'
     'v2/T&C_Code/Bouchet_Check_Existing_Result.m'
-    "v2/T&C_Code/Inputs/Data_Kantola_${TC_SSP}.mat"
+    "v2/T&C_Code/Inputs/$forcing"
     'v2/T&C_Code/Inputs/Data_Kantola_BG.mat'
     'v2/T&C_Code/Inputs/ERW_MOD_PARAM_parameters.xlsx'
     'v2/T&C_Code/Tests/run_post_legacy_equation_audit_tests.m'
@@ -266,11 +286,12 @@ release_controller_lock() {
 }
 trap release_controller_lock EXIT
 
-# Job names carry the scenario, case and grid, so campaigns do not see each
-# other. Within this campaign a queued validation refuses the call, and so
-# does a queued element of a requested run; elements of other runs may run
-# on, which is how the runs after the pilot are added.
-suffix="${TC_SSP}${case_suffix}_${topology_name}"
+# Job names carry the scenario (5yr for the field record), case and grid,
+# so campaigns do not see each other. Within this campaign a queued
+# validation refuses the call, and so does a queued element of a requested
+# run; elements of other runs may run on, which is how the runs after the
+# pilot are added.
+suffix="${ssp:-5yr}${case_suffix}_${topology_name}"
 validation_name="FieldSSP2Dchk_${suffix}"
 production_name="FieldSSP2D_${suffix}"
 if ! queued_jobs="$(squeue -h -u "$USER" -r --name="$validation_name,$production_name" -o '%i|%j|%T')"; then
@@ -344,7 +365,7 @@ submit_job() {
     submitted_jobs+=("$submitted_id")
 }
 
-export_common="ALL,TC_FIELD_SSP_CONTROLLER_TOKEN=$token,TC_FIELD_TOPOLOGY=$topology_file,TC_SSP=$TC_SSP,TC_CALCITE_CASE=$calcite_case,TC_FIELD_WORKERS=$workers,TC_FIELD_RESTARTS=$restarts,TC_ERW_KERNEL=$kernel"
+export_common="ALL,TC_FIELD_SSP_CONTROLLER_TOKEN=$token,TC_FIELD_TOPOLOGY=$topology_file,TC_SSP=$ssp,TC_HORIZON=$horizon,TC_CALCITE_CASE=$calcite_case,TC_FIELD_WORKERS=$workers,TC_FIELD_RESTARTS=$restarts,TC_ERW_KERNEL=$kernel"
 submit_job validation_job \
     --partition=day --array=1 --ntasks=1 --cpus-per-task="$workers" --mem=96G --time=06:00:00 \
     --no-requeue --job-name="$validation_name" \
