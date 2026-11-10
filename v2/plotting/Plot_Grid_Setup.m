@@ -7,13 +7,17 @@
 %%
 %%   (a)  1-D block:  one 60 m x 60 m column (3600 m2), 5 m deep, under a
 %%                    planar slope; section line A-A'
-%%   (b)  2-D block:  the same plot as 12 cells (4 main cells of 25 m and
-%%                    8 margin cells in the 5 m ring); arrows mark the
-%%                    lateral exchange across each of the 20 shared faces
-%%   (c)  1-D section A-A':  closed sides, free drainage at the base
+%%   (b)  2-D block:  the same plot as 16 cells (4 main cells of 25 m, the
+%%                    5 m ring split at the grid lines into 8 strip pieces
+%%                    and 4 corners) with its perimeter open: a ghost column
+%%                    of untreated land beyond each of the 16 exposed sides;
+%%                    arrows mark the lateral exchange across the 24 shared
+%%                    faces and the 16 ghost faces
+%%   (c)  1-D section A-A':  one column, drainage at the base
 %%   (d)  2-D section A-A':  the cells crossed by A-A' at their true
-%%                    widths; water and heat cross each face in every
-%%                    layer, aqueous solutes and soil CO2 in the active zone
+%%                    widths and the ghosts at both ends; water and heat
+%%                    cross each face in every layer, aqueous solutes and
+%%                    soil CO2 in the active zone
 %%   (e)  upper 0.4 m of the 20-layer mesh and the 0-300 mm active zone
 %%
 %% The plane is the meeting campaign's (runtime/meeting_20261013,
@@ -23,8 +27,10 @@
 %% by VE through the axes' data aspect ratio; every elevation and tick
 %% stays in true metres, with the downslope edge of the surface at 0 m.
 %%
-%% Cell geometry is taken from Build_Cell_Topology(L, w, nx, ny), as in
-%% Run_Matrix_12 (L = 60 m, w = 5 m, 2 x 2 main grid of 25 m cells).  The
+%% Cell and ghost geometry is taken from Build_Cell_Topology(L, w, nx, ny,
+%% true) and Open_Perimeter_Topology (runtime/open_perimeter_20261110), so
+%% the script runs on a tree carrying that patch (L = 60 m, w = 5 m, 2 x 2
+%% main grid of 25 m cells, as in Run_Matrix_12).  The
 %% layer mesh matches ERW_MOD_PARAM_parameters.xlsx (Kantola rows,
 %% Zbio = 300 mm).
 %%
@@ -50,7 +56,15 @@ Zs_mm = [0 10 50 100 150 200 300 400 600 800 1000 1250 1500 1750 ...
     2000 2500 3000 3500 4000 4500 5000];
 Zd = Zs_mm/1000;         % layer boundaries [m]
 Zbio = 0.3;              % active biogeochemical depth [m]
-topo = Build_Cell_Topology(L,w,nx,ny);
+topo = Build_Cell_Topology(L,w,nx,ny,true);
+if ~isfield(topo,'split_strips')
+    error('Plot_Grid_Setup:Tree', ...
+        'This tree''s Build_Cell_Topology does not split the strips; apply the open-perimeter patch.');
+end
+topo_x = Open_Perimeter_Topology(topo);
+ghost = topo.N_cells + (1:topo_x.N_ghost);
+host = topo_x.ghost_host(:).';
+g_off = [topo_x.cell_xc(ghost)-topo.cell_xc(host) topo_x.cell_yc(ghost)-topo.cell_yc(host)];  % ghost minus host centre [m]
 z_plan = @(x,y) slope*y + 0*x;        % surface elevation above the downslope edge y = 0 [m]
 z_surf = @(s) slope*(L - s);          % the same along A-A', s = 0 at A (upslope)
 sec_cells = find(topo.cell_x_lo(:) <= x_sec & topo.cell_x_hi(:) > x_sec);
@@ -69,17 +83,19 @@ soil_line_c = [0.45 0.33 0.20];   % brown layer lines
 water_c  = [0.84 0.27 0.00];      % vermillion: water and heat, every layer
 solute_c = [0.00 0.55 0.40];      % bluish green: solutes and CO2, active zone
 drain_c  = [0.30 0.30 0.30];
+ghost_c  = [0.80 0.80 0.80];      % grey: ghost columns
+ghost_soil_c = [0.88 0.88 0.88; 0.76 0.76 0.76; 0.82 0.82 0.82];
 font = {'FontName','Arial','FontSize',7};
 
 %% figure (cm); axes are placed by hand so the fixed-aspect panels fill them
-fig_w = 18; fig_h = 14.4;
+fig_w = 18; fig_h = 13.8;
 fig = figure('Color','w','Name','T&C-SMEW-N 1-D and 2-D grid setup', ...
     'Units','centimeters','Position',[2 2 fig_w fig_h],'PaperPositionMode','auto');
 pos_cm = @(x,y,wd,ht) [x/fig_w y/fig_h wd/fig_w ht/fig_h];
-sec_xlim = [-1.5 61.5]; sec_ylim = [-6.4 2.6];
+sec_xlim = [-6.5 66.5]; sec_ylim = [-6.4 2.6];
 
 %% ================= (a) 1-D block =================
-ax = axes('Parent',fig,'Position',pos_cm(0.1,7.4,8.9,6.8));
+ax = axes('Parent',fig,'Position',pos_cm(0.1,6.8,8.9,6.8));
 hold(ax,'on');
 draw_block(ax,L,z_plan,Zd,Zbio,soil_c,soil_line_c,edge_c,[]);
 patch(ax,[0 L L 0],[0 0 L L],z_plan([0 L L 0],[0 0 L L]),main_c, ...
@@ -91,10 +107,10 @@ text(ax,L+2,0,-Zd(end),sprintf('%d m',-Zd(end)),font{:});
 text(ax,L/2,-4,-Zd(end),'60 m','HorizontalAlignment','center','VerticalAlignment','top',font{:});
 text(ax,L+4,L/2,z_plan(L,L/2)-Zd(end),'60 m','VerticalAlignment','top',font{:});
 setup_block_axes(ax,VE);
-panel_letter(fig,pos_cm(0.2,13.9,0.5,0.4),'a',font);
+panel_letter(fig,pos_cm(0.2,13.3,0.5,0.4),'a',font);
 
 %% ================= (b) 2-D block =================
-ax = axes('Parent',fig,'Position',pos_cm(9.0,7.4,8.9,6.8));
+ax = axes('Parent',fig,'Position',pos_cm(9.0,6.8,8.9,6.8));
 hold(ax,'on');
 draw_block(ax,L,z_plan,Zd,Zbio,soil_c,soil_line_c,edge_c,w+(0:ny)*(L-2*w)/ny);
 for c = 1:topo.N_cells
@@ -103,7 +119,24 @@ for c = 1:topo.N_cells
     ys = topo.cell_y_lo(c)+[0 0 1 1]*topo.cell_dy(c);
     patch(ax,xs,ys,z_plan(xs,ys),fill_c,'EdgeColor',edge_c,'LineWidth',0.6);
 end
+for g = 1:numel(ghost)
+    xs = topo.cell_x_lo(host(g))+[0 1 1 0]*topo.cell_dx(host(g))+g_off(g,1);
+    ys = topo.cell_y_lo(host(g))+[0 0 1 1]*topo.cell_dy(host(g))+g_off(g,2);
+    patch(ax,xs,ys,z_plan(xs,ys),ghost_c,'FaceAlpha',0.35,'EdgeColor',edge_c,'LineStyle','--','LineWidth',0.5);
+    if g_off(g,2) < 0 || g_off(g,1) > 0   % outer faces seen from the south-east
+        p0 = [xs(1) ys(1)] + (g_off(g,1) > 0)*[topo.cell_dx(host(g)) 0];
+        p1 = p0 + (g_off(g,2) < 0)*[topo.cell_dx(host(g)) 0] + (g_off(g,1) > 0)*[0 topo.cell_dy(host(g))];
+        patch(ax,[p0(1) p1(1) p1(1) p0(1)],[p0(2) p1(2) p1(2) p0(2)], ...
+            [z_plan(p0(1),p0(2)) z_plan(p1(1),p1(2)) z_plan(p1(1),p1(2))-Zd(end) z_plan(p0(1),p0(2))-Zd(end)], ...
+            ghost_soil_c(2,:),'FaceAlpha',0.35,'EdgeColor',edge_c,'LineStyle','--','LineWidth',0.5);
+    end
+end
 z_top = @(x,y) z_plan(x,y) + 0.02;   % arrows sit just above the surface
+for g = 1:numel(ghost)
+    m = [topo.cell_xc(host(g)) topo.cell_yc(host(g))] + g_off(g,:)/2;   % face centre
+    u = 2.4*g_off(g,:)/norm(g_off(g,:));
+    draw_arrow(ax,m(1)-u(1),m(2)-u(2),m(1)+u(1),m(2)+u(2),water_c,1.0,1.8,2.0,true,z_top,1);
+end
 tol = 1e-9*L;
 for e = 1:topo.N_edges
     a = topo.edge_a(e); b = topo.edge_b(e);
@@ -126,23 +159,28 @@ for c = find(strcmp(topo.cell_region,'main')).'
 end
 draw_section_mark(ax,x_sec,L,z_plan,Zd(end),pr,font);
 setup_block_axes(ax,VE);
-panel_letter(fig,pos_cm(9.0,13.9,0.5,0.4),'b',font);
+panel_letter(fig,pos_cm(9.0,13.3,0.5,0.4),'b',font);
 
 %% ================= (c) 1-D section A-A' =================
-ax = axes('Parent',fig,'Position',pos_cm(1.15,2.1,6.3,4.5));
+ax = axes('Parent',fig,'Position',pos_cm(1.15,2.1,6.3,3.9));
 hold(ax,'on');
 draw_layers(ax,0,L,z_surf(0),z_surf(L),Zd,Zbio,soil_c,soil_line_c);
 draw_cap(ax,0,L,z_surf,main_c,edge_c);
-draw_sides(ax,z_surf,Zd(end),L);
 for sx = [10 30 50]
     draw_arrow(ax,sx,z_surf(sx)-Zd(end)-0.15,sx,z_surf(sx)-Zd(end)-1.15,drain_c,0.8,1.0,1.2,false,[],VE);
 end
 setup_section_axes(ax,sec_xlim,sec_ylim,0:20:L,VE,sec_name,font);
-panel_letter(fig,pos_cm(0.1,6.9,0.5,0.4),'c',font);
+panel_letter(fig,pos_cm(0.1,6.3,0.5,0.4),'c',font);
 
 %% ================= (d) 2-D section A-A' =================
-ax = axes('Parent',fig,'Position',pos_cm(8.45,2.1,6.3,4.5));
+ax = axes('Parent',fig,'Position',pos_cm(8.45,2.1,6.3,3.9));
 hold(ax,'on');
+for s0 = [-w L]                      % ghosts beyond A and A'
+    draw_layers(ax,s0,s0+w,z_surf(s0),z_surf(s0+w),Zd,Zbio,ghost_soil_c,ghost_c*0.7);
+    draw_cap(ax,s0,s0+w,z_surf,ghost_c,edge_c);
+    plot(ax,[s0 s0+w s0+w s0 s0],[z_surf(s0)+0.3 z_surf(s0+w)+0.3 z_surf(s0+w)-Zd(end) z_surf(s0)-Zd(end) z_surf(s0)+0.3], ...
+        '--','Color',edge_c,'LineWidth',0.5);
+end
 for k = 1:numel(sec_cells)
     s0 = s_face(k); s1 = s_face(k+1);
     draw_layers(ax,s0,s1,z_surf(s0),z_surf(s1),Zd,Zbio,soil_c,soil_line_c);
@@ -153,23 +191,22 @@ for k = 1:numel(sec_cells)
             'HorizontalAlignment','center','VerticalAlignment','bottom',font{:},'FontWeight','bold');
     end
 end
-for f = s_face(2:end-1)
+for f = s_face
     plot(ax,[f f],[z_surf(f)-Zd(end) z_surf(f)],'Color',edge_c,'LineWidth',0.6);
     for d = 1:4
         draw_arrow(ax,f-2.6,z_surf(f)-d,f+2.6,z_surf(f)-d,water_c,1.0,1.1,1.2,true,[],VE);
     end
     draw_arrow(ax,f-2.6,z_surf(f)-Zbio/2,f+2.6,z_surf(f)-Zbio/2,solute_c,1.0,1.1,1.2,true,[],VE);
 end
-draw_sides(ax,z_surf,Zd(end),L);
 for sx = 0.5*(s_face(1:end-1)+s_face(2:end))
     draw_arrow(ax,sx,z_surf(sx)-Zd(end)-0.15,sx,z_surf(sx)-Zd(end)-1.15,drain_c,0.8,1.0,1.2,false,[],VE);
 end
 setup_section_axes(ax,sec_xlim,sec_ylim,s_face,VE,sec_name,font);
-panel_letter(fig,pos_cm(7.6,6.9,0.5,0.4),'d',font);
+panel_letter(fig,pos_cm(7.6,6.3,0.5,0.4),'d',font);
 
 %% ================= (e) upper 0.4 m of the mesh =================
 z_in = 0.4;              % depth shown [m]
-ax = axes('Parent',fig,'Position',pos_cm(15.75,2.1,0.7,4.5));
+ax = axes('Parent',fig,'Position',pos_cm(15.75,2.1,0.7,3.9));
 hold(ax,'on');
 for i = 1:find(Zd < z_in,1,'last')
     patch(ax,[0 1 1 0],-[Zd(i) Zd(i) min(Zd(i+1),z_in) min(Zd(i+1),z_in)], ...
@@ -184,7 +221,7 @@ set(ax,'XLim',[0 1],'YLim',[-z_in 0],'XTick',[],'YTick',fliplr(-d_lab), ...
     'YAxisLocation','right','TickDir','out','TickLength',[0.04 0.04], ...
     'XColor','none','YColor','k','Box','off','LineWidth',0.5,'Clipping','off',font{:});
 ylabel(ax,'Depth (m)',font{:});
-panel_letter(fig,pos_cm(14.95,6.9,0.5,0.4),'e',font);
+panel_letter(fig,pos_cm(14.95,6.3,0.5,0.4),'e',font);
 
 %% ================= legend =================
 ax = axes('Parent',fig,'Position',pos_cm(0.4,0.05,17.2,1.0));
@@ -199,10 +236,10 @@ draw_arrow(ax,col(3),row(1),col(3)+6,row(1),water_c,1.0,1.4,1.6,true,[],1);
 text(ax,col(3)+7.5,row(1),'Water and heat, every layer',font{:});
 draw_arrow(ax,col(3),row(2),col(3)+6,row(2),solute_c,1.0,1.4,1.6,true,[],1);
 text(ax,col(3)+7.5,row(2),'Solutes and soil CO_{2}, active zone',font{:});
-plot(ax,col(4)+[2.5 2.5],row(1)+[-1.6 1.6],'k','LineWidth',1.8);
-text(ax,col(4)+6.5,row(1),'Closed side',font{:});
+patch(ax,col(4)+[0 5 5 0],row(1)+[-1.4 -1.4 1.4 1.4],ghost_c,'EdgeColor',edge_c,'LineStyle','--','LineWidth',0.5);
+text(ax,col(4)+6.5,row(1),'Ghost column',font{:});
 draw_arrow(ax,col(4)+2.5,row(2)+1.7,col(4)+2.5,row(2)-1.7,drain_c,0.9,1.3,1.5,false,[],1);
-text(ax,col(4)+6.5,row(2),'Free drainage',font{:});
+text(ax,col(4)+6.5,row(2),'Drainage',font{:});
 
 %% ================= save =================
 plot_file = fullfile(figure_dir,'Grid_Setup.png');
@@ -283,20 +320,14 @@ function draw_section_mark(ax,x_sec,L,z_plan,Zmax,pr,font)
 %% Section line on the surface and down the downslope face.
 plot3(ax,[x_sec x_sec],[L 0],z_plan([x_sec x_sec],[L 0])+0.03,'-.k','LineWidth',0.8);
 plot3(ax,[x_sec x_sec],[0 0],z_plan(x_sec,0)-[0 Zmax],':k','LineWidth',0.8);
-text(ax,x_sec,L+4,z_plan(x_sec,L),'A','HorizontalAlignment','center',font{:},'FontWeight','bold');
-text(ax,x_sec,-4,z_plan(x_sec,0),['A' pr],'HorizontalAlignment','center',font{:},'FontWeight','bold');
+text(ax,x_sec,L+8,z_plan(x_sec,L),'A','HorizontalAlignment','center',font{:},'FontWeight','bold');
+text(ax,x_sec,-8,z_plan(x_sec,0),['A' pr],'HorizontalAlignment','center',font{:},'FontWeight','bold');
 end
 
 function draw_cap(ax,s0,s1,z_surf,c,edge_c)
 %% Land-cover band above the soil surface, coloured by cell type.
 patch(ax,[s0 s1 s1 s0],[z_surf(s0) z_surf(s1) z_surf(s1)+0.3 z_surf(s0)+0.3],c, ...
     'EdgeColor',edge_c,'LineWidth',0.5);
-end
-
-function draw_sides(ax,z_surf,Zmax,L)
-%% Closed lateral boundary at both ends of the section.
-plot(ax,[0 0],[z_surf(0)-Zmax z_surf(0)+0.3],'k','LineWidth',1.8);
-plot(ax,[L L],[z_surf(L)-Zmax z_surf(L)+0.3],'k','LineWidth',1.8);
 end
 
 function setup_block_axes(ax,VE)
