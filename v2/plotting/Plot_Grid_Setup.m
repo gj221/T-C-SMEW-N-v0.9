@@ -16,13 +16,12 @@
 %%                    layer, aqueous solutes and soil CO2 in the active zone
 %%   (e)  upper 0.4 m of the 20-layer mesh and the 0-300 mm active zone
 %%
-%% The slope is the mean slope of the Kantola basalt field (2.3 %,
-%% runtime/Field_2D/README.md; the control field is 1.0 %), drawn as a
-%% plane for illustration: the v0.9 runs use no DEM (OPT_DEM = 0) and
-%% Slo_top = 0.  At 2.3 % the slope cannot be seen at true scale, so
-%% (a) to (d) are stretched vertically by VE through the axes' data
-%% aspect ratio; every elevation and tick stays in true metres, with the
-%% downslope edge of the surface at 0 m.
+%% The plane is the meeting campaign's (runtime/meeting_20261013,
+%% Meeting_Planar_Topology): z = s*y, downhill due south (aspect 180),
+%% s = 0, 0.02 or 0.05, no DEM.  It is drawn at 2 %.  At 2 % the slope
+%% cannot be seen at true scale, so (a) to (d) are stretched vertically
+%% by VE through the axes' data aspect ratio; every elevation and tick
+%% stays in true metres, with the downslope edge of the surface at 0 m.
 %%
 %% Cell geometry is taken from Build_Cell_Topology(L, w, nx, ny), as in
 %% Run_Matrix_12 (L = 60 m, w = 5 m, 2 x 2 main grid of 25 m cells).  The
@@ -44,7 +43,7 @@ if ~isfolder(figure_dir); mkdir(figure_dir); end
 L  = 60;                 % field side [m]
 w  = 5;                  % margin width [m]
 nx = 2;  ny = 2;         % main grid
-slope = 0.023;           % planar slope [m/m], Kantola basalt field mean
+slope = 0.02;            % planar slope [m/m], one of the campaign's 0, 0.02, 0.05
 VE = 5;                  % vertical exaggeration of (a) to (d) [-]
 x_sec = 47;              % plan position of section A-A' [m]
 Zs_mm = [0 10 50 100 150 200 300 400 600 800 1000 1250 1500 1750 ...
