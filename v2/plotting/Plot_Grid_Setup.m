@@ -9,10 +9,11 @@
 %%                    planar slope; section line A-A'
 %%   (b)  2-D block:  the same plot as 16 cells (4 main cells of 25 m, the
 %%                    5 m ring split at the grid lines into 8 strip pieces
-%%                    and 4 corners) with its perimeter open: a ghost column
-%%                    of untreated land beyond each of the 16 exposed sides;
-%%                    arrows mark the lateral exchange across the 24 shared
-%%                    faces and the 16 ghost faces
+%%                    and 4 corners) with its perimeter open: a boundary
+%%                    column of untreated land (Open_Perimeter_Topology's
+%%                    ghost) beyond each of the 16 exposed sides; arrows
+%%                    mark the lateral exchange across the 24 shared faces
+%%                    and the 16 boundary faces
 %%   (c)  1-D section A-A':  one column, drainage at the base
 %%   (d)  2-D section A-A':  the cells crossed by A-A' at their true
 %%                    widths and the ghosts at both ends; water and heat
@@ -237,7 +238,7 @@ text(ax,col(3)+7.5,row(1),'Water and heat, every layer',font{:});
 draw_arrow(ax,col(3),row(2),col(3)+6,row(2),solute_c,1.0,1.4,1.6,true,[],1);
 text(ax,col(3)+7.5,row(2),'Solutes and soil CO_{2}, active zone',font{:});
 patch(ax,col(4)+[0 5 5 0],row(1)+[-1.4 -1.4 1.4 1.4],ghost_c,'EdgeColor',edge_c,'LineStyle','--','LineWidth',0.5);
-text(ax,col(4)+6.5,row(1),'Ghost column',font{:});
+text(ax,col(4)+6.5,row(1),'Boundary column',font{:});
 draw_arrow(ax,col(4)+2.5,row(2)+1.7,col(4)+2.5,row(2)-1.7,drain_c,0.9,1.3,1.5,false,[],1);
 text(ax,col(4)+6.5,row(2),'Drainage',font{:});
 
